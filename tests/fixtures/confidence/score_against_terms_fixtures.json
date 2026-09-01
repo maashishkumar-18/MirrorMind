@@ -1,0 +1,14 @@
+[
+  {
+    "query": "reminder deadline",
+    "keywords": "priority",
+    "context": "The reminder deadline is important, high priority.",
+    "expected": 1.0
+  },
+  {
+    "query": "reminder deadline",
+    "keywords": "",
+    "context": "The reminder deadline is important, high priority.",
+    "expected": 1.0
+  }
+]

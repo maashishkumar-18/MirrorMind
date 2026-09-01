@@ -1,0 +1,81 @@
+[
+  {
+    "name": "two_sources_rrf_k60",
+    "input": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.9,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.5,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.8,
+        "source": "keyword",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "d",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.3,
+        "source": "keyword",
+        "original_rank": 1,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.009836065573770491,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.00967741935483871,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.003278688524590164,
+        "source": "keyword",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "d",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.0032258064516129032,
+        "source": "keyword",
+        "original_rank": 1,
+        "metadata": {}
+      }
+    ]
+  }
+]

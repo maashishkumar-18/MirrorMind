@@ -1,0 +1,89 @@
+[
+  {
+    "query": "reminder notification",
+    "top_k": null,
+    "expected": [
+      [
+        0,
+        3.5442255130181746
+      ]
+    ]
+  },
+  {
+    "query": "todo priority category",
+    "top_k": null,
+    "expected": [
+      [
+        2,
+        3.5442255130181746
+      ],
+      [
+        9,
+        1.9887132292376763
+      ]
+    ]
+  },
+  {
+    "query": "meeting notes action items",
+    "top_k": null,
+    "expected": [
+      [
+        1,
+        4.979542192380141
+      ],
+      [
+        5,
+        2.438330286530461
+      ],
+      [
+        6,
+        1.2668923563552135
+      ],
+      [
+        9,
+        0.8211377654466336
+      ],
+      [
+        3,
+        0.6821712387632998
+      ]
+    ]
+  },
+  {
+    "query": "quantum computing",
+    "top_k": null,
+    "expected": []
+  },
+  {
+    "query": "reminders todos",
+    "top_k": null,
+    "expected": [
+      [
+        5,
+        2.438330286530461
+      ],
+      [
+        2,
+        1.1749033994597156
+      ],
+      [
+        8,
+        1.1337429066798894
+      ]
+    ]
+  },
+  {
+    "query": "reminders todos",
+    "top_k": 2,
+    "expected": [
+      [
+        5,
+        2.438330286530461
+      ],
+      [
+        2,
+        1.1749033994597156
+      ]
+    ]
+  }
+]

@@ -1,0 +1,142 @@
+[
+  {
+    "name": "mixed_sources_and_unknown",
+    "input": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.9,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.8,
+        "source": "keyword",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.5,
+        "source": "keyword_fallback",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "d",
+        "content": "c",
+        "raw_content": "r",
+        "score": 1.0,
+        "source": "unknown_source",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "e",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.7,
+        "source": "metadata",
+        "original_rank": 0,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.54,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.16000000000000003,
+        "source": "keyword",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "e",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.13999999999999999,
+        "source": "metadata",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.05,
+        "source": "keyword_fallback",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "d",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.0,
+        "source": "unknown_source",
+        "original_rank": 0,
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "keyword_bm25_same_weight_as_keyword",
+    "input": [
+      {
+        "chunk_id": "x",
+        "content": "c",
+        "raw_content": "r",
+        "score": 1.0,
+        "source": "keyword",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "y",
+        "content": "c",
+        "raw_content": "r",
+        "score": 3.0,
+        "source": "keyword_bm25",
+        "original_rank": 0,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "y",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.6000000000000001,
+        "source": "keyword_bm25",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "x",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.2,
+        "source": "keyword",
+        "original_rank": 0,
+        "metadata": {}
+      }
+    ]
+  }
+]

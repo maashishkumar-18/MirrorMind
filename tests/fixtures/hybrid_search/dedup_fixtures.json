@@ -1,0 +1,182 @@
+[
+  {
+    "name": "exact_chunk_id_duplicate_keeps_first_seen",
+    "dedup_strategy": "score",
+    "input": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.9,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.5,
+        "source": "keyword",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.7,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.9,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.7,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "same_parent_chunk_id_keeps_higher_score",
+    "dedup_strategy": "score",
+    "input": [
+      {
+        "chunk_id": "p1_a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.5,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {
+          "parent_chunk_id": "parent-1"
+        }
+      },
+      {
+        "chunk_id": "p1_b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.9,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {
+          "parent_chunk_id": "parent-1"
+        }
+      },
+      {
+        "chunk_id": "other",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.6,
+        "source": "semantic",
+        "original_rank": 2,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "p1_b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.9,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {
+          "parent_chunk_id": "parent-1"
+        }
+      },
+      {
+        "chunk_id": "other",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.6,
+        "source": "semantic",
+        "original_rank": 2,
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "no_parent_id_no_dedup_beyond_exact_match",
+    "dedup_strategy": "score",
+    "input": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.5,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.9,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.3,
+        "source": "semantic",
+        "original_rank": 2,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.9,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.5,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.3,
+        "source": "semantic",
+        "original_rank": 2,
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "empty_input",
+    "dedup_strategy": "score",
+    "input": [],
+    "expected": []
+  }
+]

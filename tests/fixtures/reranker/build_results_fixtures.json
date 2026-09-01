@@ -1,0 +1,281 @@
+[
+  {
+    "name": "default_softmax_top3",
+    "config_overrides": {},
+    "candidates": [
+      {
+        "chunk_id": "a",
+        "content": "alpha",
+        "raw_content": "alpha",
+        "score": 0.5,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "score": 0.3,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "gamma",
+        "raw_content": "gamma",
+        "score": 0.9,
+        "metadata": {}
+      }
+    ],
+    "fake_scores": [
+      2.0,
+      5.0,
+      1.0
+    ],
+    "top_k": 3,
+    "expected_chunks": [
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "original_score": 0.3,
+        "rerank_score": 0.9362395518765058,
+        "rank": 1,
+        "metadata": {}
+      }
+    ],
+    "expected_cache_hit": false
+  },
+  {
+    "name": "minmax_top3",
+    "config_overrides": {
+      "normalize_method": "minmax"
+    },
+    "candidates": [
+      {
+        "chunk_id": "a",
+        "content": "alpha",
+        "raw_content": "alpha",
+        "score": 0.5,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "score": 0.3,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "gamma",
+        "raw_content": "gamma",
+        "score": 0.9,
+        "metadata": {}
+      }
+    ],
+    "fake_scores": [
+      2.0,
+      5.0,
+      1.0
+    ],
+    "top_k": 3,
+    "expected_chunks": [
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "original_score": 0.3,
+        "rerank_score": 1.0,
+        "rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "a",
+        "content": "alpha",
+        "raw_content": "alpha",
+        "original_score": 0.5,
+        "rerank_score": 0.25,
+        "rank": 2,
+        "metadata": {}
+      }
+    ],
+    "expected_cache_hit": false
+  },
+  {
+    "name": "no_normalize_raw_threshold_filters_low_score",
+    "config_overrides": {
+      "normalize_scores": false,
+      "min_score_threshold": 0.1
+    },
+    "candidates": [
+      {
+        "chunk_id": "a",
+        "content": "alpha",
+        "raw_content": "alpha",
+        "score": 0.5,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "score": 0.3,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "gamma",
+        "raw_content": "gamma",
+        "score": 0.9,
+        "metadata": {}
+      }
+    ],
+    "fake_scores": [
+      0.05,
+      5.0,
+      1.0
+    ],
+    "top_k": 3,
+    "expected_chunks": [
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "original_score": 0.3,
+        "rerank_score": 5.0,
+        "rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "gamma",
+        "raw_content": "gamma",
+        "original_score": 0.9,
+        "rerank_score": 1.0,
+        "rank": 2,
+        "metadata": {}
+      }
+    ],
+    "expected_cache_hit": false
+  },
+  {
+    "name": "top_k_truncates_after_normalize_not_before",
+    "config_overrides": {
+      "normalize_method": "minmax"
+    },
+    "candidates": [
+      {
+        "chunk_id": "a",
+        "content": "alpha",
+        "raw_content": "alpha",
+        "score": 0.5,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "score": 0.3,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "gamma",
+        "raw_content": "gamma",
+        "score": 0.9,
+        "metadata": {}
+      }
+    ],
+    "fake_scores": [
+      2.0,
+      5.0,
+      1.0
+    ],
+    "top_k": 2,
+    "expected_chunks": [
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "original_score": 0.3,
+        "rerank_score": 1.0,
+        "rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "a",
+        "content": "alpha",
+        "raw_content": "alpha",
+        "original_score": 0.5,
+        "rerank_score": 0.25,
+        "rank": 2,
+        "metadata": {}
+      }
+    ],
+    "expected_cache_hit": false
+  },
+  {
+    "name": "all_equal_scores_minmax_all_become_one",
+    "config_overrides": {
+      "normalize_method": "minmax"
+    },
+    "candidates": [
+      {
+        "chunk_id": "a",
+        "content": "alpha",
+        "raw_content": "alpha",
+        "score": 0.5,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "score": 0.3,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "gamma",
+        "raw_content": "gamma",
+        "score": 0.9,
+        "metadata": {}
+      }
+    ],
+    "fake_scores": [
+      3.0,
+      3.0,
+      3.0
+    ],
+    "top_k": 3,
+    "expected_chunks": [
+      {
+        "chunk_id": "a",
+        "content": "alpha",
+        "raw_content": "alpha",
+        "original_score": 0.5,
+        "rerank_score": 1.0,
+        "rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "beta",
+        "raw_content": "beta",
+        "original_score": 0.3,
+        "rerank_score": 1.0,
+        "rank": 2,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "gamma",
+        "raw_content": "gamma",
+        "original_score": 0.9,
+        "rerank_score": 1.0,
+        "rank": 3,
+        "metadata": {}
+      }
+    ],
+    "expected_cache_hit": false
+  }
+]

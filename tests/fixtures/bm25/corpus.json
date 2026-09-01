@@ -1,0 +1,12 @@
+[
+  {"id": "doc-1", "content": "The reminder system sends a Windows toast notification when a task is due."},
+  {"id": "doc-2", "content": "Meeting notes capture attendees, decisions, and action items automatically."},
+  {"id": "doc-3", "content": "Todos can be marked high priority and grouped by category for the day."},
+  {"id": "doc-4", "content": "The schedule view shows today's time-slotted items in a day or week layout."},
+  {"id": "doc-5", "content": "Session chunks are embedded locally using a small sentence transformer model."},
+  {"id": "doc-6", "content": "A daily summary aggregates reminders, todos, and meeting notes for the user."},
+  {"id": "doc-7", "content": "The agentic reasoning layer classifies each message into an action type."},
+  {"id": "doc-8", "content": "Retrieval combines semantic search with BM25 keyword search for better recall."},
+  {"id": "doc-9", "content": "Reminders that fire while the app is closed are reconciled on the next launch."},
+  {"id": "doc-10", "content": "Todo items retain their completion timestamp instead of being deleted."}
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "query": "what is the reminder deadline",
+    "context": "The reminder deadline is set for tomorrow at 3pm.",
+    "expected_keyword_coverage": 0.75,
+    "expected_score": 0.8214285714285714
+  },
+  {
+    "query": "meeting notes decisions",
+    "context": "We captured the meeting notes and outlined the decisions clearly.",
+    "expected_keyword_coverage": 1.0,
+    "expected_score": 1.0
+  },
+  {
+    "query": "completely unrelated text",
+    "context": "The weather today is sunny with a light breeze.",
+    "expected_keyword_coverage": 0.0,
+    "expected_score": 0.0
+  },
+  {
+    "query": "todo priority",
+    "context": "no overlap here at all whatsoever with different words",
+    "expected_keyword_coverage": 0.0,
+    "expected_score": 0.0
+  },
+  {
+    "query": "a an the of to",
+    "context": "short words filtered by length threshold",
+    "expected_keyword_coverage": 0.0,
+    "expected_score": 0.0
+  },
+  {
+    "query": "",
+    "context": "some context",
+    "expected_keyword_coverage": 0.0,
+    "expected_score": 0.0
+  },
+  {
+    "query": "some query",
+    "context": "",
+    "expected_keyword_coverage": 0.0,
+    "expected_score": 0.0
+  },
+  {
+    "query": "alpha beta gamma delta epsilon",
+    "context": "alpha beta only",
+    "expected_keyword_coverage": 0.4,
+    "expected_score": 0.5714285714285714
+  },
+  {
+    "query": "alpha beta gamma delta epsilon",
+    "context": "alpha only here",
+    "expected_keyword_coverage": 0.2,
+    "expected_score": 0.33333333333333337
+  }
+]

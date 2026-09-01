@@ -1,0 +1,176 @@
+[
+  {
+    "name": "minmax_basic",
+    "normalize_method": "minmax",
+    "input": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 10.0,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 5.0,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.0,
+        "source": "semantic",
+        "original_rank": 2,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 1.0,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.5,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.0,
+        "source": "semantic",
+        "original_rank": 2,
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "zscore_basic",
+    "normalize_method": "zscore",
+    "input": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 10.0,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 5.0,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.0,
+        "source": "semantic",
+        "original_rank": 2,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 1.0,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.5,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "c",
+        "content": "c",
+        "raw_content": "r",
+        "score": 0.0,
+        "source": "semantic",
+        "original_rank": 2,
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "all_equal_scores_become_1",
+    "normalize_method": "minmax",
+    "input": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 3.0,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 3.0,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      }
+    ],
+    "expected": [
+      {
+        "chunk_id": "a",
+        "content": "c",
+        "raw_content": "r",
+        "score": 1.0,
+        "source": "semantic",
+        "original_rank": 0,
+        "metadata": {}
+      },
+      {
+        "chunk_id": "b",
+        "content": "c",
+        "raw_content": "r",
+        "score": 1.0,
+        "source": "semantic",
+        "original_rank": 1,
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "empty_input",
+    "normalize_method": "minmax",
+    "input": [],
+    "expected": []
+  }
+]
