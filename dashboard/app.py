@@ -33,14 +33,44 @@ from observability.metrics_store import MetricsStore
 # ============================================================================
 
 CATEGORICAL = {
-    "light": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
-    "dark":  ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
+    "light": [
+        "#2a78d6",
+        "#eb6834",
+        "#1baf7a",
+        "#eda100",
+        "#e87ba4",
+        "#008300",
+        "#4a3aa7",
+        "#e34948",
+    ],
+    "dark": [
+        "#3987e5",
+        "#d95926",
+        "#199e70",
+        "#c98500",
+        "#d55181",
+        "#008300",
+        "#9085e9",
+        "#e66767",
+    ],
 }
 SEQUENTIAL_BLUE = {"light": "#2a78d6", "dark": "#3987e5"}
 STATUS = {"good": "#0ca30c", "warning": "#fab219", "serious": "#ec835a", "critical": "#d03b3b"}
 INK = {
-    "light": {"primary": "#0b0b0b", "secondary": "#52514e", "muted": "#898781", "grid": "#e1e0d9", "axis": "#c3c2b7"},
-    "dark":  {"primary": "#ffffff", "secondary": "#c3c2b7", "muted": "#898781", "grid": "#2c2c2a", "axis": "#383835"},
+    "light": {
+        "primary": "#0b0b0b",
+        "secondary": "#52514e",
+        "muted": "#898781",
+        "grid": "#e1e0d9",
+        "axis": "#c3c2b7",
+    },
+    "dark": {
+        "primary": "#ffffff",
+        "secondary": "#c3c2b7",
+        "muted": "#898781",
+        "grid": "#2c2c2a",
+        "axis": "#383835",
+    },
 }
 
 
@@ -55,7 +85,9 @@ def hex_to_rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
-def add_incident_bands(fig: go.Figure, df: pd.DataFrame, label: str = "incident: degraded retrieval config") -> None:
+def add_incident_bands(
+    fig: go.Figure, df: pd.DataFrame, label: str = "incident: degraded retrieval config"
+) -> None:
     """
     Shade each contiguous run of incident-tagged requests separately —
     incident rows aren't necessarily one contiguous block (e.g. two separate
@@ -81,8 +113,11 @@ def add_incident_bands(fig: go.Figure, df: pd.DataFrame, label: str = "incident:
             # entirely for the unlabeled runs instead.
             vrect_kwargs = dict(annotation_text=label, annotation_position="top left")
         fig.add_vrect(
-            x0=s - 0.5, x1=e + 0.5,
-            fillcolor=STATUS["critical"], opacity=0.12, line_width=0,
+            x0=s - 0.5,
+            x1=e + 0.5,
+            fillcolor=STATUS["critical"],
+            opacity=0.12,
+            line_width=0,
             **vrect_kwargs,
         )
 
@@ -92,14 +127,31 @@ def style_fig(fig: go.Figure, theme: str, show_legend: bool = False) -> go.Figur
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color=ink["secondary"], size=13),
+        font=dict(
+            family="system-ui, -apple-system, 'Segoe UI', sans-serif",
+            color=ink["secondary"],
+            size=13,
+        ),
         showlegend=show_legend,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(color=ink["secondary"])),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            font=dict(color=ink["secondary"]),
+        ),
         margin=dict(l=10, r=10, t=36 if show_legend else 10, b=10),
         hovermode="x unified",
     )
     fig.update_xaxes(showgrid=False, linecolor=ink["axis"], color=ink["muted"])
-    fig.update_yaxes(showgrid=True, gridcolor=ink["grid"], zeroline=False, linecolor=ink["axis"], color=ink["muted"])
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor=ink["grid"],
+        zeroline=False,
+        linecolor=ink["axis"],
+        color=ink["muted"],
+    )
     return fig
 
 
@@ -147,7 +199,9 @@ df["stage_timings"] = df["stage_timings_json"].apply(lambda s: json.loads(s) if 
 with filter_col2:
     min_date, max_date = df["timestamp"].min().date(), df["timestamp"].max().date()
     if min_date != max_date:
-        date_range = st.date_input("Date range", value=(min_date, max_date), min_value=min_date, max_value=max_date)
+        date_range = st.date_input(
+            "Date range", value=(min_date, max_date), min_value=min_date, max_value=max_date
+        )
         if isinstance(date_range, tuple) and len(date_range) == 2:
             start, end = date_range
             mask = (df["timestamp"].dt.date >= start) & (df["timestamp"].dt.date <= end)
@@ -187,13 +241,30 @@ st.divider()
 
 st.subheader("Latency")
 fig = go.Figure()
-fig.add_trace(go.Scatter(
-    x=df["request_index"], y=df["total_time_ms"], mode="lines+markers",
-    line=dict(color=seq_blue, width=2), marker=dict(size=6),
-    hovertemplate="Request %{x}<br>%{y:.0f} ms<extra></extra>",
-))
-fig.add_hline(y=p50, line_dash="dash", line_color=ink["muted"], annotation_text=f"P50 {p50:.0f}ms", annotation_position="top left")
-fig.add_hline(y=p95, line_dash="dash", line_color=STATUS["warning"], annotation_text=f"P95 {p95:.0f}ms", annotation_position="top left")
+fig.add_trace(
+    go.Scatter(
+        x=df["request_index"],
+        y=df["total_time_ms"],
+        mode="lines+markers",
+        line=dict(color=seq_blue, width=2),
+        marker=dict(size=6),
+        hovertemplate="Request %{x}<br>%{y:.0f} ms<extra></extra>",
+    )
+)
+fig.add_hline(
+    y=p50,
+    line_dash="dash",
+    line_color=ink["muted"],
+    annotation_text=f"P50 {p50:.0f}ms",
+    annotation_position="top left",
+)
+fig.add_hline(
+    y=p95,
+    line_dash="dash",
+    line_color=STATUS["warning"],
+    annotation_text=f"P95 {p95:.0f}ms",
+    annotation_position="top left",
+)
 fig.update_layout(yaxis_title="ms", xaxis_title="Request #")
 st.plotly_chart(style_fig(fig, theme), use_container_width=True)
 
@@ -213,15 +284,21 @@ if stage_means:
         other = stage_series.iloc[:-7].sum()
         stage_series = pd.concat([pd.Series({"other": other}), top]).sort_values()
 
-    fig = go.Figure(go.Bar(
-        x=stage_series.values, y=stage_series.index, orientation="h",
-        marker_color=[cat[i % len(cat)] for i in range(len(stage_series))],
-        hovertemplate="%{y}: %{x:.0f} ms<extra></extra>",
-    ))
+    fig = go.Figure(
+        go.Bar(
+            x=stage_series.values,
+            y=stage_series.index,
+            orientation="h",
+            marker_color=[cat[i % len(cat)] for i in range(len(stage_series))],
+            hovertemplate="%{y}: %{x:.0f} ms<extra></extra>",
+        )
+    )
     fig.update_layout(xaxis_title="ms")
     st.plotly_chart(style_fig(fig, theme), use_container_width=True)
 else:
-    st.caption("No per-stage timing data (all requests in this filter failed before any stage completed).")
+    st.caption(
+        "No per-stage timing data (all requests in this filter failed before any stage completed)."
+    )
 
 st.divider()
 
@@ -234,16 +311,29 @@ faith_df = df.dropna(subset=["faithfulness_score"])
 if len(faith_df):
     fig = go.Figure()
     add_incident_bands(fig, df)
-    fig.add_hline(y=0.75, line_dash="dash", line_color=ink["muted"], annotation_text="threshold 0.75", annotation_position="bottom left")
-    fig.add_trace(go.Scatter(
-        x=faith_df["request_index"], y=faith_df["faithfulness_score"], mode="lines+markers",
-        line=dict(color=seq_blue, width=2), marker=dict(size=8),
-        hovertemplate="Request %{x}<br>faithfulness %{y:.2f}<extra></extra>",
-    ))
+    fig.add_hline(
+        y=0.75,
+        line_dash="dash",
+        line_color=ink["muted"],
+        annotation_text="threshold 0.75",
+        annotation_position="bottom left",
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=faith_df["request_index"],
+            y=faith_df["faithfulness_score"],
+            mode="lines+markers",
+            line=dict(color=seq_blue, width=2),
+            marker=dict(size=8),
+            hovertemplate="Request %{x}<br>faithfulness %{y:.2f}<extra></extra>",
+        )
+    )
     fig.update_layout(yaxis_title="faithfulness", xaxis_title="Request #", yaxis_range=[0, 1.05])
     st.plotly_chart(style_fig(fig, theme), use_container_width=True)
 else:
-    st.caption("No sampled faithfulness scores yet — run scripts/simulate_traffic.py or the eval harness without --skip-ragas.")
+    st.caption(
+        "No sampled faithfulness scores yet — run scripts/simulate_traffic.py or the eval harness without --skip-ragas."
+    )
 
 st.subheader("Citations per answer")
 st.caption(
@@ -256,11 +346,16 @@ st.caption(
 )
 fig = go.Figure()
 add_incident_bands(fig, df)
-fig.add_trace(go.Scatter(
-    x=df["request_index"], y=df["citations_count"], mode="lines+markers",
-    line=dict(color=seq_blue, width=2), marker=dict(size=6),
-    hovertemplate="Request %{x}<br>%{y} citations<extra></extra>",
-))
+fig.add_trace(
+    go.Scatter(
+        x=df["request_index"],
+        y=df["citations_count"],
+        mode="lines+markers",
+        line=dict(color=seq_blue, width=2),
+        marker=dict(size=6),
+        hovertemplate="Request %{x}<br>%{y} citations<extra></extra>",
+    )
+)
 fig.update_layout(yaxis_title="citations", xaxis_title="Request #")
 st.plotly_chart(style_fig(fig, theme), use_container_width=True)
 
@@ -270,16 +365,26 @@ df["refusal_rate_roll"] = df["refused"].rolling(window, min_periods=1).mean() * 
 df["hit_rate_roll"] = df["retrieval_hit"].rolling(window, min_periods=1).mean() * 100
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(
-    x=df["request_index"], y=df["hit_rate_roll"], mode="lines",
-    line=dict(color=STATUS["good"], width=2), name="Retrieval hit rate",
-    hovertemplate="Request %{x}<br>hit rate %{y:.0f}%<extra></extra>",
-))
-fig.add_trace(go.Scatter(
-    x=df["request_index"], y=df["refusal_rate_roll"], mode="lines",
-    line=dict(color=STATUS["critical"], width=2), name="Refusal rate",
-    hovertemplate="Request %{x}<br>refusal rate %{y:.0f}%<extra></extra>",
-))
+fig.add_trace(
+    go.Scatter(
+        x=df["request_index"],
+        y=df["hit_rate_roll"],
+        mode="lines",
+        line=dict(color=STATUS["good"], width=2),
+        name="Retrieval hit rate",
+        hovertemplate="Request %{x}<br>hit rate %{y:.0f}%<extra></extra>",
+    )
+)
+fig.add_trace(
+    go.Scatter(
+        x=df["request_index"],
+        y=df["refusal_rate_roll"],
+        mode="lines",
+        line=dict(color=STATUS["critical"], width=2),
+        name="Refusal rate",
+        hovertemplate="Request %{x}<br>refusal rate %{y:.0f}%<extra></extra>",
+    )
+)
 # Padded range, not [0, 100]: a flat line sitting exactly on the plot
 # border (e.g. a constant 100% hit rate) would otherwise blend into the
 # axis and read as missing data instead of a real flat trend.
@@ -297,19 +402,29 @@ st.divider()
 st.subheader("Cost")
 cost_col1, cost_col2 = st.columns(2)
 with cost_col1:
-    fig = go.Figure(go.Bar(
-        x=df["request_index"], y=df["cost_usd"], marker_color=seq_blue,
-        hovertemplate="Request %{x}<br>$%{y:.5f}<extra></extra>",
-    ))
+    fig = go.Figure(
+        go.Bar(
+            x=df["request_index"],
+            y=df["cost_usd"],
+            marker_color=seq_blue,
+            hovertemplate="Request %{x}<br>$%{y:.5f}<extra></extra>",
+        )
+    )
     fig.update_layout(yaxis_title="$ per request", xaxis_title="Request #")
     st.plotly_chart(style_fig(fig, theme), use_container_width=True)
 with cost_col2:
     df["cumulative_cost"] = df["cost_usd"].cumsum()
-    fig = go.Figure(go.Scatter(
-        x=df["request_index"], y=df["cumulative_cost"], mode="lines",
-        line=dict(color=seq_blue, width=2), fill="tozeroy", fillcolor=hex_to_rgba(seq_blue, 0.15),
-        hovertemplate="Request %{x}<br>cumulative $%{y:.4f}<extra></extra>",
-    ))
+    fig = go.Figure(
+        go.Scatter(
+            x=df["request_index"],
+            y=df["cumulative_cost"],
+            mode="lines",
+            line=dict(color=seq_blue, width=2),
+            fill="tozeroy",
+            fillcolor=hex_to_rgba(seq_blue, 0.15),
+            hovertemplate="Request %{x}<br>cumulative $%{y:.4f}<extra></extra>",
+        )
+    )
     fig.update_layout(yaxis_title="$ cumulative", xaxis_title="Request #")
     st.plotly_chart(style_fig(fig, theme), use_container_width=True)
 
@@ -322,8 +437,16 @@ st.divider()
 st.subheader("Recent requests")
 recent = df.sort_values("timestamp", ascending=False).head(30).copy()
 display_cols = [
-    "timestamp", "env", "query", "confidence_level", "refused", "is_grounded",
-    "citations_count", "faithfulness_score", "cost_usd", "langfuse_trace_url",
+    "timestamp",
+    "env",
+    "query",
+    "confidence_level",
+    "refused",
+    "is_grounded",
+    "citations_count",
+    "faithfulness_score",
+    "cost_usd",
+    "langfuse_trace_url",
 ]
 st.dataframe(
     recent[display_cols],

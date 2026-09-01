@@ -5,10 +5,11 @@ Uses ftfy for robust text repair.
 """
 
 import re
-import ftfy
 import unicodedata
-from typing import List, Dict, Any
 from dataclasses import dataclass, field
+from typing import Any
+
+import ftfy
 
 from src.ingestion.parser import ParsedDocument, ParsedElement
 
@@ -16,14 +17,15 @@ from src.ingestion.parser import ParsedDocument, ParsedElement
 @dataclass
 class CleanedDocument:
     """Represents a document after text cleaning."""
+
     filename: str
     file_type: str
-    elements: List[ParsedElement] = field(default_factory=list)
+    elements: list[ParsedElement] = field(default_factory=list)
     total_pages: int = 0
     raw_text: str = ""
     cleaned_text: str = ""
-    structure_markers: List[Dict[str, Any]] = field(default_factory=list)
-    cleaning_stats: Dict[str, Any] = field(default_factory=dict)
+    structure_markers: list[dict[str, Any]] = field(default_factory=list)
+    cleaning_stats: dict[str, Any] = field(default_factory=dict)
 
 
 class TextCleaner:
@@ -40,28 +42,27 @@ class TextCleaner:
             "normalize_unicode": True,
             "fix_line_breaks": False,
             "ocr_document": False,
-            "min_content_length": 2  # skip elements shorter than this
+            "min_content_length": 2,  # skip elements shorter than this
         }
 
-    def clean(self, parsed_doc: ParsedDocument, config: Dict = None) -> CleanedDocument:
+    def clean(self, parsed_doc: ParsedDocument, config: dict = None) -> CleanedDocument:
         """
         Clean a parsed document's text content.
-        
+
         Args:
             parsed_doc: ParsedDocument from Step 1
             config: Optional cleaning configuration overrides
-            
+
         Returns:
             CleanedDocument with fixed text and cleaning statistics
         """
         cfg = {**self.default_config, **(config or {})}
 
-
         cleaned_doc = CleanedDocument(
             filename=parsed_doc.filename,
             file_type=parsed_doc.file_type,
             total_pages=parsed_doc.total_pages,
-            structure_markers = parsed_doc.structure_markers
+            structure_markers=parsed_doc.structure_markers,
         )
 
         stats = {
@@ -70,7 +71,7 @@ class TextCleaner:
             "elements_skipped": 0,
             "encoding_fixes": 0,
             "whitespace_fixes": 0,
-            "control_chars_removed": 0
+            "control_chars_removed": 0,
         }
 
         for element in parsed_doc.elements:
@@ -88,7 +89,7 @@ class TextCleaner:
                 content=cleaned_text,
                 element_type=element.element_type,
                 page_number=element.page_number,
-                metadata=element.metadata.copy()
+                metadata=element.metadata.copy(),
             )
 
             cleaned_doc.elements.append(cleaned_element)
@@ -98,14 +99,12 @@ class TextCleaner:
 
         # Build full cleaned text
         cleaned_doc.raw_text = parsed_doc.raw_text
-        cleaned_doc.cleaned_text = "\n".join(
-            elem.content for elem in cleaned_doc.elements
-        )
+        cleaned_doc.cleaned_text = "\n".join(elem.content for elem in cleaned_doc.elements)
         cleaned_doc.cleaning_stats = stats
 
         return cleaned_doc
 
-    def _clean_text(self, text: str, cfg: Dict, stats: Dict) -> str:
+    def _clean_text(self, text: str, cfg: dict, stats: dict) -> str:
         """
         Apply all configured cleaning steps to a single text string.
         """
@@ -147,7 +146,7 @@ class TextCleaner:
         Remove control characters while preserving newlines and tabs.
         """
         # Remove all control chars except \n and \t
-        cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
+        cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", text)
         return cleaned
 
     def _normalize_whitespace(self, text: str) -> str:
@@ -158,15 +157,15 @@ class TextCleaner:
         - Remove trailing whitespace on each line
         """
         # Remove trailing whitespace per line
-        lines = text.split('\n')
+        lines = text.split("\n")
         lines = [line.rstrip() for line in lines]
-        text = '\n'.join(lines)
+        text = "\n".join(lines)
 
         # Replace multiple spaces (but not newlines)
-        text = re.sub(r' {2,}', ' ', text)
+        text = re.sub(r" {2,}", " ", text)
 
         # Normalize multiple newlines to max 2 (paragraph break)
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
 
         return text
 
@@ -178,7 +177,7 @@ class TextCleaner:
         """
         # Replace single line breaks that appear mid-sentence
         # A line ending with a lowercase letter or comma likely continues
-        text = re.sub(r'(?<=[a-z,])\n(?=[a-z])', ' ', text)
+        text = re.sub(r"(?<=[a-z,])\n(?=[a-z])", " ", text)
 
         return text
 
@@ -223,6 +222,7 @@ class TextCleaner:
 if __name__ == "__main__":
     import os
     from pathlib import Path
+
     from src.ingestion.parser import DocumentParser
 
     # Initialize
@@ -231,9 +231,7 @@ if __name__ == "__main__":
 
     # Bundled sample corpus file — swap in your own files to test other formats.
     SAMPLE_FILE = str(Path(__file__).resolve().parents[2] / "sample_data" / "sample_lecture.pptx")
-    test_files = [
-        SAMPLE_FILE
-    ]
+    test_files = [SAMPLE_FILE]
 
     for file_path in test_files:
         if os.path.exists(file_path):

@@ -4,10 +4,10 @@ Uses DeepSeek to extract course name, chapter title, and global context.
 Processed once per document.
 """
 
-import os
 import json
-from typing import Dict, List, Any, Optional
+import os
 from dataclasses import dataclass, field
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -30,7 +30,7 @@ class DocumentMetadata:
     global_context: str
 
     subject_area: str = ""
-    key_topics: List[str] = field(default_factory=list)
+    key_topics: list[str] = field(default_factory=list)
     extraction_confidence: float = 0.0
 
 
@@ -40,7 +40,7 @@ class MetadataExtractor:
     Builds a structured sample from document elements.
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         """
         Initialize the metadata extractor.
 
@@ -67,17 +67,10 @@ class MetadataExtractor:
         text_sample = self._prepare_sample(cleaned_doc)
 
         # Call DeepSeek
-        response = self._call_llm(
-            text_sample,
-            cleaned_doc.filename
-        )
+        response = self._call_llm(text_sample, cleaned_doc.filename)
 
         # Parse and validate response
-        metadata = self._parse_response(
-            response,
-            cleaned_doc.filename,
-            cleaned_doc.file_type
-        )
+        metadata = self._parse_response(response, cleaned_doc.filename, cleaned_doc.file_type)
 
         return metadata
 
@@ -94,11 +87,7 @@ class MetadataExtractor:
             if element.page_number != current_page:
                 current_page = element.page_number
 
-                location = (
-                    "Slide"
-                    if cleaned_doc.file_type == "pptx"
-                    else "Page"
-                )
+                location = "Slide" if cleaned_doc.file_type == "pptx" else "Page"
 
                 sample_parts.append(f"\n[{location} {current_page}]")
 
@@ -108,9 +97,7 @@ class MetadataExtractor:
 
         return text[:4000]
 
-    def _call_llm(self,
-                 text_sample: str,
-                 filename: str) -> Dict[str, Any]:
+    def _call_llm(self, text_sample: str, filename: str) -> dict[str, Any]:
         """
         Call DeepSeek with a structured prompt for metadata extraction.
         """
@@ -165,19 +152,19 @@ Document text:
         except json.JSONDecodeError as e:
             # Fallback: try to extract JSON from response
             import re
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+
+            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group())
-            raise ValueError(f"Failed to parse DeepSeek response as JSON: {response_text[:200]}") from e
+            raise ValueError(
+                f"Failed to parse DeepSeek response as JSON: {response_text[:200]}"
+            ) from e
 
         except Exception as e:
             raise RuntimeError(f"DeepSeek API call failed: {str(e)}") from e
 
     def _parse_response(
-        self,
-        response: Dict[str, Any],
-        filename: str,
-        file_type: str
+        self, response: dict[str, Any], filename: str, file_type: str
     ) -> DocumentMetadata:
         """
         Parse and validate the DeepSeek response into a DocumentMetadata object.
@@ -194,25 +181,20 @@ Document text:
 
         metadata = DocumentMetadata(
             filename=filename,
-            file_type=file_type,      # will be supplied below
-
+            file_type=file_type,  # will be supplied below
             course_name=response.get("course_name", "Unknown"),
             chapter_title=response.get("chapter_title", "Unknown"),
-            global_context=response.get(
-                "global_context",
-                "No context available."
-            ),
-            subject_area=response.get(
-                "subject_area",
-                "Unknown"
-            ),
+            global_context=response.get("global_context", "No context available."),
+            subject_area=response.get("subject_area", "Unknown"),
             key_topics=topics,
-            extraction_confidence=confidence
+            extraction_confidence=confidence,
         )
 
         return metadata
 
-    def extract_with_retry(self, cleaned_doc: CleanedDocument, max_retries: int = 2) -> DocumentMetadata:
+    def extract_with_retry(
+        self, cleaned_doc: CleanedDocument, max_retries: int = 2
+    ) -> DocumentMetadata:
         """
         Extract metadata with automatic retry on failure.
         """
@@ -230,7 +212,7 @@ Document text:
                         global_context=f"Document: {cleaned_doc.filename}",
                         subject_area="Unknown",
                         key_topics=[],
-                        extraction_confidence=0.0
+                        extraction_confidence=0.0,
                     )
                 print(f"⚠️  Attempt {attempt + 1} failed: {e}. Retrying...")
 
@@ -242,8 +224,9 @@ Document text:
 if __name__ == "__main__":
     import os
     from pathlib import Path
-    from src.ingestion.parser import DocumentParser
+
     from src.ingestion.cleaner import TextCleaner
+    from src.ingestion.parser import DocumentParser
 
     # Initialize pipeline
     parser = DocumentParser()
@@ -252,9 +235,7 @@ if __name__ == "__main__":
 
     # Bundled sample corpus file — swap in your own files to test other formats.
     SAMPLE_FILE = str(Path(__file__).resolve().parents[2] / "sample_data" / "sample_lecture.pptx")
-    test_files = [
-        SAMPLE_FILE
-    ]
+    test_files = [SAMPLE_FILE]
 
     for file_path in test_files:
         if os.path.exists(file_path):
@@ -269,13 +250,15 @@ if __name__ == "__main__":
             # Step 3
             metadata = extractor.extract_with_retry(cleaned)
 
-            print(f"\n📚 Extracted Metadata:")
+            print("\n📚 Extracted Metadata:")
             print(f"   Course:        {metadata.course_name}")
             print(f"   Chapter:       {metadata.chapter_title}")
             print(f"   Subject Area:  {metadata.subject_area}")
-            print(f"   Key Topics:    {', '.join(metadata.key_topics) if metadata.key_topics else 'None'}")
+            print(
+                f"   Key Topics:    {', '.join(metadata.key_topics) if metadata.key_topics else 'None'}"
+            )
             print(f"   Confidence:    {metadata.extraction_confidence:.2f}")
-            print(f"\n📝 Global Context:")
+            print("\n📝 Global Context:")
             print(f"   {metadata.global_context}")
         else:
             print(f"⚠️  Test file not found: {file_path}")

@@ -13,19 +13,18 @@ loaded from config/retrieval/hybrid_search.yaml with environment
 variable overrides.
 """
 
+import json
 import os
 import time
-import yaml
-import json
-from typing import List, Dict, Any, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections import defaultdict
+from typing import Any
 
+import yaml
 from dotenv import load_dotenv
 
 from src.ingestion.vector_store import VectorStore
-from src.retrieval.config import PipelineConfig, RetrievedChunk, HybridWeights
+from src.retrieval.config import HybridWeights
 
 load_dotenv()
 
@@ -34,9 +33,11 @@ load_dotenv()
 # Configuration
 # ============================================================================
 
+
 @dataclass
 class HybridSearchConfig:
     """Configuration for hybrid search — loaded from YAML."""
+
     weights: HybridWeights
     semantic_k: int = 40
     keyword_k: int = 20
@@ -47,19 +48,19 @@ class HybridSearchConfig:
     rrf_k: int = 60
     normalize_method: str = "minmax"
     metadata_enabled: bool = True
-    metadata_fields: List[str] = field(default_factory=list)
+    metadata_fields: list[str] = field(default_factory=list)
     metadata_match_threshold: float = 0.3
-    
+
     # Keyword search settings
     keyword_backend: str = "bm25"  # "bm25", "elasticsearch", or "semantic_fallback"
     keyword_use_sparse: bool = True
-    bm25_index_path: Optional[str] = None
-    
+    bm25_index_path: str | None = None
+
     @classmethod
-    def from_yaml(cls, path: Optional[str] = None) -> "HybridSearchConfig":
+    def from_yaml(cls, path: str | None = None) -> "HybridSearchConfig":
         """
         Load configuration from YAML file.
-        
+
         Priority:
         1. Explicit path argument
         2. RAGPIPE_HYBRID_SEARCH_CONFIG env var
@@ -68,18 +69,20 @@ class HybridSearchConfig:
         config_path = (
             path
             or os.getenv("RAGPIPE_HYBRID_SEARCH_CONFIG")
-            or str(Path(__file__).parent.parent.parent / "config" / "retrieval" / "hybrid_search.yaml")
+            or str(
+                Path(__file__).parent.parent.parent / "config" / "retrieval" / "hybrid_search.yaml"
+            )
         )
-        
+
         if Path(config_path).exists():
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 data = yaml.safe_load(f)
         else:
             data = cls._default_config()
-        
+
         # Apply environment variable overrides
         data = cls._apply_env_overrides(data)
-        
+
         return cls(
             weights=HybridWeights(**data.get("weights", {})),
             semantic_k=int(data.get("candidates", {}).get("semantic_k", 40)),
@@ -97,9 +100,9 @@ class HybridSearchConfig:
             keyword_use_sparse=bool(data.get("keyword", {}).get("use_sparse", True)),
             bm25_index_path=data.get("keyword", {}).get("bm25_index_path"),
         )
-    
+
     @classmethod
-    def _apply_env_overrides(cls, data: Dict) -> Dict:
+    def _apply_env_overrides(cls, data: dict) -> dict:
         """Apply environment variable overrides to config data."""
         env_mapping = {
             "RAGPIPE_SEMANTIC_K": ("candidates", "semantic_k"),
@@ -113,7 +116,7 @@ class HybridSearchConfig:
             "RAGPIPE_KEYWORD_BACKEND": ("keyword", "backend"),
             "RAGPIPE_KEYWORD_USE_SPARSE": ("keyword", "use_sparse"),
         }
-        
+
         for env_var, (section, key) in env_mapping.items():
             value = os.getenv(env_var)
             if value is not None:
@@ -121,19 +124,19 @@ class HybridSearchConfig:
                     data[section] = {}
                 try:
                     # Handle boolean values
-                    if value.lower() in ['true', 'false']:
-                        data[section][key] = value.lower() == 'true'
+                    if value.lower() in ["true", "false"]:
+                        data[section][key] = value.lower() == "true"
                     elif "." in value:
                         data[section][key] = float(value)
                     else:
                         data[section][key] = int(value)
                 except ValueError:
                     data[section][key] = value
-        
+
         return data
-    
+
     @staticmethod
-    def _default_config() -> Dict:
+    def _default_config() -> dict:
         """Minimal fallback configuration."""
         return {
             "weights": {"semantic": 0.6, "keyword": 0.25, "metadata": 0.15},
@@ -158,24 +161,27 @@ class HybridSearchConfig:
 # Search Result Types
 # ============================================================================
 
+
 @dataclass
 class SearchCandidate:
     """A single candidate from any search method."""
+
     chunk_id: str
     content: str
     raw_content: str
-    score: float                     # Normalized score [0, 1]
-    source: str                      # "semantic", "keyword", or "metadata"
-    original_rank: int               # Rank in its source list
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    score: float  # Normalized score [0, 1]
+    source: str  # "semantic", "keyword", or "metadata"
+    original_rank: int  # Rank in its source list
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class HybridSearchResult:
     """Complete hybrid search result."""
-    candidates: List[SearchCandidate]
+
+    candidates: list[SearchCandidate]
     total_retrieved: int
-    sources_used: List[str]
+    sources_used: list[str]
     processing_time_ms: float
     query: str
     keyword_backend_used: str = "unknown"
@@ -185,38 +191,40 @@ class HybridSearchResult:
 # True Keyword Search with BM25
 # ============================================================================
 
+
 class BM25Index:
     """
     Lightweight BM25 index for sparse keyword retrieval.
-    
+
     PRODUCTION NOTE: For large-scale deployments, replace with:
     - Elasticsearch/OpenSearch
     - Pinecone sparse-dense index
     - LanceDB with BM25
     - Tantivy or similar dedicated search engine
-    
+
     This implementation uses rank_bm25 for demonstration and testing.
     """
-    
-    def __init__(self, index_path: Optional[str] = None):
+
+    def __init__(self, index_path: str | None = None):
         self.index_path = index_path
         self.index = None
         self.documents = []
         self.tokenizer = lambda x: self._tokenize(x)
         self._initialized = False
-    
-    def _tokenize(self, text: str) -> List[str]:
+
+    def _tokenize(self, text: str) -> list[str]:
         """Simple tokenizer for BM25."""
         # Convert to lowercase and split on non-alphanumeric
         import re
+
         text = text.lower()
-        tokens = re.findall(r'\w+', text)
+        tokens = re.findall(r"\w+", text)
         return tokens
-    
-    def build_index(self, documents: List[Dict[str, Any]]) -> None:
+
+    def build_index(self, documents: list[dict[str, Any]]) -> None:
         """
         Build BM25 index from a list of documents.
-        
+
         Args:
             documents: List of dicts with 'id', 'content', and optional 'metadata'
         """
@@ -224,55 +232,51 @@ class BM25Index:
             from rank_bm25 import BM25Okapi
         except ImportError:
             raise ImportError(
-                "rank_bm25 is required for BM25 indexing. "
-                "Install with: pip install rank_bm25"
+                "rank_bm25 is required for BM25 indexing. " "Install with: pip install rank_bm25"
             )
-        
+
         self.documents = documents
-        tokenized_docs = [self.tokenizer(doc['content']) for doc in documents]
+        tokenized_docs = [self.tokenizer(doc["content"]) for doc in documents]
         self.index = BM25Okapi(tokenized_docs)
         self._initialized = True
-        
+
         # Save index if path provided
         if self.index_path:
             self._save_index()
-    
+
     def _save_index(self) -> None:
         """Save index to disk for persistence."""
         if not self.index_path:
             return
-        
+
         # Save document metadata
-        meta_path = Path(self.index_path).with_suffix('.meta.json')
+        meta_path = Path(self.index_path).with_suffix(".meta.json")
         meta_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(meta_path, 'w') as f:
-            json.dump({
-                'documents': self.documents,
-                'num_docs': len(self.documents)
-            }, f)
-    
+
+        with open(meta_path, "w") as f:
+            json.dump({"documents": self.documents, "num_docs": len(self.documents)}, f)
+
     def load_index(self) -> bool:
         """Load index from disk."""
         if not self.index_path:
             return False
-        
-        meta_path = Path(self.index_path).with_suffix('.meta.json')
+
+        meta_path = Path(self.index_path).with_suffix(".meta.json")
         if not meta_path.exists():
             return False
-        
+
         try:
-            with open(meta_path, 'r') as f:
+            with open(meta_path) as f:
                 data = json.load(f)
-                self.documents = data['documents']
+                self.documents = data["documents"]
                 # Rebuild index from documents
                 self.build_index(self.documents)
                 return True
         except Exception as e:
             print(f"Failed to load BM25 index: {e}")
             return False
-    
-    def search(self, query: str, top_k: Optional[int] = None) -> List[Tuple[int, float]]:
+
+    def search(self, query: str, top_k: int | None = None) -> list[tuple[int, float]]:
         """
         Search the BM25 index.
 
@@ -286,16 +290,14 @@ class BM25Index:
             List of (document_index, score) tuples
         """
         if not self._initialized:
-            raise RuntimeError("BM25 index not initialized. Call build_index() or load_index() first.")
+            raise RuntimeError(
+                "BM25 index not initialized. Call build_index() or load_index() first."
+            )
 
         tokenized_query = self.tokenizer(query)
         scores = self.index.get_scores(tokenized_query)
 
-        ranked_indices = sorted(
-            range(len(scores)),
-            key=lambda i: scores[i],
-            reverse=True
-        )
+        ranked_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
         if top_k is not None:
             ranked_indices = ranked_indices[:top_k]
 
@@ -305,24 +307,24 @@ class BM25Index:
 class KeywordSearch:
     """
     Keyword-based search with BM25 sparse retrieval.
-    
+
     ARCHITECTURE:
     Primary: BM25 sparse retrieval for true keyword matching
     Fallback: Semantic search (when BM25 unavailable)
-    
-    PRODUCTION NOTE: 
+
+    PRODUCTION NOTE:
     - This implementation uses rank_bm25 for demonstration
     - For production at scale, replace with Elasticsearch or similar
     - The fallback behavior ensures graceful degradation
     """
-    
+
     def __init__(
         self,
         vector_store: VectorStore,
         backend: str = "bm25",
         use_sparse: bool = True,
-        bm25_index_path: Optional[str] = None,
-        embedder: Optional[Any] = None,
+        bm25_index_path: str | None = None,
+        embedder: Any | None = None,
     ):
         self.vector_store = vector_store
         self.backend = backend
@@ -330,11 +332,11 @@ class KeywordSearch:
         self.bm25_index = BM25Index(bm25_index_path)
         self._bm25_available = False
         self._embedder = embedder
-    
-    def initialize_bm25(self, documents: Optional[List[Dict[str, Any]]] = None) -> None:
+
+    def initialize_bm25(self, documents: list[dict[str, Any]] | None = None) -> None:
         """
         Initialize the BM25 index.
-        
+
         Args:
             documents: Documents to index. If None, attempts to load from disk.
         """
@@ -344,17 +346,19 @@ class KeywordSearch:
         elif self.bm25_index.index_path:
             self._bm25_available = self.bm25_index.load_index()
         else:
-            print("WARNING: No BM25 index provided. Keyword search will fall back to semantic search.")
+            print(
+                "WARNING: No BM25 index provided. Keyword search will fall back to semantic search."
+            )
             self._bm25_available = False
-    
+
     def search(
         self,
         query_keywords: str,
         top_k: int,
-        namespace: Union[str, List[str]],
-        filter: Optional[Dict] = None,
-        precomputed_vector: Optional[List[float]] = None,
-    ) -> List[SearchCandidate]:
+        namespace: str | list[str],
+        filter: dict | None = None,
+        precomputed_vector: list[float] | None = None,
+    ) -> list[SearchCandidate]:
         """
         Keyword-based search with BM25 sparse retrieval.
 
@@ -387,22 +391,24 @@ class KeywordSearch:
 
         # Fallback: Semantic search (development/placeholder behavior)
         print(f"WARNING: Keyword search using semantic fallback for query: {query_keywords}")
-        return self._fallback_semantic_search(query_keywords, top_k, namespace, filter, precomputed_vector)
-    
+        return self._fallback_semantic_search(
+            query_keywords, top_k, namespace, filter, precomputed_vector
+        )
+
     def _bm25_search(
         self,
         query_keywords: str,
         top_k: int,
-        namespace: Union[str, List[str]],
-        filter: Optional[Dict] = None
-    ) -> List[SearchCandidate]:
+        namespace: str | list[str],
+        filter: dict | None = None,
+    ) -> list[SearchCandidate]:
         """
         True BM25 sparse retrieval, scoped to the requested namespace(s) and
         metadata filter — mirrors Pinecone's per-namespace query semantics so
         one global BM25 corpus never leaks results across Exams/documents.
         """
         try:
-            allowed_namespaces: Optional[set] = None
+            allowed_namespaces: set | None = None
             if namespace:
                 allowed_namespaces = set(namespace) if isinstance(namespace, list) else {namespace}
 
@@ -410,7 +416,9 @@ class KeywordSearch:
             # (the best-scored docs overall may not be in-namespace), so pull
             # every non-zero match and truncate ourselves after filtering.
             needs_post_filter = bool(allowed_namespaces) or bool(filter)
-            results = self.bm25_index.search(query_keywords, top_k=None if needs_post_filter else top_k)
+            results = self.bm25_index.search(
+                query_keywords, top_k=None if needs_post_filter else top_k
+            )
 
             if not results:
                 return []
@@ -418,22 +426,27 @@ class KeywordSearch:
             candidates = []
             for doc_idx, score in results:
                 doc = self.bm25_index.documents[doc_idx]
-                doc_metadata = doc.get('metadata', {})
+                doc_metadata = doc.get("metadata", {})
 
-                if allowed_namespaces is not None and doc_metadata.get('namespace') not in allowed_namespaces:
+                if (
+                    allowed_namespaces is not None
+                    and doc_metadata.get("namespace") not in allowed_namespaces
+                ):
                     continue
                 if filter and not self._matches_filter(doc_metadata, filter):
                     continue
 
-                candidates.append(SearchCandidate(
-                    chunk_id=doc['id'],
-                    content=doc.get('content', ''),
-                    raw_content=doc.get('raw_content', doc.get('content', '')),
-                    score=float(score),
-                    source="keyword_bm25",
-                    original_rank=doc_idx + 1,
-                    metadata=doc_metadata
-                ))
+                candidates.append(
+                    SearchCandidate(
+                        chunk_id=doc["id"],
+                        content=doc.get("content", ""),
+                        raw_content=doc.get("raw_content", doc.get("content", "")),
+                        score=float(score),
+                        source="keyword_bm25",
+                        original_rank=doc_idx + 1,
+                        metadata=doc_metadata,
+                    )
+                )
                 if len(candidates) >= top_k:
                     break
 
@@ -444,7 +457,7 @@ class KeywordSearch:
             return []
 
     @staticmethod
-    def _matches_filter(metadata: Dict[str, Any], filter: Dict[str, Any]) -> bool:
+    def _matches_filter(metadata: dict[str, Any], filter: dict[str, Any]) -> bool:
         """
         Evaluate a Pinecone-style metadata filter against a BM25 document's
         metadata. Supports the operators actually produced by
@@ -467,31 +480,27 @@ class KeywordSearch:
                 if actual != condition:
                     return False
         return True
-    
+
     def _elasticsearch_search(
-        self,
-        query_keywords: str,
-        top_k: int,
-        namespace: str,
-        filter: Optional[Dict] = None
-    ) -> List[SearchCandidate]:
+        self, query_keywords: str, top_k: int, namespace: str, filter: dict | None = None
+    ) -> list[SearchCandidate]:
         """
         Elasticsearch-backed keyword search.
-        
+
         TODO: Implement when Elasticsearch integration is added.
         """
         # Placeholder for Elasticsearch integration
         print("Elasticsearch backend not yet implemented")
         return []
-    
+
     def _fallback_semantic_search(
         self,
         query_keywords: str,
         top_k: int,
         namespace: str,
-        filter: Optional[Dict] = None,
-        precomputed_vector: Optional[List[float]] = None,
-    ) -> List[SearchCandidate]:
+        filter: dict | None = None,
+        precomputed_vector: list[float] | None = None,
+    ) -> list[SearchCandidate]:
         """
         Fallback to semantic search when BM25 is unavailable.
 
@@ -501,31 +510,31 @@ class KeywordSearch:
         if embedded is None:
             if self._embedder is None:
                 from src.ingestion.embedder import EmbeddingGenerator
+
                 self._embedder = EmbeddingGenerator()
             embedded = self._embedder.embed_query(query_keywords)
 
         if not embedded:
             return []
-        
+
         results = self.vector_store.query(
-            vector=embedded,
-            top_k=top_k,
-            namespace=namespace,
-            filter=filter
+            vector=embedded, top_k=top_k, namespace=namespace, filter=filter
         )
-        
+
         candidates = []
         for i, result in enumerate(results):
-            candidates.append(SearchCandidate(
-                chunk_id=result["id"],
-                content=result.get("metadata", {}).get("content", ""),
-                raw_content=result.get("metadata", {}).get("raw_content", ""),
-                score=result["score"],
-                source="keyword_fallback",  # Differentiates from true keyword search
-                original_rank=i + 1,
-                metadata=result.get("metadata", {})
-            ))
-        
+            candidates.append(
+                SearchCandidate(
+                    chunk_id=result["id"],
+                    content=result.get("metadata", {}).get("content", ""),
+                    raw_content=result.get("metadata", {}).get("raw_content", ""),
+                    score=result["score"],
+                    source="keyword_fallback",  # Differentiates from true keyword search
+                    original_rank=i + 1,
+                    metadata=result.get("metadata", {}),
+                )
+            )
+
         return candidates
 
 
@@ -533,10 +542,11 @@ class KeywordSearch:
 # Hybrid Search Engine
 # ============================================================================
 
+
 class HybridSearch:
     """
     Production-ready hybrid search combining semantic, keyword, and metadata search.
-    
+
     ARCHITECTURE OVERVIEW:
     ┌─────────────────┐  ┌──────────────────┐  ┌─────────────────┐
     │   Semantic      │  │    Keyword       │  │    Metadata     │
@@ -557,20 +567,20 @@ class HybridSearch:
                       ┌─────────────────────┐
                       │   Unified Results   │
                       └─────────────────────┘
-    
+
     All configuration loaded from YAML with environment variable overrides.
     """
-    
+
     def __init__(
         self,
         vector_store: VectorStore,
-        config: Optional[HybridSearchConfig] = None,
-        config_path: Optional[str] = None,
-        initialize_bm25: bool = True
+        config: HybridSearchConfig | None = None,
+        config_path: str | None = None,
+        initialize_bm25: bool = True,
     ):
         """
         Initialize hybrid search engine.
-        
+
         Args:
             vector_store: VectorStore instance for Pinecone queries
             config: HybridSearchConfig object (overrides config file)
@@ -585,6 +595,7 @@ class HybridSearch:
         # Single shared embedder reused across semantic/keyword-fallback/metadata
         # search so a query is embedded once per API call instead of once per source.
         from src.ingestion.embedder import EmbeddingGenerator
+
         self._embedder = EmbeddingGenerator()
 
         # Initialize keyword search with BM25
@@ -598,46 +609,48 @@ class HybridSearch:
 
         # Track which backend is actually being used
         self._keyword_backend_used = "uninitialized"
-    
-    def initialize_indices(self, documents: Optional[List[Dict[str, Any]]] = None) -> None:
+
+    def initialize_indices(self, documents: list[dict[str, Any]] | None = None) -> None:
         """
         Initialize all search indices.
-        
+
         Args:
             documents: Documents for BM25 indexing. If None, attempts to load from disk.
         """
         self.keyword_search.initialize_bm25(documents)
-        self._keyword_backend_used = "bm25" if self.keyword_search._bm25_available else "semantic_fallback"
-        
+        self._keyword_backend_used = (
+            "bm25" if self.keyword_search._bm25_available else "semantic_fallback"
+        )
+
         if self._keyword_backend_used == "semantic_fallback":
             print("⚠️  WARNING: Keyword search using semantic fallback!")
             print("   For production, ensure BM25 index is properly initialized.")
-    
+
     def search(
         self,
         query: str,
         keywords: str,
-        namespace: Union[str, List[str]] = "default",
-        metadata_filters: Optional[Dict[str, Any]] = None,
-        pipeline_weights: Optional[HybridWeights] = None
+        namespace: str | list[str] = "default",
+        metadata_filters: dict[str, Any] | None = None,
+        pipeline_weights: HybridWeights | None = None,
     ) -> HybridSearchResult:
         """
         Execute hybrid search across all configured sources.
-        
+
         Args:
             query: Full expanded query for semantic search
             keywords: Keyword-only variant for sparse search
             namespace: Pinecone namespace
             metadata_filters: Pinecone metadata filter dict
             pipeline_weights: Optional per-pipeline weight override
-            
+
         Returns:
             HybridSearchResult with deduplicated, scored candidates
         """
         start_time = time.time()
         weights = pipeline_weights or self.config.weights
 
-        candidates: List[SearchCandidate] = []
+        candidates: list[SearchCandidate] = []
         sources_used = []
 
         # ------------------------------------------------------------------
@@ -650,17 +663,17 @@ class HybridSearch:
         # ------------------------------------------------------------------
         needs_semantic = weights.semantic > 0
         needs_keyword_fallback = (
-            weights.keyword > 0 and bool(keywords)
+            weights.keyword > 0
+            and bool(keywords)
             and not (self.keyword_search.use_sparse and self.keyword_search._bm25_available)
             and self.keyword_search.backend != "elasticsearch"
         )
         needs_metadata = weights.metadata > 0 and self.config.metadata_enabled
         metadata_field_queries = (
-            [f"{query} {field}" for field in self.config.metadata_fields]
-            if needs_metadata else []
+            [f"{query} {field}" for field in self.config.metadata_fields] if needs_metadata else []
         )
 
-        embed_texts: List[str] = []
+        embed_texts: list[str] = []
         if needs_semantic:
             embed_texts.append(query)
         if needs_keyword_fallback:
@@ -678,7 +691,7 @@ class HybridSearch:
         if needs_keyword_fallback:
             keyword_vector = vectors[offset]
             offset += 1
-        metadata_vectors = vectors[offset:offset + len(metadata_field_queries)]
+        metadata_vectors = vectors[offset : offset + len(metadata_field_queries)]
 
         # ------------------------------------------------------------------
         # 1. Semantic Search (Pinecone Dense)
@@ -689,7 +702,7 @@ class HybridSearch:
                 top_k=self.config.semantic_k,
                 namespace=namespace,
                 filter_dict=metadata_filters,
-                precomputed_vector=semantic_vector
+                precomputed_vector=semantic_vector,
             )
             candidates.extend(semantic_results)
             sources_used.append("semantic")
@@ -703,7 +716,7 @@ class HybridSearch:
                 top_k=self.config.keyword_k,
                 namespace=namespace,
                 filter=metadata_filters,
-                precomputed_vector=keyword_vector
+                precomputed_vector=keyword_vector,
             )
             # Normalize keyword scores to [0, 1] range
             keyword_results = self._normalize_scores(keyword_results)
@@ -716,7 +729,9 @@ class HybridSearch:
                     sources_used.append("keyword_bm25")
                 elif source_name == "keyword_fallback":
                     sources_used.append("keyword_fallback")
-                    print("⚠️  Using semantic fallback for keyword search - results may overlap with semantic branch")
+                    print(
+                        "⚠️  Using semantic fallback for keyword search - results may overlap with semantic branch"
+                    )
                 else:
                     sources_used.append("keyword")
 
@@ -729,49 +744,49 @@ class HybridSearch:
                 top_k=self.config.semantic_k // 2,
                 namespace=namespace,
                 base_filter=metadata_filters,
-                precomputed_vectors=metadata_vectors
+                precomputed_vectors=metadata_vectors,
             )
             candidates.extend(metadata_results)
             sources_used.append("metadata")
-        
+
         # ------------------------------------------------------------------
         # 4. Merge & Weight Scores
         # ------------------------------------------------------------------
         merged = self._merge_candidates(candidates, weights)
-        
+
         # ------------------------------------------------------------------
         # 5. Deduplicate
         # ------------------------------------------------------------------
         deduped = self._deduplicate(merged)
-        
+
         # ------------------------------------------------------------------
         # 6. Limit to max candidates
         # ------------------------------------------------------------------
-        final = deduped[:self.config.max_total_candidates]
-        
+        final = deduped[: self.config.max_total_candidates]
+
         processing_time = (time.time() - start_time) * 1000
-        
+
         return HybridSearchResult(
             candidates=final,
             total_retrieved=len(final),
             sources_used=sources_used,
             processing_time_ms=round(processing_time, 2),
             query=query,
-            keyword_backend_used=self._keyword_backend_used
+            keyword_backend_used=self._keyword_backend_used,
         )
-    
+
     # ========================================================================
     # Search Methods
     # ========================================================================
-    
+
     def _semantic_search(
         self,
         query: str,
         top_k: int,
         namespace: str,
-        filter_dict: Optional[Dict] = None,
-        precomputed_vector: Optional[List[float]] = None
-    ) -> List[SearchCandidate]:
+        filter_dict: dict | None = None,
+        precomputed_vector: list[float] | None = None,
+    ) -> list[SearchCandidate]:
         """Execute semantic search via Pinecone dense retrieval."""
         embedded = precomputed_vector
         if embedded is None:
@@ -779,37 +794,36 @@ class HybridSearch:
 
         if not embedded:
             return []
-        
+
         # Query Pinecone
         results = self.vector_store.query(
-            vector=embedded,
-            top_k=top_k,
-            namespace=namespace,
-            filter=filter_dict
+            vector=embedded, top_k=top_k, namespace=namespace, filter=filter_dict
         )
-        
+
         candidates = []
         for i, result in enumerate(results):
-            candidates.append(SearchCandidate(
-                chunk_id=result["id"],
-                content=result.get("metadata", {}).get("content", query),
-                raw_content=result.get("metadata", {}).get("raw_content", query),
-                score=result["score"],
-                source="semantic",
-                original_rank=i + 1,
-                metadata=result.get("metadata", {})
-            ))
-        
+            candidates.append(
+                SearchCandidate(
+                    chunk_id=result["id"],
+                    content=result.get("metadata", {}).get("content", query),
+                    raw_content=result.get("metadata", {}).get("raw_content", query),
+                    score=result["score"],
+                    source="semantic",
+                    original_rank=i + 1,
+                    metadata=result.get("metadata", {}),
+                )
+            )
+
         return candidates
-    
+
     def _metadata_search(
         self,
         query: str,
         top_k: int,
         namespace: str,
-        base_filter: Optional[Dict] = None,
-        precomputed_vectors: Optional[List[Optional[List[float]]]] = None
-    ) -> List[SearchCandidate]:
+        base_filter: dict | None = None,
+        precomputed_vectors: list[list[float] | None] | None = None,
+    ) -> list[SearchCandidate]:
         """
         Search with metadata field matching.
         Builds additional filters based on configured metadata fields.
@@ -817,7 +831,7 @@ class HybridSearch:
         candidates = []
         vectors = precomputed_vectors or [None] * len(self.config.metadata_fields)
 
-        for field, vector in zip(self.config.metadata_fields, vectors):
+        for field, vector in zip(self.config.metadata_fields, vectors, strict=False):
             # Use semantic search with metadata field as additional context
             filter_dict = dict(base_filter) if base_filter else {}
             # Don't filter too aggressively — just boost by including field in query
@@ -828,7 +842,7 @@ class HybridSearch:
                 top_k=max(5, top_k // len(self.config.metadata_fields)),
                 namespace=namespace,
                 filter_dict=filter_dict if filter_dict else None,
-                precomputed_vector=vector
+                precomputed_vector=vector,
             )
 
             for c in field_results:
@@ -838,28 +852,24 @@ class HybridSearch:
             candidates.extend(field_results)
 
         return candidates
-    
+
     # ========================================================================
     # Merging & Scoring
     # ========================================================================
-    
+
     def _merge_candidates(
-        self,
-        candidates: List[SearchCandidate],
-        weights: HybridWeights
-    ) -> List[SearchCandidate]:
+        self, candidates: list[SearchCandidate], weights: HybridWeights
+    ) -> list[SearchCandidate]:
         """Merge candidates from different sources with weighted scoring."""
-        
+
         if self.config.merge_strategy == "rrf":
             return self._reciprocal_rank_fusion(candidates, weights)
         else:
             return self._weighted_merge(candidates, weights)
-    
+
     def _weighted_merge(
-        self,
-        candidates: List[SearchCandidate],
-        weights: HybridWeights
-    ) -> List[SearchCandidate]:
+        self, candidates: list[SearchCandidate], weights: HybridWeights
+    ) -> list[SearchCandidate]:
         """Merge by applying source-specific weights to scores."""
         source_weights = {
             "semantic": weights.semantic,
@@ -868,30 +878,28 @@ class HybridSearch:
             "keyword_fallback": weights.keyword * 0.5,  # Penalize fallback
             "metadata": weights.metadata,
         }
-        
+
         for candidate in candidates:
             w = source_weights.get(candidate.source, 0.0)
             candidate.score *= w
-        
+
         # Sort by weighted score descending
         candidates.sort(key=lambda c: c.score, reverse=True)
         return candidates
-    
+
     def _reciprocal_rank_fusion(
-        self,
-        candidates: List[SearchCandidate],
-        weights: HybridWeights
-    ) -> List[SearchCandidate]:
+        self, candidates: list[SearchCandidate], weights: HybridWeights
+    ) -> list[SearchCandidate]:
         """Merge using Reciprocal Rank Fusion."""
         # Group by source and rank within each source
-        by_source: Dict[str, List[SearchCandidate]] = {}
+        by_source: dict[str, list[SearchCandidate]] = {}
         for c in candidates:
             by_source.setdefault(c.source, []).append(c)
-        
+
         # Sort each source list by score
         for source in by_source:
             by_source[source].sort(key=lambda c: c.score, reverse=True)
-        
+
         # Apply RRF formula: score = 1 / (k + rank)
         source_weights = {
             "semantic": weights.semantic,
@@ -900,21 +908,21 @@ class HybridSearch:
             "keyword_fallback": weights.keyword * 0.5,
             "metadata": weights.metadata,
         }
-        
+
         for source, source_candidates in by_source.items():
             w = source_weights.get(source, 0.0)
             for rank, candidate in enumerate(source_candidates):
                 candidate.score = w / (self.config.rrf_k + rank + 1)
-        
+
         # Sort all by new score
         candidates.sort(key=lambda c: c.score, reverse=True)
         return candidates
-    
+
     # ========================================================================
     # Deduplication
     # ========================================================================
-    
-    def _deduplicate(self, candidates: List[SearchCandidate]) -> List[SearchCandidate]:
+
+    def _deduplicate(self, candidates: list[SearchCandidate]) -> list[SearchCandidate]:
         """Remove near-duplicate chunks.
 
         Near-duplicates are chunks that were split from the same source
@@ -956,25 +964,25 @@ class HybridSearch:
         # Re-sort after dedup
         unique.sort(key=lambda c: c.score, reverse=True)
         return unique
-    
+
     # ========================================================================
     # Score Normalization
     # ========================================================================
-    
-    def _normalize_scores(self, candidates: List[SearchCandidate]) -> List[SearchCandidate]:
+
+    def _normalize_scores(self, candidates: list[SearchCandidate]) -> list[SearchCandidate]:
         """Normalize scores to [0, 1] range."""
         if not candidates:
             return candidates
-        
+
         scores = [c.score for c in candidates]
         min_score = min(scores)
         max_score = max(scores)
-        
+
         if max_score == min_score:
             for c in candidates:
                 c.score = 1.0
             return candidates
-        
+
         if self.config.normalize_method == "minmax":
             for c in candidates:
                 c.score = (c.score - min_score) / (max_score - min_score)
@@ -984,14 +992,14 @@ class HybridSearch:
             if std > 0:
                 for c in candidates:
                     c.score = max(0.0, min(1.0, (c.score - mean) / (2 * std) + 0.5))
-        
+
         return candidates
-    
+
     # ========================================================================
     # Diagnostics
     # ========================================================================
-    
-    def get_retrieval_status(self) -> Dict[str, Any]:
+
+    def get_retrieval_status(self) -> dict[str, Any]:
         """Get status of all retrieval backends."""
         return {
             "semantic": {"status": "available", "backend": "pinecone"},
@@ -1014,56 +1022,69 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Hybrid Search - Validation")
     print("=" * 60)
-    
+
     # Load configuration
     config = HybridSearchConfig.from_yaml()
-    print(f"\n📋 Configuration loaded:")
-    print(f"   Weights: semantic={config.weights.semantic}, keyword={config.weights.keyword}, metadata={config.weights.metadata}")
-    print(f"   Candidates: semantic_k={config.semantic_k}, keyword_k={config.keyword_k}, max={config.max_total_candidates}")
+    print("\n📋 Configuration loaded:")
+    print(
+        f"   Weights: semantic={config.weights.semantic}, keyword={config.weights.keyword}, metadata={config.weights.metadata}"
+    )
+    print(
+        f"   Candidates: semantic_k={config.semantic_k}, keyword_k={config.keyword_k}, max={config.max_total_candidates}"
+    )
     print(f"   Merge: {config.merge_strategy}")
     print(f"   Dedup: threshold={config.dedup_threshold}, strategy={config.dedup_strategy}")
     print(f"   Metadata fields: {config.metadata_fields}")
     print(f"   Keyword backend: {config.keyword_backend}")
     print(f"   Keyword use_sparse: {config.keyword_use_sparse}")
-    
+
     # Validate environment variable overrides
-    print(f"\n🔧 Environment variable overrides available:")
-    for var in ["RAGPIPE_SEMANTIC_K", "RAGPIPE_KEYWORD_K", "RAGPIPE_MAX_CANDIDATES",
-                "RAGPIPE_DEDUP_THRESHOLD", "RAGPIPE_MERGE_STRATEGY",
-                "RAGPIPE_SEMANTIC_WEIGHT", "RAGPIPE_KEYWORD_WEIGHT", "RAGPIPE_METADATA_WEIGHT",
-                "RAGPIPE_KEYWORD_BACKEND", "RAGPIPE_KEYWORD_USE_SPARSE"]:
+    print("\n🔧 Environment variable overrides available:")
+    for var in [
+        "RAGPIPE_SEMANTIC_K",
+        "RAGPIPE_KEYWORD_K",
+        "RAGPIPE_MAX_CANDIDATES",
+        "RAGPIPE_DEDUP_THRESHOLD",
+        "RAGPIPE_MERGE_STRATEGY",
+        "RAGPIPE_SEMANTIC_WEIGHT",
+        "RAGPIPE_KEYWORD_WEIGHT",
+        "RAGPIPE_METADATA_WEIGHT",
+        "RAGPIPE_KEYWORD_BACKEND",
+        "RAGPIPE_KEYWORD_USE_SPARSE",
+    ]:
         value = os.getenv(var)
         if value:
             print(f"   {var} = {value} ✅")
         else:
             print(f"   {var} = (not set, using config file default)")
-    
+
     # Check for BM25 dependency
     try:
         import rank_bm25
-        print(f"\n✅ rank_bm25 installed - BM25 indexing available")
+
+        print("\n✅ rank_bm25 installed - BM25 indexing available")
     except ImportError:
-        print(f"\n⚠️  rank_bm25 not installed - install with: pip install rank_bm25")
+        print("\n⚠️  rank_bm25 not installed - install with: pip install rank_bm25")
         print("   Keyword search will fall back to semantic search.")
-    
-    print(f"\n📊 Hybrid Search Architecture:")
-    print(f"   ┌─────────────────┐  ┌──────────────────┐  ┌─────────────────┐")
-    print(f"   │   Semantic      │  │    Keyword       │  │    Metadata     │")
-    print(f"   │   (Dense)       │  │    (Sparse)      │  │    (Filter)     │")
-    print(f"   ├─────────────────┤  ├──────────────────┤  ├─────────────────┤")
+
+    print("\n📊 Hybrid Search Architecture:")
+    print("   ┌─────────────────┐  ┌──────────────────┐  ┌─────────────────┐")
+    print("   │   Semantic      │  │    Keyword       │  │    Metadata     │")
+    print("   │   (Dense)       │  │    (Sparse)      │  │    (Filter)     │")
+    print("   ├─────────────────┤  ├──────────────────┤  ├─────────────────┤")
     print(f"   │ Pinecone Embed  │  │ BM25/{config.keyword_backend} │  │ Pinecone Meta   │")
-    print(f"   │ Vector Search   │  │ Sparse Retrieval │  │ Filter + Boost  │")
-    print(f"   └─────────────────┘  └──────────────────┘  └─────────────────┘")
-    print(f"           │                      │                      │")
-    print(f"           └──────────────────────┼──────────────────────┘")
-    print(f"                                  ▼")
-    print(f"                      ┌─────────────────────┐")
-    print(f"                      │   Weighted Merge    │")
-    print(f"                      │   + Deduplication   │")
-    print(f"                      └─────────────────────┘")
-    
-    print(f"\n✅ Hybrid Search ready (requires VectorStore + Pinecone for full test)")
-    print(f"   Full integration test available after orchestrator is built.")
-    
-    print(f"\n⚠️  IMPORTANT: Ensure BM25 index is initialized for production keyword search.")
-    print(f"   Without BM25, keyword search falls back to semantic embeddings.")
+    print("   │ Vector Search   │  │ Sparse Retrieval │  │ Filter + Boost  │")
+    print("   └─────────────────┘  └──────────────────┘  └─────────────────┘")
+    print("           │                      │                      │")
+    print("           └──────────────────────┼──────────────────────┘")
+    print("                                  ▼")
+    print("                      ┌─────────────────────┐")
+    print("                      │   Weighted Merge    │")
+    print("                      │   + Deduplication   │")
+    print("                      └─────────────────────┘")
+
+    print("\n✅ Hybrid Search ready (requires VectorStore + Pinecone for full test)")
+    print("   Full integration test available after orchestrator is built.")
+
+    print("\n⚠️  IMPORTANT: Ensure BM25 index is initialized for production keyword search.")
+    print("   Without BM25, keyword search falls back to semantic embeddings.")

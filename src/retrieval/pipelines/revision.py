@@ -1,5 +1,6 @@
 """Revision pipeline configuration."""
-from ..config import PipelineConfig, HybridWeights, ContextTemplate, ConfidenceLevel
+
+from ..config import ConfidenceLevel, ContextTemplate, HybridWeights, PipelineConfig
 
 REVISION_PIPELINE = PipelineConfig(
     name="revision",
@@ -14,7 +15,7 @@ REVISION_PIPELINE = PipelineConfig(
     min_confidence=ConfidenceLevel.MEDIUM,
     retry_on_low_confidence=True,
     retry_increase_k=10,
-    cache_ttl_seconds=1800,           # 30 minutes
-    include_source_prefix=False,      # Revision doesn't need full citations
+    cache_ttl_seconds=1800,  # 30 minutes
+    include_source_prefix=False,  # Revision doesn't need full citations
     include_page_numbers=False,
 )

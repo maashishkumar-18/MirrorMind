@@ -14,17 +14,17 @@ The Agent receives the full conversation state and returns a structured
 retrieval plan that the orchestrator executes.
 """
 
-import os
-import json
 import concurrent.futures
-from typing import List, Dict, Any, Optional
+import json
+import os
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 from dotenv import load_dotenv
 
 from src.common.llm_client import simple_generate
-from src.retrieval.query_rewriter import ConversationState, IntentType
+from src.retrieval.query_rewriter import ConversationState
 
 load_dotenv()
 
@@ -36,31 +36,35 @@ AGENT_MODEL = "deepseek-chat"
 # Agent Output Types
 # ============================================================================
 
+
 class AgentAction(str, Enum):
     """Actions the agent can decide to take."""
-    REWRITE_AND_RETRIEVE = "rewrite_and_retrieve"    # Rewrite query and proceed
-    DECOMPOSE = "decompose"                           # Break into sub-queries
-    CLARIFY = "clarify"                               # Ask user for clarification
-    SWITCH_PIPELINE = "switch_pipeline"               # Use a different pipeline
-    DIRECT_RETRIEVE = "direct_retrieve"               # Query is fine as-is
+
+    REWRITE_AND_RETRIEVE = "rewrite_and_retrieve"  # Rewrite query and proceed
+    DECOMPOSE = "decompose"  # Break into sub-queries
+    CLARIFY = "clarify"  # Ask user for clarification
+    SWITCH_PIPELINE = "switch_pipeline"  # Use a different pipeline
+    DIRECT_RETRIEVE = "direct_retrieve"  # Query is fine as-is
 
 
 class RetrievalStrategy(str, Enum):
     """Retrieval strategies the agent can select."""
-    SEMANTIC = "semantic"              # Pure semantic search
-    HYBRID = "hybrid"                  # Semantic + keyword + metadata
+
+    SEMANTIC = "semantic"  # Pure semantic search
+    HYBRID = "hybrid"  # Semantic + keyword + metadata
     METADATA_HEAVY = "metadata_heavy"  # Prioritize metadata filtering
-    KEYWORD_HEAVY = "keyword_heavy"    # Prioritize keyword matching
+    KEYWORD_HEAVY = "keyword_heavy"  # Prioritize keyword matching
 
 
 @dataclass
 class SubQuery:
     """A single sub-query from decomposition."""
+
     order: int
     query: str
     intent: str
     retrieval_strategy: RetrievalStrategy = RetrievalStrategy.HYBRID
-    metadata_filters: Dict[str, str] = field(default_factory=dict)
+    metadata_filters: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -69,27 +73,28 @@ class AgentDecision:
     Structured output from the retrieval agent.
     This tells the orchestrator exactly what to do.
     """
+
     action: AgentAction
-    reasoning: str                              # Why the agent made this decision
-    
+    reasoning: str  # Why the agent made this decision
+
     # For REWRITE_AND_RETRIEVE / DIRECT_RETRIEVE
     search_query: str = ""
     retrieval_strategy: RetrievalStrategy = RetrievalStrategy.HYBRID
-    metadata_filters: Dict[str, str] = field(default_factory=dict)
-    target_pipeline: str = "learning"           # Which pipeline config to use
-    
+    metadata_filters: dict[str, str] = field(default_factory=dict)
+    target_pipeline: str = "learning"  # Which pipeline config to use
+
     # For DECOMPOSE
-    sub_queries: List[SubQuery] = field(default_factory=list)
-    
+    sub_queries: list[SubQuery] = field(default_factory=list)
+
     # For CLARIFY
     clarification_question: str = ""
-    
+
     # For SWITCH_PIPELINE
     suggested_pipeline: str = ""
-    
+
     # Confidence
     confidence: float = 0.8
-    
+
     # What the agent understood
     understood_intent: str = ""
     understood_topic: str = ""
@@ -99,6 +104,7 @@ class AgentDecision:
 # Retrieval Agent
 # ============================================================================
 
+
 class RetrievalAgent:
     """
     LLM-powered agent that reasons about how to retrieve information
@@ -107,7 +113,7 @@ class RetrievalAgent:
     Uses DeepSeek for cost-efficient reasoning.
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = AGENT_MODEL):
+    def __init__(self, api_key: str | None = None, model: str = AGENT_MODEL):
         """
         Initialize the retrieval agent.
 
@@ -132,9 +138,9 @@ class RetrievalAgent:
         self,
         query: str,
         rewritten_query: str,
-        agent_context: Dict[str, Any],
+        agent_context: dict[str, Any],
         state: ConversationState,
-        timeout_seconds: Optional[float] = None
+        timeout_seconds: float | None = None,
     ) -> AgentDecision:
         """
         Analyze a query and decide the optimal retrieval approach.
@@ -171,7 +177,7 @@ class RetrievalAgent:
                 retrieval_strategy=RetrievalStrategy.HYBRID,
                 confidence=0.4,
                 understood_intent="unknown",
-                understood_topic=state.get_primary_concept() or "unknown"
+                understood_topic=state.get_primary_concept() or "unknown",
             )
 
         except Exception as e:
@@ -183,30 +189,28 @@ class RetrievalAgent:
                 retrieval_strategy=RetrievalStrategy.HYBRID,
                 confidence=0.5,
                 understood_intent="unknown",
-                understood_topic=state.get_primary_concept() or "unknown"
+                understood_topic=state.get_primary_concept() or "unknown",
             )
-    
+
     def _build_reasoning_prompt(
         self,
         query: str,
         rewritten_query: str,
-        agent_context: Dict[str, Any],
-        state: ConversationState
+        agent_context: dict[str, Any],
+        state: ConversationState,
     ) -> str:
         """Build the structured reasoning prompt for the agent."""
-        
+
         # Format conversation history (last 5 turns)
         history_text = ""
         for turn in list(state.history)[-6:]:
             role_emoji = "🧑" if turn.role == "user" else "🤖"
             history_text += f"{role_emoji} [{turn.role}]: {turn.content[:200]}\n"
-        
+
         # Format hierarchy
         hierarchy = agent_context.get("conversation_hierarchy", {})
-        hierarchy_text = "\n".join(
-            f"  {k}: {v}" for k, v in hierarchy.items() if v
-        )
-        
+        hierarchy_text = "\n".join(f"  {k}: {v}" for k, v in hierarchy.items() if v)
+
         prompt = f"""You are a retrieval planning agent for an AI study/exam-prep assistant.
 
 ## Your Job
@@ -276,10 +280,10 @@ Return ONLY a valid JSON object. No markdown, no code blocks, no explanation.
 }}
 """
         return prompt
-    
+
     def _parse_response(self, response_text: str, original_query: str) -> AgentDecision:
         """Parse the DeepSeek response into an AgentDecision."""
-        
+
         # Clean response
         text = response_text.strip()
         if text.startswith("```"):
@@ -287,13 +291,14 @@ Return ONLY a valid JSON object. No markdown, no code blocks, no explanation.
             if text.startswith("json"):
                 text = text[4:]
             text = text.strip()
-        
+
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
             # Try to extract JSON
             import re
-            match = re.search(r'\{.*\}', text, re.DOTALL)
+
+            match = re.search(r"\{.*\}", text, re.DOTALL)
             if match:
                 data = json.loads(match.group())
             else:
@@ -302,27 +307,29 @@ Return ONLY a valid JSON object. No markdown, no code blocks, no explanation.
                     action=AgentAction.DIRECT_RETRIEVE,
                     reasoning="Failed to parse agent response",
                     search_query=original_query,
-                    confidence=0.3
+                    confidence=0.3,
                 )
-        
+
         # Parse sub-queries if decomposing
         sub_queries = []
         for sq in data.get("sub_queries", []):
-            sub_queries.append(SubQuery(
-                order=sq.get("order", 0),
-                query=sq.get("query", ""),
-                intent=sq.get("intent", "general"),
-                retrieval_strategy=RetrievalStrategy(sq.get("retrieval_strategy", "hybrid")),
-                metadata_filters=sq.get("metadata_filters", {})
-            ))
-        
+            sub_queries.append(
+                SubQuery(
+                    order=sq.get("order", 0),
+                    query=sq.get("query", ""),
+                    intent=sq.get("intent", "general"),
+                    retrieval_strategy=RetrievalStrategy(sq.get("retrieval_strategy", "hybrid")),
+                    metadata_filters=sq.get("metadata_filters", {}),
+                )
+            )
+
         # Parse action
         action_str = data.get("action", "direct_retrieve")
         try:
             action = AgentAction(action_str)
         except ValueError:
             action = AgentAction.DIRECT_RETRIEVE
-        
+
         return AgentDecision(
             action=action,
             reasoning=data.get("reasoning", ""),
@@ -347,9 +354,9 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Retrieval Agent - Validation")
     print("=" * 60)
-    
+
     agent = RetrievalAgent()
-    
+
     # Setup conversation
     state = ConversationState(
         session_id="test",
@@ -357,13 +364,17 @@ if __name__ == "__main__":
         module="Operating Systems",
         chapter="Process Management",
         current_topic="Concurrency",
-        current_concept="Deadlock"
+        current_concept="Deadlock",
     )
-    
+
     state.add_turn("user", "What is deadlock?")
-    state.add_turn("assistant", "Deadlock is a situation where two or more processes are blocked indefinitely, each waiting for a resource held by another.",
-                   topic="Concurrency", concept="Deadlock")
-    
+    state.add_turn(
+        "assistant",
+        "Deadlock is a situation where two or more processes are blocked indefinitely, each waiting for a resource held by another.",
+        topic="Concurrency",
+        concept="Deadlock",
+    )
+
     agent_context = {
         "agent_reason": "Novel follow-up query",
         "conversation_hierarchy": {
@@ -372,46 +383,52 @@ if __name__ == "__main__":
             "chapter": "Process Management",
             "current_topic": "Concurrency",
             "current_concept": "Deadlock",
-            "current_subconcept": None
+            "current_subconcept": None,
         },
         "last_compared_pair": None,
         "recent_concepts": ["Deadlock"],
-        "context_summary": "Topic: Concurrency | Concept: Deadlock"
+        "context_summary": "Topic: Concurrency | Concept: Deadlock",
     }
-    
+
     test_queries = [
         ("Can this happen in real life?", "Can this happen in real life?"),
         ("Make it suitable for a 5-mark answer", "Make it suitable for a 5-mark answer"),
-        ("Which one would you choose for an embedded system and why?", "Which one would you choose for an embedded system and why?"),
+        (
+            "Which one would you choose for an embedded system and why?",
+            "Which one would you choose for an embedded system and why?",
+        ),
         ("Connect this with database transactions", "Connect this with database transactions"),
-        ("Give me an analogy that a 10-year-old would understand", "Give me an analogy that a 10-year-old would understand"),
+        (
+            "Give me an analogy that a 10-year-old would understand",
+            "Give me an analogy that a 10-year-old would understand",
+        ),
     ]
-    
+
     for original, rewritten in test_queries:
         print(f"\n{'─' * 50}")
-        print(f"📝 Query: \"{original}\"")
-        
+        print(f'📝 Query: "{original}"')
+
         decision = agent.reason(original, rewritten, agent_context, state)
-        
+
         print(f"🎯 Action: {decision.action.value}")
         print(f"🧠 Reasoning: {decision.reasoning}")
         print(f"📊 Confidence: {decision.confidence:.2f}")
         print(f"💡 Understood as: {decision.understood_intent}")
         print(f"📚 Topic: {decision.understood_topic}")
-        
+
         if decision.action == AgentAction.REWRITE_AND_RETRIEVE:
-            print(f"🔍 Search query: \"{decision.search_query}\"")
+            print(f'🔍 Search query: "{decision.search_query}"')
             print(f"📂 Strategy: {decision.retrieval_strategy.value}")
             if decision.metadata_filters:
                 print(f"🏷️  Filters: {decision.metadata_filters}")
-        
+
         elif decision.action == AgentAction.DECOMPOSE:
             for sq in decision.sub_queries:
                 print(f"   [{sq.order}] {sq.query}")
                 print(f"       Intent: {sq.intent}, Strategy: {sq.retrieval_strategy.value}")
-        
+
         elif decision.action == AgentAction.CLARIFY:
-            print(f"❓ Clarification: \"{decision.clarification_question}\"")
-        
+            print(f'❓ Clarification: "{decision.clarification_question}"')
+
         elif decision.action == AgentAction.SWITCH_PIPELINE:
             print(f"🔀 Switch to: {decision.suggested_pipeline}")

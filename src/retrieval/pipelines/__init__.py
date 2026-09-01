@@ -5,9 +5,9 @@ Each pipeline is a preset of PipelineConfig — no custom logic, just configurat
 
 from .learning import LEARNING_PIPELINE
 from .planner import PLANNER_PIPELINE
-from .revision import REVISION_PIPELINE
 from .qa import QA_PIPELINE
 from .quiz import QUIZ_PIPELINE
+from .revision import REVISION_PIPELINE
 
 # Registry of all available pipelines
 PIPELINE_REGISTRY = {
@@ -20,7 +20,7 @@ PIPELINE_REGISTRY = {
 
 __all__ = [
     "LEARNING_PIPELINE",
-    "PLANNER_PIPELINE", 
+    "PLANNER_PIPELINE",
     "REVISION_PIPELINE",
     "QA_PIPELINE",
     "QUIZ_PIPELINE",

@@ -19,7 +19,6 @@ DEEPSEEK_PRICE_PER_1M_OUTPUT_USD = 1.10
 
 
 def estimate_deepseek_cost(input_tokens: int, output_tokens: int) -> float:
-    return (
-        (input_tokens / 1_000_000) * DEEPSEEK_PRICE_PER_1M_INPUT_USD
-        + (output_tokens / 1_000_000) * DEEPSEEK_PRICE_PER_1M_OUTPUT_USD
-    )
+    return (input_tokens / 1_000_000) * DEEPSEEK_PRICE_PER_1M_INPUT_USD + (
+        output_tokens / 1_000_000
+    ) * DEEPSEEK_PRICE_PER_1M_OUTPUT_USD

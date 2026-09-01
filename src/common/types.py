@@ -11,12 +11,13 @@ re-export it under the same name so existing imports keep working.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
 from enum import Enum
+from typing import Any
 
 
 class CitationLocationType(str, Enum):
     """Type of location in the source document."""
+
     PAGE = "page"
     SLIDE = "slide"
     SECTION = "section"
@@ -33,9 +34,10 @@ class RetrievedChunk:
     unchanged by the generation layer's GenerationRequest — no
     conversion step between the two.
     """
+
     chunk_id: str
-    content: str                       # Enriched content (with source prefix)
-    score: float                       # Final relevance score (post-rerank)
+    content: str  # Enriched content (with source prefix)
+    score: float  # Final relevance score (post-rerank)
 
     # Source traceability
     course_name: str = ""
@@ -45,7 +47,7 @@ class RetrievedChunk:
     location_start: int = 0
     location_end: int = 0
     filename: str = ""
-    file_type: str = ""                # e.g. "pptx", "pdf" — determines location_type
+    file_type: str = ""  # e.g. "pptx", "pdf" — determines location_type
     chunk_type: str = ""
     source_prefix: str = ""
 
@@ -53,9 +55,9 @@ class RetrievedChunk:
     raw_content: str = ""
 
     # Optional per-source component scores from hybrid search, when tracked
-    semantic_score: Optional[float] = None
-    keyword_score: Optional[float] = None
-    metadata_score: Optional[float] = None
+    semantic_score: float | None = None
+    keyword_score: float | None = None
+    metadata_score: float | None = None
 
     # Additional metadata (flexible for provider-specific data)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)

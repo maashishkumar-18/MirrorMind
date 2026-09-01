@@ -23,22 +23,20 @@ Configuration-driven — models from config/generation/models.yaml.
 No direct SDK calls in business logic.
 """
 
+import logging
 import os
 import re
 import time
-import logging
-from typing import Dict, Any, Optional, List, Tuple
-from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+from typing import Any
 
 from dotenv import load_dotenv
 
 from src.generation.config import (
-    Prompt,
     GeneratedAnswer,
-    UsageStats,
-    ModelInfo,
     ModelConfig,
+    Prompt,
+    UsageStats,
 )
 
 load_dotenv()
@@ -50,24 +48,28 @@ logger = logging.getLogger(__name__)
 # Provider Exceptions
 # ============================================================================
 
+
 class ProviderException(Exception):
     """Base exception for provider-related errors."""
+
     pass
 
 
 class ProviderCredentialError(ProviderException):
     """Raised when provider credentials are missing or invalid."""
+
     pass
 
 
 class ProviderAPIError(ProviderException):
     """Raised when the provider API returns an error."""
+
     def __init__(
         self,
         message: str,
-        status_code: Optional[int] = None,
-        response: Optional[Any] = None,
-        retry_after_seconds: Optional[float] = None,
+        status_code: int | None = None,
+        response: Any | None = None,
+        retry_after_seconds: float | None = None,
         is_daily_quota: bool = False,
     ):
         self.status_code = status_code
@@ -85,15 +87,17 @@ class ProviderAPIError(ProviderException):
 
 class ProviderRateLimitError(ProviderAPIError):
     """Raised when rate limit is exceeded."""
+
     pass
 
 
 class ProviderTimeoutError(ProviderAPIError):
     """Raised when request times out."""
+
     pass
 
 
-def _extract_retry_after(exc: Exception, error_msg: str) -> Tuple[Optional[float], bool]:
+def _extract_retry_after(exc: Exception, error_msg: str) -> tuple[float | None, bool]:
     """
     Best-effort extraction of "how long to wait before retrying" from a
     provider error, plus whether it looks like a per-day (not per-minute)
@@ -108,7 +112,7 @@ def _extract_retry_after(exc: Exception, error_msg: str) -> Tuple[Optional[float
         (retry_after_seconds, is_daily_quota) — either/both may be
         None/False if not determinable.
     """
-    retry_after: Optional[float] = None
+    retry_after: float | None = None
 
     details = getattr(exc, "details", None)
     if callable(details):
@@ -151,35 +155,33 @@ def _extract_retry_after(exc: Exception, error_msg: str) -> Tuple[Optional[float
 # Provider Adapters
 # ============================================================================
 
+
 class ProviderAdapter(ABC):
     """
     Abstract adapter for LLM providers.
-    
+
     Each provider (Gemini, OpenAI, Anthropic) implements this interface.
     The LLMClient delegates to the appropriate adapter based on config.
-    
+
     Adapters RAISE exceptions for errors — they do NOT return error responses.
     Retry logic is handled by LLMClient.
     """
-    
+
     @abstractmethod
     def generate(
-        self,
-        prompt: Prompt,
-        config: ModelConfig,
-        timeout_seconds: int
+        self, prompt: Prompt, config: ModelConfig, timeout_seconds: int
     ) -> GeneratedAnswer:
         """
         Generate a response from the provider.
-        
+
         Args:
             prompt: Structured Prompt object
             config: Model configuration
             timeout_seconds: Request timeout
-            
+
         Returns:
             GeneratedAnswer with content and usage stats
-            
+
         Raises:
             ProviderCredentialError: Missing/invalid credentials
             ProviderAPIError: API returned an error
@@ -187,7 +189,7 @@ class ProviderAdapter(ABC):
             ProviderTimeoutError: Request timed out
         """
         ...
-    
+
     @abstractmethod
     def validate_credentials(self) -> bool:
         """Check if provider credentials are available."""
@@ -196,11 +198,11 @@ class ProviderAdapter(ABC):
 
 class GeminiAdapter(ProviderAdapter):
     """Adapter for Google Gemini API."""
-    
+
     def __init__(self):
         self._client = None
         self._model = None
-    
+
     def _initialize(self, model_name: str):
         """Lazy initialization of Gemini client."""
         if self._client is None:
@@ -211,87 +213,93 @@ class GeminiAdapter(ProviderAdapter):
                     "google-generativeai package not installed. "
                     "Run: pip install google-generativeai"
                 )
-            
+
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ProviderCredentialError(
                     "GEMINI_API_KEY environment variable is required for Gemini models"
                 )
-            
+
             try:
                 genai.configure(api_key=api_key)
                 self._client = genai
                 self._model = genai.GenerativeModel(model_name)
             except Exception as e:
                 raise ProviderCredentialError(f"Failed to initialize Gemini client: {e}")
-    
+
     def generate(
-        self,
-        prompt: Prompt,
-        config: ModelConfig,
-        timeout_seconds: int
+        self, prompt: Prompt, config: ModelConfig, timeout_seconds: int
     ) -> GeneratedAnswer:
         """Generate using Gemini API."""
         start_time = time.time()
-        
+
         self._initialize(config.model_name)
-        
+
         # Build generation config
         generation_config = {
             "temperature": config.temperature,
             "max_output_tokens": config.max_output_tokens,
             "top_p": config.top_p,
         }
-        
+
         try:
             # Combine system and user prompts
             contents = []
             if prompt.system_prompt:
                 contents.append({"role": "user", "parts": [prompt.system_prompt]})
-                contents.append({"role": "model", "parts": ["Understood. I will follow these instructions."]})
+                contents.append(
+                    {"role": "model", "parts": ["Understood. I will follow these instructions."]}
+                )
             contents.append({"role": "user", "parts": [prompt.user_prompt]})
-            
+
             response = self._model.generate_content(
                 contents=contents,
                 generation_config=generation_config,
-                request_options={"timeout": timeout_seconds * 1000}  # Convert to ms
+                request_options={"timeout": timeout_seconds * 1000},  # Convert to ms
             )
-            
+
             generation_time = (time.time() - start_time) * 1000
-            
+
             # Check for blocked/empty responses
             if not response.candidates:
-                block_reason = getattr(response, 'prompt_feedback', {}).get('block_reason', 'unknown')
-                raise ProviderAPIError(
-                    f"Response blocked: {block_reason}",
-                    response=response
+                block_reason = getattr(response, "prompt_feedback", {}).get(
+                    "block_reason", "unknown"
                 )
-            
+                raise ProviderAPIError(f"Response blocked: {block_reason}", response=response)
+
             # Extract usage stats
             usage = UsageStats(
-                input_tokens=getattr(response.usage_metadata, 'prompt_token_count', 0),
-                output_tokens=getattr(response.usage_metadata, 'candidates_token_count', 0),
-                total_tokens=getattr(response.usage_metadata, 'total_token_count', 0),
+                input_tokens=getattr(response.usage_metadata, "prompt_token_count", 0),
+                output_tokens=getattr(response.usage_metadata, "candidates_token_count", 0),
+                total_tokens=getattr(response.usage_metadata, "total_token_count", 0),
                 provider_metadata={
                     "model": config.model_name,
-                    "finish_reason": getattr(response.candidates[0], 'finish_reason', 'unknown') if response.candidates else 'unknown',
-                }
+                    "finish_reason": (
+                        getattr(response.candidates[0], "finish_reason", "unknown")
+                        if response.candidates
+                        else "unknown"
+                    ),
+                },
             )
-            
+
             return GeneratedAnswer(
                 content=response.text,
                 model_info=config.to_model_info(),
                 usage=usage,
                 generation_time_ms=round(generation_time, 2),
-                finish_reason=str(getattr(response.candidates[0], 'finish_reason', 'stop')) if response.candidates else 'stop',
-                raw_response=response
+                finish_reason=(
+                    str(getattr(response.candidates[0], "finish_reason", "stop"))
+                    if response.candidates
+                    else "stop"
+                ),
+                raw_response=response,
             )
-            
+
         except Exception as e:
             # Re-raise with appropriate provider error
             if isinstance(e, ProviderException):
                 raise
-            
+
             # Convert common Gemini errors
             error_msg = str(e)
             if "429" in error_msg or "quota" in error_msg.lower():
@@ -306,7 +314,7 @@ class GeminiAdapter(ProviderAdapter):
                 raise ProviderTimeoutError(f"Gemini timeout: {error_msg}", response=e)
             else:
                 raise ProviderAPIError(f"Gemini API error: {error_msg}", response=e)
-    
+
     def validate_credentials(self) -> bool:
         """Check if Gemini API key is configured."""
         try:
@@ -317,10 +325,10 @@ class GeminiAdapter(ProviderAdapter):
 
 class OpenAIAdapter(ProviderAdapter):
     """Adapter for OpenAI API."""
-    
+
     def __init__(self):
         self._client = None
-    
+
     def _initialize(self):
         """Lazy initialization of OpenAI client."""
         if self._client is None:
@@ -328,37 +336,33 @@ class OpenAIAdapter(ProviderAdapter):
                 from openai import OpenAI
             except ImportError:
                 raise ProviderCredentialError(
-                    "openai package not installed. "
-                    "Run: pip install openai"
+                    "openai package not installed. " "Run: pip install openai"
                 )
-            
+
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 raise ProviderCredentialError(
                     "OPENAI_API_KEY environment variable is required for OpenAI models"
                 )
-            
+
             try:
                 self._client = OpenAI(api_key=api_key)
             except Exception as e:
                 raise ProviderCredentialError(f"Failed to initialize OpenAI client: {e}")
-    
+
     def generate(
-        self,
-        prompt: Prompt,
-        config: ModelConfig,
-        timeout_seconds: int
+        self, prompt: Prompt, config: ModelConfig, timeout_seconds: int
     ) -> GeneratedAnswer:
         """Generate using OpenAI API."""
         start_time = time.time()
-        
+
         self._initialize()
-        
+
         messages = []
         if prompt.system_prompt:
             messages.append({"role": "system", "content": prompt.system_prompt})
         messages.append({"role": "user", "content": prompt.user_prompt})
-        
+
         try:
             response = self._client.chat.completions.create(
                 model=config.model_name,
@@ -366,38 +370,42 @@ class OpenAIAdapter(ProviderAdapter):
                 temperature=config.temperature,
                 max_tokens=config.max_output_tokens,
                 top_p=config.top_p,
-                timeout=timeout_seconds
+                timeout=timeout_seconds,
             )
-            
+
             generation_time = (time.time() - start_time) * 1000
-            
+
             if not response.choices:
                 raise ProviderAPIError("No choices returned from OpenAI", response=response)
-            
+
             usage = UsageStats(
                 input_tokens=response.usage.prompt_tokens if response.usage else 0,
                 output_tokens=response.usage.completion_tokens if response.usage else 0,
                 total_tokens=response.usage.total_tokens if response.usage else 0,
                 provider_metadata={
                     "model": config.model_name,
-                    "finish_reason": response.choices[0].finish_reason if response.choices else 'unknown',
-                }
+                    "finish_reason": (
+                        response.choices[0].finish_reason if response.choices else "unknown"
+                    ),
+                },
             )
-            
+
             return GeneratedAnswer(
                 content=response.choices[0].message.content if response.choices else "",
                 model_info=config.to_model_info(),
                 usage=usage,
                 generation_time_ms=round(generation_time, 2),
-                finish_reason=str(response.choices[0].finish_reason) if response.choices else 'stop',
-                raw_response=response
+                finish_reason=(
+                    str(response.choices[0].finish_reason) if response.choices else "stop"
+                ),
+                raw_response=response,
             )
-            
+
         except Exception as e:
             # Re-raise with appropriate provider error
             if isinstance(e, ProviderException):
                 raise
-            
+
             # Convert common OpenAI errors
             error_msg = str(e)
             if "rate_limit" in error_msg.lower() or "429" in error_msg:
@@ -412,7 +420,7 @@ class OpenAIAdapter(ProviderAdapter):
                 raise ProviderTimeoutError(f"OpenAI timeout: {error_msg}", response=e)
             else:
                 raise ProviderAPIError(f"OpenAI API error: {error_msg}", response=e)
-    
+
     def validate_credentials(self) -> bool:
         """Check if OpenAI API key is configured."""
         try:
@@ -438,8 +446,7 @@ class DeepSeekAdapter(OpenAIAdapter):
                 from openai import OpenAI
             except ImportError:
                 raise ProviderCredentialError(
-                    "openai package not installed. "
-                    "Run: pip install openai"
+                    "openai package not installed. " "Run: pip install openai"
                 )
 
             api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -454,10 +461,7 @@ class DeepSeekAdapter(OpenAIAdapter):
                 raise ProviderCredentialError(f"Failed to initialize DeepSeek client: {e}")
 
     def generate(
-        self,
-        prompt: Prompt,
-        config: ModelConfig,
-        timeout_seconds: int
+        self, prompt: Prompt, config: ModelConfig, timeout_seconds: int
     ) -> GeneratedAnswer:
         """Generate using DeepSeek's OpenAI-compatible API."""
         start_time = time.time()
@@ -476,7 +480,7 @@ class DeepSeekAdapter(OpenAIAdapter):
                 temperature=config.temperature,
                 max_tokens=config.max_output_tokens,
                 top_p=config.top_p,
-                timeout=timeout_seconds
+                timeout=timeout_seconds,
             )
 
             generation_time = (time.time() - start_time) * 1000
@@ -490,8 +494,10 @@ class DeepSeekAdapter(OpenAIAdapter):
                 total_tokens=response.usage.total_tokens if response.usage else 0,
                 provider_metadata={
                     "model": config.model_name,
-                    "finish_reason": response.choices[0].finish_reason if response.choices else 'unknown',
-                }
+                    "finish_reason": (
+                        response.choices[0].finish_reason if response.choices else "unknown"
+                    ),
+                },
             )
 
             return GeneratedAnswer(
@@ -499,8 +505,10 @@ class DeepSeekAdapter(OpenAIAdapter):
                 model_info=config.to_model_info(),
                 usage=usage,
                 generation_time_ms=round(generation_time, 2),
-                finish_reason=str(response.choices[0].finish_reason) if response.choices else 'stop',
-                raw_response=response
+                finish_reason=(
+                    str(response.choices[0].finish_reason) if response.choices else "stop"
+                ),
+                raw_response=response,
             )
 
         except Exception as e:
@@ -533,51 +541,49 @@ class DeepSeekAdapter(OpenAIAdapter):
 # Provider Registry
 # ============================================================================
 
+
 class ProviderRegistry:
     """
     Registry of available LLM providers.
-    
+
     Maps provider names to adapter instances.
     New providers can be registered at runtime.
     """
-    
+
     def __init__(self):
-        self._adapters: Dict[str, ProviderAdapter] = {}
+        self._adapters: dict[str, ProviderAdapter] = {}
         self._register_defaults()
-    
+
     def _register_defaults(self):
         """Register built-in providers."""
         self.register("gemini", GeminiAdapter())
         self.register("openai", OpenAIAdapter())
         self.register("deepseek", DeepSeekAdapter())
-    
+
     def register(self, name: str, adapter: ProviderAdapter):
         """Register a provider adapter."""
         self._adapters[name.lower()] = adapter
-    
+
     def get(self, provider_name: str) -> ProviderAdapter:
         """
         Get adapter for a provider.
-        
+
         Args:
             provider_name: Provider name (case-insensitive)
-            
+
         Returns:
             ProviderAdapter instance
-            
+
         Raises:
             ValueError: If provider is not registered
         """
         adapter = self._adapters.get(provider_name.lower())
         if adapter is None:
             available = list(self._adapters.keys())
-            raise ValueError(
-                f"Unknown provider: '{provider_name}'. "
-                f"Available: {available}"
-            )
+            raise ValueError(f"Unknown provider: '{provider_name}'. " f"Available: {available}")
         return adapter
-    
-    def list_providers(self) -> List[str]:
+
+    def list_providers(self) -> list[str]:
         """List all registered providers."""
         return list(self._adapters.keys())
 
@@ -586,38 +592,35 @@ class ProviderRegistry:
 # LLM Client
 # ============================================================================
 
+
 class LLMClient:
     """
     Provider-agnostic LLM client with retry, timeout, and rate limit handling.
-    
+
     Usage:
         client = LLMClient()
         answer = client.generate(prompt, model_config)
     """
-    
-    def __init__(self, provider_registry: Optional[ProviderRegistry] = None):
+
+    def __init__(self, provider_registry: ProviderRegistry | None = None):
         """
         Initialize the LLM client.
-        
+
         Args:
             provider_registry: ProviderRegistry instance (creates default if None)
         """
         self.registry = provider_registry or ProviderRegistry()
-    
-    def generate(
-        self,
-        prompt: Prompt,
-        config: ModelConfig
-    ) -> GeneratedAnswer:
+
+    def generate(self, prompt: Prompt, config: ModelConfig) -> GeneratedAnswer:
         """
         Generate a response from the configured LLM.
-        
+
         Handles retry with exponential backoff, timeout, and rate limits.
-        
+
         Args:
             prompt: Structured Prompt object
             config: Model configuration
-            
+
         Returns:
             GeneratedAnswer with content and usage stats
         """
@@ -632,62 +635,56 @@ class LLMClient:
                 generation_time_ms=0,
                 finish_reason="error",
                 error_type="credential_error",
-                raw_response=None
+                raw_response=None,
             )
-        
+
         last_error = None
-        
+
         for attempt in range(config.max_retries + 1):
             try:
                 result = adapter.generate(
-                    prompt=prompt,
-                    config=config,
-                    timeout_seconds=config.timeout_seconds
+                    prompt=prompt, config=config, timeout_seconds=config.timeout_seconds
                 )
-                
+
                 # Ensure we got content
                 if not result.content or result.finish_reason in ("error", "unknown"):
                     # This shouldn't happen with our improved adapters, but keep as safeguard
                     raise ProviderAPIError(f"Empty or invalid response: {result.finish_reason}")
-                
+
                 return result
-                
+
             except ProviderRateLimitError as e:
                 last_error = e
                 logger.warning(
                     f"Rate limit hit (attempt {attempt + 1}/{config.max_retries + 1}): {e}"
                 )
-                
+
             except ProviderTimeoutError as e:
                 last_error = e
-                logger.warning(
-                    f"Timeout (attempt {attempt + 1}/{config.max_retries + 1}): {e}"
-                )
-                
+                logger.warning(f"Timeout (attempt {attempt + 1}/{config.max_retries + 1}): {e}")
+
             except (ProviderAPIError, ProviderCredentialError) as e:
                 # Don't retry credential errors; for API errors, retry unless they're fatal
                 if isinstance(e, ProviderCredentialError):
                     logger.error(f"Credential error: {e}")
                     break
-                
+
                 last_error = e
-                logger.warning(
-                    f"API error (attempt {attempt + 1}/{config.max_retries + 1}): {e}"
-                )
-                
+                logger.warning(f"API error (attempt {attempt + 1}/{config.max_retries + 1}): {e}")
+
             except Exception as e:
                 # Catch-all for unexpected errors
                 last_error = e
                 logger.warning(
                     f"Unexpected error (attempt {attempt + 1}/{config.max_retries + 1}): {e}"
                 )
-            
+
             # Don't sleep after the last attempt
             if attempt < config.max_retries:
-                delay = config.retry_delay_seconds * (2 ** attempt)
+                delay = config.retry_delay_seconds * (2**attempt)
                 logger.info(f"Retrying in {delay:.1f}s...")
                 time.sleep(delay)
-        
+
         # All retries exhausted
         logger.error(f"All {config.max_retries + 1} attempts failed. Last error: {last_error}")
 
@@ -711,13 +708,14 @@ class LLMClient:
             error_type=error_type,
             retry_after_seconds=getattr(last_error, "retry_after_seconds", None),
             is_daily_quota=getattr(last_error, "is_daily_quota", False),
-            raw_response=None
+            raw_response=None,
         )
 
 
 # ============================================================================
 # Simple Single-Turn Helper
 # ============================================================================
+
 
 def simple_generate(
     prompt: str,
@@ -741,7 +739,7 @@ def simple_generate(
     Raises ProviderRateLimitError/ProviderAPIError/ProviderCredentialError/
     ProviderTimeoutError on failure — same as any ProviderAdapter.
     """
-    from src.generation.config import Prompt, ModelConfig
+    from src.generation.config import ModelConfig, Prompt
 
     adapter = DeepSeekAdapter()
     config = ModelConfig(
@@ -774,21 +772,23 @@ if __name__ == "__main__":
     print("=" * 60)
     print("LLM Client - Validation")
     print("=" * 60)
-    
+
     # Load configuration
-    from src.generation.config import GenerationConfig, GenerationMode, ModeConfig, Prompt
-    
+    from src.generation.config import GenerationConfig, GenerationMode, Prompt
+
     gen_config = GenerationConfig.from_yaml()
-    
+
     # Debug: Check if models loaded
     print(f"\n📋 Debug: models loaded = {len(gen_config.models)}")
     print(f"   Model keys: {list(gen_config.models.keys())}")
-    
-    print(f"\n📋 Available models:")
+
+    print("\n📋 Available models:")
     if gen_config.models:
         for key, model in gen_config.models.items():
-            print(f"   {key}: {model.provider}/{model.model_name} "
-                  f"(temp={model.temperature}, max_tokens={model.max_output_tokens})")
+            print(
+                f"   {key}: {model.provider}/{model.model_name} "
+                f"(temp={model.temperature}, max_tokens={model.max_output_tokens})"
+            )
     else:
         print("   ⚠️  No models loaded! Check config/generation/models.yaml")
         print("   Expected format:")
@@ -800,18 +800,20 @@ if __name__ == "__main__":
         print("       max_output_tokens: 1024")
         # Exit early if no models
         exit(1)
-    
+
     # Create a single registry instance and reuse it
     registry = ProviderRegistry()
-    
+
     print(f"\n📋 Registered providers: {registry.list_providers()}")
-    
+
     # Check credentials using the same registry instance
     for provider_name in registry.list_providers():
         adapter = registry.get(provider_name)
         has_creds = adapter.validate_credentials()
-        print(f"   {provider_name}: {'✅ credentials found' if has_creds else '❌ missing credentials'}")
-    
+        print(
+            f"   {provider_name}: {'✅ credentials found' if has_creds else '❌ missing credentials'}"
+        )
+
     # Build a sample prompt
     prompt = Prompt(
         system_prompt="You are a helpful academic assistant.",
@@ -826,7 +828,7 @@ if __name__ == "__main__":
         request_id="test-001",
         mode=GenerationMode.CONTEXT_AWARE,
     )
-    
+
     # Test with DeepSeek if credentials available - using the same registry
     deepseek_config = gen_config.models.get("deepseek_chat")
 
@@ -837,28 +839,30 @@ if __name__ == "__main__":
 
         client = LLMClient(provider_registry=registry)
         answer = client.generate(prompt, deepseek_config)
-        
+
         print(f"   Model: {answer.model_info.provider}/{answer.model_info.model_name}")
         print(f"   Finish reason: {answer.finish_reason}")
         print(f"   Time: {answer.generation_time_ms:.0f}ms")
-        print(f"   Tokens: {answer.usage.input_tokens} in / {answer.usage.output_tokens} out / {answer.usage.total_tokens} total")
+        print(
+            f"   Tokens: {answer.usage.input_tokens} in / {answer.usage.output_tokens} out / {answer.usage.total_tokens} total"
+        )
         print(f"   Content preview: {answer.content[:200]}...")
-        
+
         # Check if we got a valid response
         if answer.finish_reason == "error":
-            print(f"\n   ⚠️  Generation failed - check logs above")
+            print("\n   ⚠️  Generation failed - check logs above")
         else:
-            print(f"\n   ✅ Generation successful!")
-            
+            print("\n   ✅ Generation successful!")
+
     else:
         # Clearer diagnostic message
         if not deepseek_config:
-            print(f"\n⚠️  DeepSeek model 'deepseek_chat' not found in config")
+            print("\n⚠️  DeepSeek model 'deepseek_chat' not found in config")
             print(f"   Available models: {list(gen_config.models.keys())}")
         elif not registry.get("deepseek").validate_credentials():
-            print(f"\n⚠️  DeepSeek credentials not found")
+            print("\n⚠️  DeepSeek credentials not found")
             print("   Set DEEPSEEK_API_KEY environment variable")
         else:
-            print(f"\n⚠️  Unknown error - check configuration")
-    
-    print(f"\n✅ LLM Client ready for integration")
+            print("\n⚠️  Unknown error - check configuration")
+
+    print("\n✅ LLM Client ready for integration")

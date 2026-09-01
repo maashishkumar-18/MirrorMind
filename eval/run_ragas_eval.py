@@ -43,9 +43,9 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -54,29 +54,34 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from src.ingestion.parser import DocumentParser
-from src.ingestion.cleaner import TextCleaner
-from src.ingestion.metadata_extractor import MetadataExtractor
-from src.ingestion.chunker import SemanticChunker
-from src.ingestion.enricher import ChunkEnricher
-from src.ingestion.embedder import EmbeddingGenerator
-from src.ingestion.vector_store import VectorStore
-
-from src.retrieval.orchestrator import RetrievalOrchestrator, OrchestratorResult
-from src.retrieval.query_rewriter import ConversationState
-from src.retrieval.pipelines import LEARNING_PIPELINE
-
-from src.generation.orchestrator import GenerationOrchestrator
+from observability.metrics_store import MetricsStore, PipelineCallMetrics
+from observability.tracing import (
+    current_trace_id,
+    current_trace_url,
+    flush,
+    score_trace,
+    traced_pipeline_call,
+)
 from src.generation.config import (
-    GenerationRequest,
-    GenerationResponse,
-    GenerationMode,
-    RetrievalMetadata,
     ConfidenceLevel as GenConfidenceLevel,
 )
-
-from observability.tracing import traced_pipeline_call, current_trace_id, current_trace_url, score_trace, flush
-from observability.metrics_store import MetricsStore, PipelineCallMetrics
+from src.generation.config import (
+    GenerationMode,
+    GenerationRequest,
+    GenerationResponse,
+    RetrievalMetadata,
+)
+from src.generation.orchestrator import GenerationOrchestrator
+from src.ingestion.chunker import SemanticChunker
+from src.ingestion.cleaner import TextCleaner
+from src.ingestion.embedder import EmbeddingGenerator
+from src.ingestion.enricher import ChunkEnricher
+from src.ingestion.metadata_extractor import MetadataExtractor
+from src.ingestion.parser import DocumentParser
+from src.ingestion.vector_store import VectorStore
+from src.retrieval.orchestrator import OrchestratorResult, RetrievalOrchestrator
+from src.retrieval.pipelines import LEARNING_PIPELINE
+from src.retrieval.query_rewriter import ConversationState
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("ragas_eval")
@@ -103,9 +108,7 @@ RESULTS_DIR = REPO_ROOT / "eval" / "results"
 # substring match. Match the two anchor fragments allowing arbitrary text
 # (the substituted topic name) in between, within a reasonable span so it
 # doesn't false-positive on two unrelated occurrences far apart.
-REFUSAL_PATTERNS = (
-    re.compile(r"does not cover .{0,120}?in sufficient detail", re.IGNORECASE),
-)
+REFUSAL_PATTERNS = (re.compile(r"does not cover .{0,120}?in sufficient detail", re.IGNORECASE),)
 
 # confidence.py's ConfidenceScorer._determine_action / orchestrator.py's
 # fallback/clarify/timeout/error builders — any of these mean the retrieval
@@ -118,7 +121,9 @@ def _contains_refusal_phrase(answer: str) -> bool:
     return any(pattern.search(text) for pattern in REFUSAL_PATTERNS)
 
 
-def score_unanswerable_item(result: OrchestratorResult, response: GenerationResponse) -> "tuple[float, Dict[str, Any]]":
+def score_unanswerable_item(
+    result: OrchestratorResult, response: GenerationResponse
+) -> "tuple[float, dict[str, Any]]":
     """
     1.0 if the pipeline hedged/refused (correct — the info isn't in the
     corpus), 0.0 if it generated a confident unhedged answer anyway.
@@ -152,12 +157,12 @@ def score_unanswerable_item(result: OrchestratorResult, response: GenerationResp
 
 from src.common.pricing import estimate_deepseek_cost  # noqa: E402
 
-
 # ============================================================================
 # Pipeline bootstrap — mirrors src/retrieval/orchestrator.py's __main__
 # integration test: ingest the sample deck into a fresh Pinecone namespace,
 # build the in-memory BM25 index, and construct both orchestrators.
 # ============================================================================
+
 
 @dataclass
 class Pipeline:
@@ -181,7 +186,10 @@ def bootstrap_pipeline() -> Pipeline:
     upsert_result = vector_store.upsert(embedded, namespace=namespace)
     logger.info(
         "Ingested %d chunks into namespace '%s' (course=%s, chapter=%s)",
-        upsert_result.chunks_upserted, namespace, metadata.course_name, metadata.chapter_title,
+        upsert_result.chunks_upserted,
+        namespace,
+        metadata.course_name,
+        metadata.chapter_title,
     )
 
     retrieval_orchestrator = RetrievalOrchestrator(vector_store=vector_store)
@@ -190,12 +198,14 @@ def bootstrap_pipeline() -> Pipeline:
     for chunk in enriched:
         chunk_metadata = ChunkEnricher.to_metadata(chunk)
         chunk_metadata["namespace"] = namespace
-        bm25_documents.append({
-            "id": chunk.chunk_id,
-            "content": chunk.content,
-            "raw_content": chunk.raw_content,
-            "metadata": chunk_metadata,
-        })
+        bm25_documents.append(
+            {
+                "id": chunk.chunk_id,
+                "content": chunk.content,
+                "raw_content": chunk.raw_content,
+                "metadata": chunk_metadata,
+            }
+        )
     retrieval_orchestrator.hybrid_search.initialize_indices(documents=bm25_documents)
     logger.info("BM25 index initialized with %d documents", len(bm25_documents))
 
@@ -220,13 +230,16 @@ def bootstrap_pipeline() -> Pipeline:
 # Golden set loading / sampling
 # ============================================================================
 
-def load_golden_set(path: Path) -> List[Dict[str, Any]]:
-    with open(path, "r", encoding="utf-8") as f:
+
+def load_golden_set(path: Path) -> list[dict[str, Any]]:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
     return data["items"]
 
 
-def sample_items(items: List[Dict[str, Any]], sample_size: Optional[int], seed: int) -> List[Dict[str, Any]]:
+def sample_items(
+    items: list[dict[str, Any]], sample_size: int | None, seed: int
+) -> list[dict[str, Any]]:
     if sample_size is None or sample_size >= len(items):
         return items
     rng = random.Random(seed)
@@ -237,26 +250,27 @@ def sample_items(items: List[Dict[str, Any]], sample_size: Optional[int], seed: 
 # Phase A — run each item through the real pipeline
 # ============================================================================
 
+
 @dataclass
 class PipelineRecord:
     id: str
     question: str
     category: str
     answerable: bool
-    ground_truth: Optional[str]
+    ground_truth: str | None
     generated_answer: str
-    contexts: List[str]
+    contexts: list[str]
     result: OrchestratorResult
     response: GenerationResponse
     pipeline_time_ms: float
-    langfuse_trace_id: Optional[str] = None
-    langfuse_trace_url: Optional[str] = None
+    langfuse_trace_id: str | None = None
+    langfuse_trace_url: str | None = None
 
 
 def run_pipeline_phase(
-    pipeline: Pipeline, items: List[Dict[str, Any]], env: str = "ci"
-) -> "tuple[List[PipelineRecord], int, int]":
-    records: List[PipelineRecord] = []
+    pipeline: Pipeline, items: list[dict[str, Any]], env: str = "ci"
+) -> "tuple[list[PipelineRecord], int, int]":
+    records: list[PipelineRecord] = []
     running_input_tokens = 0
     running_output_tokens = 0
 
@@ -317,25 +331,33 @@ def run_pipeline_phase(
         answerability = "answerable" if item["answerable"] else "unanswerable"
         logger.info(
             "[%d/%d] %s (%s, %s) retrieval=%.0fms gen=%.0fms tokens=%d running_pipeline_cost=$%.4f",
-            idx, len(items), item["id"], item["category"], answerability,
-            result.total_time_ms, response.generation_time_ms,
-            response.usage.total_tokens, running_cost,
+            idx,
+            len(items),
+            item["id"],
+            item["category"],
+            answerability,
+            result.total_time_ms,
+            response.generation_time_ms,
+            response.usage.total_tokens,
+            running_cost,
         )
 
-        records.append(PipelineRecord(
-            id=item["id"],
-            question=item["question"],
-            category=item["category"],
-            answerable=item["answerable"],
-            ground_truth=item.get("ground_truth"),
-            generated_answer=response.answer,
-            contexts=[c.content for c in result.assembled_context.chunks],
-            result=result,
-            response=response,
-            pipeline_time_ms=pipeline_time_ms,
-            langfuse_trace_id=trace_id,
-            langfuse_trace_url=trace_url,
-        ))
+        records.append(
+            PipelineRecord(
+                id=item["id"],
+                question=item["question"],
+                category=item["category"],
+                answerable=item["answerable"],
+                ground_truth=item.get("ground_truth"),
+                generated_answer=response.answer,
+                contexts=[c.content for c in result.assembled_context.chunks],
+                result=result,
+                response=response,
+                pipeline_time_ms=pipeline_time_ms,
+                langfuse_trace_id=trace_id,
+                langfuse_trace_url=trace_url,
+            )
+        )
 
     return records, running_input_tokens, running_output_tokens
 
@@ -346,9 +368,10 @@ def run_pipeline_phase(
 # batched) have completed.
 # ============================================================================
 
+
 def record_observability_metrics(
-    records: List["PipelineRecord"],
-    ragas_scores: Dict[str, Dict[str, float]],
+    records: list["PipelineRecord"],
+    ragas_scores: dict[str, dict[str, float]],
     env: str = "ci",
 ) -> None:
     store = MetricsStore()
@@ -360,37 +383,42 @@ def record_observability_metrics(
         item_metrics = ragas_scores.get(r.id, {}) if r.answerable else {}
         faithfulness = item_metrics.get("faithfulness")
         composite = (
-            (sum(item_metrics.values()) / len(item_metrics)) if item_metrics
+            (sum(item_metrics.values()) / len(item_metrics))
+            if item_metrics
             else (1.0 if refused else 0.0)
         )
 
-        cost_usd = estimate_deepseek_cost(r.response.usage.input_tokens, r.response.usage.output_tokens)
+        cost_usd = estimate_deepseek_cost(
+            r.response.usage.input_tokens, r.response.usage.output_tokens
+        )
 
-        store.record(PipelineCallMetrics(
-            request_id=r.response.request_id,
-            env=env,
-            query=r.question,
-            total_time_ms=r.pipeline_time_ms,
-            retrieval_time_ms=r.result.total_time_ms,
-            generation_time_ms=r.response.generation_time_ms,
-            stage_timings=r.result.timing_breakdown,
-            confidence_score=r.result.confidence.score,
-            confidence_level=r.result.confidence.level.value,
-            retrieval_hit=r.result.confidence.level.value != "low",
-            candidates_retrieved=r.result.candidates_retrieved,
-            is_grounded=r.response.is_grounded,
-            citations_count=len(r.response.citations),
-            refused=refused,
-            input_tokens=r.response.usage.input_tokens,
-            output_tokens=r.response.usage.output_tokens,
-            cost_usd=cost_usd,
-            prompt_version=r.response.prompt_version,
-            model_name=r.response.model_info.model_name,
-            retrieval_pipeline_name=r.result.pipeline_name,
-            faithfulness_score=faithfulness,
-            langfuse_trace_id=r.langfuse_trace_id,
-            langfuse_trace_url=r.langfuse_trace_url,
-        ))
+        store.record(
+            PipelineCallMetrics(
+                request_id=r.response.request_id,
+                env=env,
+                query=r.question,
+                total_time_ms=r.pipeline_time_ms,
+                retrieval_time_ms=r.result.total_time_ms,
+                generation_time_ms=r.response.generation_time_ms,
+                stage_timings=r.result.timing_breakdown,
+                confidence_score=r.result.confidence.score,
+                confidence_level=r.result.confidence.level.value,
+                retrieval_hit=r.result.confidence.level.value != "low",
+                candidates_retrieved=r.result.candidates_retrieved,
+                is_grounded=r.response.is_grounded,
+                citations_count=len(r.response.citations),
+                refused=refused,
+                input_tokens=r.response.usage.input_tokens,
+                output_tokens=r.response.usage.output_tokens,
+                cost_usd=cost_usd,
+                prompt_version=r.response.prompt_version,
+                model_name=r.response.model_info.model_name,
+                retrieval_pipeline_name=r.result.pipeline_name,
+                faithfulness_score=faithfulness,
+                langfuse_trace_id=r.langfuse_trace_id,
+                langfuse_trace_url=r.langfuse_trace_url,
+            )
+        )
 
         if r.langfuse_trace_id:
             score_trace(r.langfuse_trace_id, "composite_score", composite)
@@ -401,6 +429,7 @@ def record_observability_metrics(
 # ============================================================================
 # Phase B — RAGAS judge (answerable items only)
 # ============================================================================
+
 
 def build_judge_llm():
     from langchain_openai import ChatOpenAI
@@ -436,14 +465,16 @@ def build_judge_embeddings():
     return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 
-def run_ragas_phase(records: List[PipelineRecord]) -> "tuple[Dict[str, Dict[str, float]], Dict[str, int]]":
+def run_ragas_phase(
+    records: list[PipelineRecord],
+) -> "tuple[dict[str, dict[str, float]], dict[str, int]]":
     answerable = [r for r in records if r.answerable]
     if not answerable:
         return {}, {"input_tokens": 0, "output_tokens": 0}
 
     from datasets import Dataset
     from ragas import evaluate
-    from ragas.metrics import faithfulness, context_precision, context_recall, answer_correctness
+    from ragas.metrics import answer_correctness, context_precision, context_recall, faithfulness
     from ragas.run_config import RunConfig
 
     try:
@@ -453,15 +484,17 @@ def run_ragas_phase(records: List[PipelineRecord]) -> "tuple[Dict[str, Dict[str,
 
     logger.info("Running RAGAS judge over %d answerable items...", len(answerable))
 
-    dataset = Dataset.from_list([
-        {
-            "question": r.question,
-            "answer": r.generated_answer,
-            "contexts": r.contexts,
-            "ground_truth": r.ground_truth,
-        }
-        for r in answerable
-    ])
+    dataset = Dataset.from_list(
+        [
+            {
+                "question": r.question,
+                "answer": r.generated_answer,
+                "contexts": r.contexts,
+                "ground_truth": r.ground_truth,
+            }
+            for r in answerable
+        ]
+    )
 
     judge_llm = build_judge_llm()
     judge_embeddings = build_judge_embeddings()
@@ -488,12 +521,16 @@ def run_ragas_phase(records: List[PipelineRecord]) -> "tuple[Dict[str, Dict[str,
     df = ragas_result.to_pandas()
     metric_names = ["faithfulness", "context_precision", "context_recall", "answer_correctness"]
 
-    scores_by_id: Dict[str, Dict[str, float]] = {}
-    for record, (_, row) in zip(answerable, df.iterrows()):
+    scores_by_id: dict[str, dict[str, float]] = {}
+    for record, (_, row) in zip(answerable, df.iterrows(), strict=False):
         metric_scores = {}
         for name in metric_names:
             value = row.get(name)
-            metric_scores[name] = 0.0 if value is None or (isinstance(value, float) and value != value) else float(value)
+            metric_scores[name] = (
+                0.0
+                if value is None or (isinstance(value, float) and value != value)
+                else float(value)
+            )
         scores_by_id[record.id] = metric_scores
 
     return scores_by_id, judge_usage
@@ -503,14 +540,15 @@ def run_ragas_phase(records: List[PipelineRecord]) -> "tuple[Dict[str, Dict[str,
 # Phase C — assemble report
 # ============================================================================
 
+
 def build_report(
-    records: List[PipelineRecord],
-    ragas_scores: Dict[str, Dict[str, float]],
+    records: list[PipelineRecord],
+    ragas_scores: dict[str, dict[str, float]],
     args: argparse.Namespace,
     duration_seconds: float,
     pipeline_tokens: "tuple[int, int]",
-    judge_tokens: Dict[str, int],
-) -> Dict[str, Any]:
+    judge_tokens: dict[str, int],
+) -> dict[str, Any]:
     skip_ragas = getattr(args, "skip_ragas", False)
     items_report = []
     for r in records:
@@ -525,34 +563,36 @@ def build_report(
             composite, refusal_signals = score_unanswerable_item(r.result, r.response)
             metrics = {}
 
-        items_report.append({
-            "id": r.id,
-            "question": r.question,
-            "category": r.category,
-            "answerable": r.answerable,
-            "ground_truth": r.ground_truth,
-            "generated_answer": r.generated_answer,
-            "is_ready_for_generation": r.result.is_ready_for_generation,
-            "metrics": metrics or None,
-            "refusal_signals": refusal_signals,
-            "composite_score": round(composite, 4) if composite is not None else None,
-            "flagged_low_score": (composite is not None) and (composite < args.flag_threshold),
-            "pipeline_time_ms": round(r.pipeline_time_ms, 1),
-            # Diagnostics for separating "genuinely refused/low-scored" from
-            # "retrieval found nothing because of a routing/filter bug" (the
-            # agent-path metadata-filter mismatch — see src/retrieval/
-            # orchestrator.py's AGENT_FILTER_EXCLUDED_FIELDS and
-            # MetadataFilterBuilder._build_from_dict). A 0-candidate item
-            # scored as a "correct refusal" or "low faithfulness" would be a
-            # false signal, not a true one — kept here as a permanent
-            # diagnostic in case of regressions, not because the bug is
-            # currently open.
-            "agent_used": r.result.agent_used,
-            "routing_decision": r.result.routing_decision,
-            "candidates_retrieved": r.result.candidates_retrieved,
-            "candidates_reranked": r.result.candidates_reranked,
-            "citations_count": len(r.response.citations),
-        })
+        items_report.append(
+            {
+                "id": r.id,
+                "question": r.question,
+                "category": r.category,
+                "answerable": r.answerable,
+                "ground_truth": r.ground_truth,
+                "generated_answer": r.generated_answer,
+                "is_ready_for_generation": r.result.is_ready_for_generation,
+                "metrics": metrics or None,
+                "refusal_signals": refusal_signals,
+                "composite_score": round(composite, 4) if composite is not None else None,
+                "flagged_low_score": (composite is not None) and (composite < args.flag_threshold),
+                "pipeline_time_ms": round(r.pipeline_time_ms, 1),
+                # Diagnostics for separating "genuinely refused/low-scored" from
+                # "retrieval found nothing because of a routing/filter bug" (the
+                # agent-path metadata-filter mismatch — see src/retrieval/
+                # orchestrator.py's AGENT_FILTER_EXCLUDED_FIELDS and
+                # MetadataFilterBuilder._build_from_dict). A 0-candidate item
+                # scored as a "correct refusal" or "low faithfulness" would be a
+                # false signal, not a true one — kept here as a permanent
+                # diagnostic in case of regressions, not because the bug is
+                # currently open.
+                "agent_used": r.result.agent_used,
+                "routing_decision": r.result.routing_decision,
+                "candidates_retrieved": r.result.candidates_retrieved,
+                "candidates_reranked": r.result.candidates_reranked,
+                "citations_count": len(r.response.citations),
+            }
+        )
 
     scored_items = [it for it in items_report if it["composite_score"] is not None]
     all_scores = [it["composite_score"] for it in scored_items]
@@ -570,12 +610,13 @@ def build_report(
     answerable_items = [it for it in items_report if it["answerable"]]
     avg_citations = (
         sum(it["citations_count"] for it in answerable_items) / len(answerable_items)
-        if answerable_items else 0.0
+        if answerable_items
+        else 0.0
     )
 
     def _breakdown(key_fn):
-        buckets: Dict[str, List[float]] = {}
-        counts: Dict[str, int] = {}
+        buckets: dict[str, list[float]] = {}
+        counts: dict[str, int] = {}
         for it in items_report:
             key = key_fn(it)
             counts[key] = counts.get(key, 0) + 1
@@ -592,7 +633,9 @@ def build_report(
         return result
 
     breakdown_by_category = _breakdown(lambda it: it["category"])
-    breakdown_by_answerability = _breakdown(lambda it: "answerable" if it["answerable"] else "unanswerable")
+    breakdown_by_answerability = _breakdown(
+        lambda it: "answerable" if it["answerable"] else "unanswerable"
+    )
     low_scoring = [it for it in items_report if it["flagged_low_score"]]
 
     # Items where the agent path fired AND retrieval came back empty — a
@@ -602,18 +645,25 @@ def build_report(
     # Surfaced separately so a real gap in the corpus isn't confused with
     # this known failure mode.
     suspect_agent_zero_candidates = [
-        {"id": it["id"], "answerable": it["answerable"], "category": it["category"], "composite_score": it["composite_score"]}
+        {
+            "id": it["id"],
+            "answerable": it["answerable"],
+            "category": it["category"],
+            "composite_score": it["composite_score"],
+        }
         for it in items_report
         if it["agent_used"] and it["candidates_retrieved"] == 0
     ]
 
     pipeline_input_tokens, pipeline_output_tokens = pipeline_tokens
     pipeline_cost = estimate_deepseek_cost(pipeline_input_tokens, pipeline_output_tokens)
-    judge_cost = estimate_deepseek_cost(judge_tokens.get("input_tokens", 0), judge_tokens.get("output_tokens", 0))
+    judge_cost = estimate_deepseek_cost(
+        judge_tokens.get("input_tokens", 0), judge_tokens.get("output_tokens", 0)
+    )
 
     return {
         "run_metadata": {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "duration_seconds": round(duration_seconds, 1),
             "sample_size": len(records),
             "total_items_in_golden_set": args.total_items_in_golden_set,
@@ -622,8 +672,16 @@ def build_report(
             "flag_threshold": args.flag_threshold,
             "ragas_skipped": skip_ragas,
             "unscored_items": unscored_count,
-            "judge_llm": "skipped (--skip-ragas)" if skip_ragas else "deepseek-chat (langchain_openai.ChatOpenAI, DeepSeek endpoint)",
-            "judge_embeddings": "skipped (--skip-ragas)" if skip_ragas else "sentence-transformers/all-MiniLM-L6-v2 (local fallback)",
+            "judge_llm": (
+                "skipped (--skip-ragas)"
+                if skip_ragas
+                else "deepseek-chat (langchain_openai.ChatOpenAI, DeepSeek endpoint)"
+            ),
+            "judge_embeddings": (
+                "skipped (--skip-ragas)"
+                if skip_ragas
+                else "sentence-transformers/all-MiniLM-L6-v2 (local fallback)"
+            ),
             "pipeline_model": "deepseek_chat (config/generation/models.yaml default)",
             "cost_estimate_usd": {
                 "pipeline_generation": round(pipeline_cost, 4),
@@ -636,23 +694,32 @@ def build_report(
         "aggregate_score_note": (
             f"Computed over {len(scored_items)}/{len(items_report)} items — "
             f"{unscored_count} answerable item(s) unscored due to --skip-ragas."
-            if skip_ragas else None
+            if skip_ragas
+            else None
         ),
         "threshold": args.threshold,
         "avg_citations_answerable": round(avg_citations, 3),
         "min_avg_citations": args.min_avg_citations if args.min_avg_citations > 0 else None,
         "citations_gate_passed": (
-            True if (skip_ragas or args.min_avg_citations <= 0)
+            True
+            if (skip_ragas or args.min_avg_citations <= 0)
             else avg_citations >= args.min_avg_citations
         ),
         "passed": (
             (aggregate_score >= args.threshold)
-            and (skip_ragas or args.min_avg_citations <= 0 or avg_citations >= args.min_avg_citations)
+            and (
+                skip_ragas or args.min_avg_citations <= 0 or avg_citations >= args.min_avg_citations
+            )
         ),
         "breakdown_by_category": breakdown_by_category,
         "breakdown_by_answerability": breakdown_by_answerability,
         "low_scoring_items": [
-            {"id": it["id"], "question": it["question"], "category": it["category"], "composite_score": it["composite_score"]}
+            {
+                "id": it["id"],
+                "question": it["question"],
+                "category": it["category"],
+                "composite_score": it["composite_score"],
+            }
             for it in low_scoring
         ],
         "suspect_agent_zero_candidates": suspect_agent_zero_candidates,
@@ -660,11 +727,11 @@ def build_report(
     }
 
 
-def _fmt_score(value: Optional[float]) -> str:
+def _fmt_score(value: float | None) -> str:
     return f"{value:.4f}" if value is not None else "n/a"
 
 
-def render_markdown(report: Dict[str, Any]) -> str:
+def render_markdown(report: dict[str, Any]) -> str:
     meta = report["run_metadata"]
     lines = [
         "# RAGAS Evaluation Report",
@@ -700,39 +767,58 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "|---|---|---|",
     ]
     for cat, stats in report["breakdown_by_category"].items():
-        lines.append(f"| {cat} | {_fmt_score(stats['mean_score'])} | {stats['n']} ({stats['n_scored']} scored) |")
+        lines.append(
+            f"| {cat} | {_fmt_score(stats['mean_score'])} | {stats['n']} ({stats['n_scored']} scored) |"
+        )
 
     lines += ["", "## Breakdown by answerability", "", "| Type | Mean score | N |", "|---|---|---|"]
     for kind, stats in report["breakdown_by_answerability"].items():
-        lines.append(f"| {kind} | {_fmt_score(stats['mean_score'])} | {stats['n']} ({stats['n_scored']} scored) |")
+        lines.append(
+            f"| {kind} | {_fmt_score(stats['mean_score'])} | {stats['n']} ({stats['n_scored']} scored) |"
+        )
 
-    lines += ["", "## Suspect agent-path zero-candidate items", "",
-               "Items where the agent path fired and retrieval returned 0 "
-               "candidates — these scored as \"refused\"/low for a routing/"
-               "metadata-filter reason, not necessarily a true grounding gap. "
-               "See known issue in eval/README.md.", ""]
+    lines += [
+        "",
+        "## Suspect agent-path zero-candidate items",
+        "",
+        "Items where the agent path fired and retrieval returned 0 "
+        'candidates — these scored as "refused"/low for a routing/'
+        "metadata-filter reason, not necessarily a true grounding gap. "
+        "See known issue in eval/README.md.",
+        "",
+    ]
     if report["suspect_agent_zero_candidates"]:
         lines.append("| ID | Answerable | Category | Score |")
         lines.append("|---|---|---|---|")
         for it in report["suspect_agent_zero_candidates"]:
-            lines.append(f"| {it['id']} | {it['answerable']} | {it['category']} | {_fmt_score(it['composite_score'])} |")
+            lines.append(
+                f"| {it['id']} | {it['answerable']} | {it['category']} | {_fmt_score(it['composite_score'])} |"
+            )
     else:
         lines.append("None.")
 
-    lines += ["", f"## Flagged low-scoring items (< {report['run_metadata']['flag_threshold']})", ""]
+    lines += [
+        "",
+        f"## Flagged low-scoring items (< {report['run_metadata']['flag_threshold']})",
+        "",
+    ]
     if report["low_scoring_items"]:
         lines.append("| ID | Category | Score | Question |")
         lines.append("|---|---|---|---|")
         for it in report["low_scoring_items"]:
             q = it["question"].replace("|", "\\|")
-            lines.append(f"| {it['id']} | {it['category']} | {_fmt_score(it['composite_score'])} | {q} |")
+            lines.append(
+                f"| {it['id']} | {it['category']} | {_fmt_score(it['composite_score'])} | {q} |"
+            )
     else:
         lines.append("None.")
 
     lines += ["", "## Per-question detail", ""]
     for it in report["items"]:
         flag = " ⚠️ LOW SCORE" if it["flagged_low_score"] else ""
-        lines.append(f"### {it['id']} — {it['category']} ({'answerable' if it['answerable'] else 'unanswerable'}){flag}")
+        lines.append(
+            f"### {it['id']} — {it['category']} ({'answerable' if it['answerable'] else 'unanswerable'}){flag}"
+        )
         lines.append("")
         lines.append(f"**Q:** {it['question']}")
         lines.append("")
@@ -749,7 +835,11 @@ def render_markdown(report: Dict[str, Any]) -> str:
                 f"refusal_phrase_detected={sig['refusal_phrase_detected']}"
             )
         lines.append(f"**Composite score:** {_fmt_score(it['composite_score'])}")
-        agent_flag = " ⚠️ agent path + 0 candidates" if it["agent_used"] and it["candidates_retrieved"] == 0 else ""
+        agent_flag = (
+            " ⚠️ agent path + 0 candidates"
+            if it["agent_used"] and it["candidates_retrieved"] == 0
+            else ""
+        )
         lines.append(
             f"**Retrieval:** routing={it['routing_decision']}, agent_used={it['agent_used']}, "
             f"candidates_retrieved={it['candidates_retrieved']}, citations={it['citations_count']}{agent_flag}"
@@ -763,32 +853,60 @@ def render_markdown(report: Dict[str, Any]) -> str:
 # CLI
 # ============================================================================
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="RAGAS evaluation harness for the RAG pipeline.")
-    parser.add_argument("--sample-size", type=int, default=None, help="Run against a random subset of N items instead of the full golden set (fast iteration).")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for --sample-size sampling.")
-    parser.add_argument("--threshold", type=float, default=0.75, help="Aggregate score CI gate — exit non-zero if the aggregate falls below this.")
     parser.add_argument(
-        "--min-avg-citations", type=float, default=2.5,
-        help="Average citations-per-answer CI gate (answerable items only) — exit non-zero if "
-             "the average falls below this. Pass 0 (or negative) to disable. Added after "
-             "scripts/simulate_traffic.py's incident simulation found that RAGAS faithfulness "
-             "alone doesn't catch a starved-retrieval regression (a narrow-but-grounded answer "
-             "still scores well); citation count does. Default derived from a real baseline of "
-             "3.07 (see eval/README.md 'Citation-count baseline' for the full rationale, "
-             "including a caveat about the run this baseline came from).",
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Run against a random subset of N items instead of the full golden set (fast iteration).",
     )
-    parser.add_argument("--flag-threshold", type=float, default=0.5, help="Per-question score below which an item is flagged as a notable failure in the report.")
-    parser.add_argument("--golden-set", type=Path, default=GOLDEN_SET_PATH, help="Path to golden_qa_set.json.")
-    parser.add_argument("--output-dir", type=Path, default=RESULTS_DIR, help="Directory to write the JSON/Markdown report to.")
     parser.add_argument(
-        "--skip-ragas", action="store_true",
+        "--seed", type=int, default=42, help="Random seed for --sample-size sampling."
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.75,
+        help="Aggregate score CI gate — exit non-zero if the aggregate falls below this.",
+    )
+    parser.add_argument(
+        "--min-avg-citations",
+        type=float,
+        default=2.5,
+        help="Average citations-per-answer CI gate (answerable items only) — exit non-zero if "
+        "the average falls below this. Pass 0 (or negative) to disable. Added after "
+        "scripts/simulate_traffic.py's incident simulation found that RAGAS faithfulness "
+        "alone doesn't catch a starved-retrieval regression (a narrow-but-grounded answer "
+        "still scores well); citation count does. Default derived from a real baseline of "
+        "3.07 (see eval/README.md 'Citation-count baseline' for the full rationale, "
+        "including a caveat about the run this baseline came from).",
+    )
+    parser.add_argument(
+        "--flag-threshold",
+        type=float,
+        default=0.5,
+        help="Per-question score below which an item is flagged as a notable failure in the report.",
+    )
+    parser.add_argument(
+        "--golden-set", type=Path, default=GOLDEN_SET_PATH, help="Path to golden_qa_set.json."
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=RESULTS_DIR,
+        help="Directory to write the JSON/Markdown report to.",
+    )
+    parser.add_argument(
+        "--skip-ragas",
+        action="store_true",
         help="Run the pipeline over the golden set without RAGAS judge scoring. "
-             "Answerable items are reported (answer, retrieval diagnostics) but left "
-             "unscored (composite_score=null) and excluded from the aggregate; "
-             "unanswerable items still get the refusal-signal score (no RAGAS needed "
-             "for those). Useful for validating pipeline health across the full "
-             "golden set without paying for judge calls.",
+        "Answerable items are reported (answer, retrieval diagnostics) but left "
+        "unscored (composite_score=null) and excluded from the aggregate; "
+        "unanswerable items still get the refusal-signal score (no RAGAS needed "
+        "for those). Useful for validating pipeline health across the full "
+        "golden set without paying for judge calls.",
     )
     return parser.parse_args()
 
@@ -801,7 +919,8 @@ def main() -> int:
     items = sample_items(all_items, args.sample_size, args.seed)
     logger.info(
         "Loaded %d golden items, evaluating %d (%s).",
-        len(all_items), len(items),
+        len(all_items),
+        len(items),
         f"sample_size={args.sample_size}, seed={args.seed}" if args.sample_size else "full set",
     )
 
@@ -841,7 +960,7 @@ def main() -> int:
     markdown = render_markdown(report)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     json_path = args.output_dir / f"eval_{timestamp}.json"
     md_path = args.output_dir / f"eval_{timestamp}.md"
 
@@ -859,19 +978,23 @@ def main() -> int:
         # pipeline-health validation, not scoring.
         logger.info(
             "Aggregate score (partial, unanswerable items only): %.4f — %s",
-            report["aggregate_score"], report["aggregate_score_note"],
+            report["aggregate_score"],
+            report["aggregate_score_note"],
         )
         return 0
 
     score_passed = report["aggregate_score"] >= args.threshold
     logger.info(
         "Aggregate score: %.4f (threshold %.2f) — %s",
-        report["aggregate_score"], args.threshold, "PASSED" if score_passed else "FAILED",
+        report["aggregate_score"],
+        args.threshold,
+        "PASSED" if score_passed else "FAILED",
     )
     if args.min_avg_citations > 0:
         logger.info(
             "Avg citations/answer: %.3f (min %.2f) — %s",
-            report["avg_citations_answerable"], args.min_avg_citations,
+            report["avg_citations_answerable"],
+            args.min_avg_citations,
             "PASSED" if report["citations_gate_passed"] else "FAILED",
         )
 

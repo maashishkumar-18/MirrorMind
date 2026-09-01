@@ -42,7 +42,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ _client_init_attempted = False
 # ============================================================================
 # Client singleton
 # ============================================================================
+
 
 def is_enabled() -> bool:
     return bool(os.getenv("LANGFUSE_PUBLIC_KEY")) and bool(os.getenv("LANGFUSE_SECRET_KEY"))
@@ -80,7 +81,9 @@ def get_langfuse():
         _client_init_attempted = True
 
         if not is_enabled():
-            logger.info("Langfuse tracing disabled (LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY not set).")
+            logger.info(
+                "Langfuse tracing disabled (LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY not set)."
+            )
             return None
 
         try:
@@ -92,7 +95,9 @@ def get_langfuse():
                 host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
             )
         except Exception:
-            logger.exception("Failed to initialize Langfuse client; tracing disabled for this process.")
+            logger.exception(
+                "Failed to initialize Langfuse client; tracing disabled for this process."
+            )
             _client = None
 
     return _client
@@ -101,6 +106,7 @@ def get_langfuse():
 # ============================================================================
 # Payload serialization
 # ============================================================================
+
 
 def _truncate(value: Any) -> Any:
     if isinstance(value, str) and len(value) > _MAX_TEXT_CHARS:
@@ -120,7 +126,7 @@ def safe_dict(obj: Any, max_list_items: int = _MAX_LIST_ITEMS) -> Any:
     anything unrecognized falls back to str(obj).
     """
     try:
-        if obj is None or isinstance(obj, (bool, int, float)):
+        if obj is None or isinstance(obj, bool | int | float):
             return obj
         if isinstance(obj, str):
             return _truncate(obj)
@@ -130,7 +136,7 @@ def safe_dict(obj: Any, max_list_items: int = _MAX_LIST_ITEMS) -> Any:
             return {k: safe_dict(v, max_list_items) for k, v in asdict(obj).items()}
         if isinstance(obj, dict):
             return {str(k): safe_dict(v, max_list_items) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple, set)):
+        if isinstance(obj, list | tuple | set):
             items = list(obj)
             result = [safe_dict(v, max_list_items) for v in items[:max_list_items]]
             if len(items) > max_list_items:
@@ -144,6 +150,7 @@ def safe_dict(obj: Any, max_list_items: int = _MAX_LIST_ITEMS) -> Any:
 # ============================================================================
 # No-op fallback
 # ============================================================================
+
 
 class _NullSpan:
     """
@@ -163,13 +170,14 @@ _NULL_SPAN = _NullSpan()
 # Span context managers
 # ============================================================================
 
+
 @contextmanager
 def traced_span(
     name: str,
     *,
     as_type: str = "span",
     input: Any = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
     **extra: Any,
 ):
     """
@@ -233,8 +241,8 @@ def traced_pipeline_call(
     request_id: str,
     query: str,
     env: str,
-    tags: Optional[List[str]] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    tags: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
 ):
     """
     Opens one Langfuse trace spanning both the retrieval and generation
@@ -255,7 +263,9 @@ def traced_pipeline_call(
     try:
         from langfuse import propagate_attributes
     except Exception:
-        logger.exception("Failed to import langfuse.propagate_attributes; continuing without tracing.")
+        logger.exception(
+            "Failed to import langfuse.propagate_attributes; continuing without tracing."
+        )
         yield _NULL_SPAN
         return
 
@@ -272,7 +282,9 @@ def traced_pipeline_call(
         )
         prop_cm.__enter__()
     except Exception:
-        logger.exception("Langfuse propagate_attributes failed to start; continuing without tracing.")
+        logger.exception(
+            "Langfuse propagate_attributes failed to start; continuing without tracing."
+        )
         yield _NULL_SPAN
         return
 
@@ -293,7 +305,8 @@ def traced_pipeline_call(
 # Scoring / trace lookup
 # ============================================================================
 
-def score_current_trace(name: str, value: float, comment: Optional[str] = None) -> None:
+
+def score_current_trace(name: str, value: float, comment: str | None = None) -> None:
     """Attach a score (e.g. sampled RAGAS faithfulness) to the currently-open trace."""
     client = get_langfuse()
     if client is None:
@@ -304,7 +317,7 @@ def score_current_trace(name: str, value: float, comment: Optional[str] = None) 
         logger.exception("Failed to attach Langfuse score '%s'.", name)
 
 
-def score_trace(trace_id: str, name: str, value: float, comment: Optional[str] = None) -> None:
+def score_trace(trace_id: str, name: str, value: float, comment: str | None = None) -> None:
     """
     Attach a score to a trace by ID, after the fact — for scores computed
     later than the trace itself (e.g. eval/run_ragas_eval.py's RAGAS judge
@@ -321,7 +334,7 @@ def score_trace(trace_id: str, name: str, value: float, comment: Optional[str] =
         logger.exception("Failed to attach Langfuse score '%s' to trace %s.", name, trace_id)
 
 
-def current_trace_id() -> Optional[str]:
+def current_trace_id() -> str | None:
     client = get_langfuse()
     if client is None:
         return None
@@ -331,7 +344,7 @@ def current_trace_id() -> Optional[str]:
         return None
 
 
-def current_trace_url() -> Optional[str]:
+def current_trace_url() -> str | None:
     """Deep link into the Langfuse UI for the currently-open trace — used by
     metrics_store rows / the dashboard's recent-requests table."""
     client = get_langfuse()

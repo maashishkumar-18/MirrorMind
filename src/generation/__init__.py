@@ -18,35 +18,31 @@ Formatter utilities are separate from data contracts.
 __version__ = "1.0.0"
 
 from src.generation.config import (
-    # Enums
-    GenerationMode,
     AnswerFormat,
-    CitationStyle,
-    CitationLocationType,
-    ConfidenceLevel,
-    
     # Core Contracts — Pure Data
     ChatTurn,
-    RetrievedChunk,
-    RetrievalMetadata,
-    GenerationRequest,
-    UsageStats,
-    ModelInfo,
-    GeneratedAnswer,
     Citation,
-    GenerationResponse,
-    
-    # Prompt Contract
-    Prompt,
-    
-    # Configuration
-    ModelConfig,
-    ModeConfig,
-    PostProcessingConfig,
-    GenerationConfig,
-    
     # Formatter (separate from data contracts)
     CitationFormatter,
+    CitationLocationType,
+    CitationStyle,
+    ConfidenceLevel,
+    GeneratedAnswer,
+    GenerationConfig,
+    # Enums
+    GenerationMode,
+    GenerationRequest,
+    GenerationResponse,
+    ModeConfig,
+    # Configuration
+    ModelConfig,
+    ModelInfo,
+    PostProcessingConfig,
+    # Prompt Contract
+    Prompt,
+    RetrievalMetadata,
+    RetrievedChunk,
+    UsageStats,
 )
 
 __all__ = [
@@ -56,7 +52,6 @@ __all__ = [
     "CitationStyle",
     "CitationLocationType",
     "ConfidenceLevel",
-    
     # Core Contracts
     "ChatTurn",
     "RetrievedChunk",
@@ -67,16 +62,13 @@ __all__ = [
     "GeneratedAnswer",
     "Citation",
     "GenerationResponse",
-    
     # Prompt Contract
     "Prompt",
-    
     # Configuration
     "ModelConfig",
     "ModeConfig",
     "PostProcessingConfig",
     "GenerationConfig",
-    
     # Formatter
     "CitationFormatter",
 ]

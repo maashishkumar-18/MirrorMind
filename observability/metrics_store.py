@@ -21,9 +21,9 @@ import json
 import sqlite3
 import threading
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 DEFAULT_DB_PATH = Path(__file__).parent / "metrics.db"
 
@@ -68,9 +68,16 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_calls_env ON pipeline_calls(env);
 """
 
 _NUMERIC_COLUMNS = {
-    "total_time_ms", "retrieval_time_ms", "generation_time_ms",
-    "confidence_score", "candidates_retrieved", "citations_count",
-    "input_tokens", "output_tokens", "cost_usd", "faithfulness_score",
+    "total_time_ms",
+    "retrieval_time_ms",
+    "generation_time_ms",
+    "confidence_score",
+    "candidates_retrieved",
+    "citations_count",
+    "input_tokens",
+    "output_tokens",
+    "cost_usd",
+    "faithfulness_score",
 }
 
 
@@ -83,15 +90,16 @@ class PipelineCallMetrics:
     block — no active span afterward) after a single retrieve()+generate()
     call.
     """
+
     request_id: str
     env: str
     query: str = ""
-    timestamp: Optional[str] = None  # defaults to now (UTC) if unset
+    timestamp: str | None = None  # defaults to now (UTC) if unset
 
     total_time_ms: float = 0.0
     retrieval_time_ms: float = 0.0
     generation_time_ms: float = 0.0
-    stage_timings: Dict[str, float] = field(default_factory=dict)
+    stage_timings: dict[str, float] = field(default_factory=dict)
 
     confidence_score: float = 0.0
     confidence_level: str = ""
@@ -106,14 +114,14 @@ class PipelineCallMetrics:
     output_tokens: int = 0
     cost_usd: float = 0.0
 
-    prompt_version: Optional[str] = None
-    model_name: Optional[str] = None
-    retrieval_pipeline_name: Optional[str] = None
+    prompt_version: str | None = None
+    model_name: str | None = None
+    retrieval_pipeline_name: str | None = None
 
-    faithfulness_score: Optional[float] = None
+    faithfulness_score: float | None = None
 
-    langfuse_trace_id: Optional[str] = None
-    langfuse_trace_url: Optional[str] = None
+    langfuse_trace_id: str | None = None
+    langfuse_trace_url: str | None = None
 
 
 class MetricsStore:
@@ -127,7 +135,7 @@ class MetricsStore:
     between a simulator process and a Streamlit dashboard process).
     """
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = str(db_path or DEFAULT_DB_PATH)
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
@@ -146,7 +154,7 @@ class MetricsStore:
 
     def record(self, metrics: PipelineCallMetrics) -> None:
         row = asdict(metrics)
-        row["timestamp"] = metrics.timestamp or datetime.now(timezone.utc).isoformat()
+        row["timestamp"] = metrics.timestamp or datetime.now(UTC).isoformat()
         row["stage_timings_json"] = json.dumps(row.pop("stage_timings"))
         row["retrieval_hit"] = int(bool(row["retrieval_hit"]))
         row["is_grounded"] = int(bool(row["is_grounded"]))
@@ -159,9 +167,9 @@ class MetricsStore:
         with self._lock, self._connect() as conn:
             conn.execute(sql, [row[c] for c in columns])
 
-    def query_recent(self, limit: int = 100, env: Optional[str] = None) -> List[Dict[str, Any]]:
+    def query_recent(self, limit: int = 100, env: str | None = None) -> list[dict[str, Any]]:
         sql = "SELECT * FROM pipeline_calls"
-        params: List[Any] = []
+        params: list[Any] = []
         if env:
             sql += " WHERE env = ?"
             params.append(env)
@@ -172,10 +180,10 @@ class MetricsStore:
             rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
-    def query_all(self, env: Optional[str] = None) -> List[Dict[str, Any]]:
+    def query_all(self, env: str | None = None) -> list[dict[str, Any]]:
         """All rows, oldest first — for dashboard time-series charts."""
         sql = "SELECT * FROM pipeline_calls"
-        params: List[Any] = []
+        params: list[Any] = []
         if env:
             sql += " WHERE env = ?"
             params.append(env)
@@ -185,7 +193,7 @@ class MetricsStore:
             rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
-    def percentile(self, column: str, p: float, env: Optional[str] = None) -> Optional[float]:
+    def percentile(self, column: str, p: float, env: str | None = None) -> float | None:
         """
         p in [0, 100]. Computed in Python (SQLite has no built-in
         percentile function) — fine at this scale (thousands, not millions,
@@ -195,7 +203,7 @@ class MetricsStore:
             raise ValueError(f"Unknown/non-numeric column: {column}")
 
         sql = f"SELECT {column} FROM pipeline_calls WHERE {column} IS NOT NULL"
-        params: List[Any] = []
+        params: list[Any] = []
         if env:
             sql += " AND env = ?"
             params.append(env)

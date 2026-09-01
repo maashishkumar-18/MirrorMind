@@ -11,7 +11,7 @@ Run:
 (run from the repo root so the `src` package resolves)
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,8 +19,8 @@ from pydantic import BaseModel
 
 from src.ingestion.vector_store import VectorStore
 from src.retrieval.orchestrator import RetrievalOrchestrator
-from src.retrieval.query_rewriter import ConversationState
 from src.retrieval.pipelines import PIPELINE_REGISTRY
+from src.retrieval.query_rewriter import ConversationState
 
 app = FastAPI(title="RAG Pipeline Retrieval Debug Server")
 
@@ -33,8 +33,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_vector_store: Optional[VectorStore] = None
-_orchestrator: Optional[RetrievalOrchestrator] = None
+_vector_store: VectorStore | None = None
+_orchestrator: RetrievalOrchestrator | None = None
 
 
 def get_orchestrator() -> RetrievalOrchestrator:
@@ -49,20 +49,20 @@ class QueryRequest(BaseModel):
     query: str
     namespace: str
     pipeline: str = "learning"
-    subject: Optional[str] = None
-    module: Optional[str] = None
-    chapter: Optional[str] = None
-    current_topic: Optional[str] = None
-    current_concept: Optional[str] = None
+    subject: str | None = None
+    module: str | None = None
+    chapter: str | None = None
+    current_topic: str | None = None
+    current_concept: str | None = None
 
 
 @app.get("/health")
-def health() -> Dict[str, str]:
+def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.get("/namespaces")
-def namespaces() -> Dict[str, List[str]]:
+def namespaces() -> dict[str, list[str]]:
     try:
         vector_store = VectorStore() if _vector_store is None else _vector_store
         return {"namespaces": vector_store.list_namespaces()}
@@ -71,12 +71,12 @@ def namespaces() -> Dict[str, List[str]]:
 
 
 @app.get("/pipelines")
-def pipelines() -> Dict[str, List[str]]:
+def pipelines() -> dict[str, list[str]]:
     return {"pipelines": list(PIPELINE_REGISTRY.keys())}
 
 
 @app.post("/query")
-def query(req: QueryRequest) -> Dict[str, Any]:
+def query(req: QueryRequest) -> dict[str, Any]:
     if req.pipeline not in PIPELINE_REGISTRY:
         raise HTTPException(status_code=400, detail=f"Unknown pipeline '{req.pipeline}'")
 

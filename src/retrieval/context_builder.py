@@ -12,21 +12,22 @@ variable overrides.
 
 import os
 import re
-import yaml
-from typing import List, Dict, Any, Optional, Tuple, Set
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections import defaultdict
+from typing import Any
 
+import yaml
 from dotenv import load_dotenv
 
+from src.common.types import CitationLocationType, RetrievedChunk
 from src.retrieval.config import ContextTemplate
-from src.common.types import RetrievedChunk, CitationLocationType
 from src.retrieval.reranker import RerankedChunk
 
 # Optional imports for tokenization
 try:
     import tiktoken
+
     TIKTOKEN_AVAILABLE = True
 except ImportError:
     TIKTOKEN_AVAILABLE = False
@@ -38,26 +39,30 @@ load_dotenv()
 # Configuration
 # ============================================================================
 
+
 @dataclass
 class TemplateConfig:
     """Configuration for a single context template."""
-    order: List[str] = field(default_factory=list)
-    section_labels: Dict[str, str] = field(default_factory=dict)
+
+    order: list[str] = field(default_factory=list)
+    section_labels: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class ClassificationHeuristic:
     """Rule-based patterns for chunk classification."""
-    patterns: List[str] = field(default_factory=list)
+
+    patterns: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ContextBuilderConfig:
     """Configuration for context building — loaded from YAML."""
-    templates: Dict[str, TemplateConfig] = field(default_factory=dict)
+
+    templates: dict[str, TemplateConfig] = field(default_factory=dict)
     classification_enabled: bool = True
     classification_method: str = "metadata"
-    heuristics: Dict[str, ClassificationHeuristic] = field(default_factory=dict)
+    heuristics: dict[str, ClassificationHeuristic] = field(default_factory=dict)
     citations_enabled: bool = True
     citation_format: str = "[{course} | {chapter} | {location} {page}]"
     include_citations_in_context: bool = True
@@ -73,15 +78,15 @@ class ContextBuilderConfig:
     normalize_whitespace: bool = True
     strip_source_prefix: bool = False
     tokenizer_model: str = "gpt-4o"  # Model for token counting
-    diversity_enabled: bool = True   # Whether to enforce chunk diversity
-    diversity_threshold: float = 0.3 # Similarity threshold for diversity
-    truncate_at_sentence: bool = True # Whether to truncate at sentence boundaries
+    diversity_enabled: bool = True  # Whether to enforce chunk diversity
+    diversity_threshold: float = 0.3  # Similarity threshold for diversity
+    truncate_at_sentence: bool = True  # Whether to truncate at sentence boundaries
 
     @classmethod
-    def from_yaml(cls, path: Optional[str] = None) -> "ContextBuilderConfig":
+    def from_yaml(cls, path: str | None = None) -> "ContextBuilderConfig":
         """
         Load configuration from YAML file.
-        
+
         Priority:
         1. Explicit path argument
         2. RAGPIPE_CONTEXT_BUILDER_CONFIG env var
@@ -90,17 +95,22 @@ class ContextBuilderConfig:
         config_path = (
             path
             or os.getenv("RAGPIPE_CONTEXT_BUILDER_CONFIG")
-            or str(Path(__file__).parent.parent.parent / "config" / "retrieval" / "context_builder.yaml")
+            or str(
+                Path(__file__).parent.parent.parent
+                / "config"
+                / "retrieval"
+                / "context_builder.yaml"
+            )
         )
-        
+
         if Path(config_path).exists():
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 data = yaml.safe_load(f)
         else:
             data = cls._default_config()
-        
+
         data = cls._apply_env_overrides(data)
-        
+
         # Parse templates
         templates = {}
         for name, template_data in data.get("templates", {}).items():
@@ -108,34 +118,36 @@ class ContextBuilderConfig:
                 order=template_data.get("order", []),
                 section_labels=template_data.get("section_labels", {}),
             )
-        
+
         # Parse heuristics
         heuristics = {}
         for name, h_data in data.get("classification", {}).get("heuristics", {}).items():
-            heuristics[name] = ClassificationHeuristic(
-                patterns=h_data.get("patterns", [])
-            )
-        
+            heuristics[name] = ClassificationHeuristic(patterns=h_data.get("patterns", []))
+
         assembly = data.get("assembly", {})
         cleaning = data.get("cleaning", {})
         citations = data.get("citations", {})
         classification = data.get("classification", {})
         diversity = data.get("diversity", {})
         tokenization = data.get("tokenization", {})
-        
+
         return cls(
             templates=templates,
             classification_enabled=bool(classification.get("enabled", True)),
             classification_method=str(classification.get("method", "metadata")),
             heuristics=heuristics,
             citations_enabled=bool(citations.get("enabled", True)),
-            citation_format=str(citations.get("format", "[{course} | {chapter} | {location} {page}]")),
+            citation_format=str(
+                citations.get("format", "[{course} | {chapter} | {location} {page}]")
+            ),
             include_citations_in_context=bool(citations.get("include_in_context", True)),
             include_citations_separate=bool(citations.get("include_separate_section", False)),
             max_total_tokens=int(assembly.get("max_total_tokens", 3000)),
             max_chunks=int(assembly.get("max_chunks", 5)),
             include_metadata_header=bool(assembly.get("include_metadata_header", True)),
-            metadata_header_format=str(assembly.get("metadata_header_format", "Context from: {course} - {chapter}")),
+            metadata_header_format=str(
+                assembly.get("metadata_header_format", "Context from: {course} - {chapter}")
+            ),
             separator=str(assembly.get("separator", "\n\n---\n\n")),
             truncation_marker=str(assembly.get("truncation_marker", "... [truncated]")),
             sort_by=str(assembly.get("sort_by", "template_order")),
@@ -147,9 +159,9 @@ class ContextBuilderConfig:
             diversity_threshold=float(diversity.get("threshold", 0.3)),
             truncate_at_sentence=bool(assembly.get("truncate_at_sentence", True)),
         )
-    
+
     @classmethod
-    def _apply_env_overrides(cls, data: Dict) -> Dict:
+    def _apply_env_overrides(cls, data: dict) -> dict:
         """Apply environment variable overrides."""
         env_mapping = {
             "RAGPIPE_CONTEXT_MAX_TOKENS": ("assembly", "max_total_tokens"),
@@ -159,7 +171,7 @@ class ContextBuilderConfig:
             "RAGPIPE_CONTEXT_DIVERSITY": ("diversity", "enabled"),
             "RAGPIPE_CONTEXT_TOKENIZER": ("tokenization", "model"),
         }
-        
+
         for env_var, (section, key) in env_mapping.items():
             value = os.getenv(env_var)
             if value is not None:
@@ -172,11 +184,11 @@ class ContextBuilderConfig:
                         data[section][key] = int(value)
                 except ValueError:
                     data[section][key] = value
-        
+
         return data
-    
+
     @staticmethod
-    def _default_config() -> Dict:
+    def _default_config() -> dict:
         """Minimal fallback configuration."""
         return {
             "templates": {
@@ -209,10 +221,14 @@ class ContextBuilderConfig:
                 "model": "gpt-4o",
             },
         }
-    
+
     def get_template(self, template_name: str) -> TemplateConfig:
         """Get a template by name, falling back to raw."""
-        template_key = template_name.value if isinstance(template_name, ContextTemplate) else str(template_name)
+        template_key = (
+            template_name.value
+            if isinstance(template_name, ContextTemplate)
+            else str(template_name)
+        )
         return self.templates.get(template_key, TemplateConfig())
 
 
@@ -220,18 +236,19 @@ class ContextBuilderConfig:
 # Token Counter
 # ============================================================================
 
+
 class TokenCounter:
     """
     Handles token counting for context assembly.
-    
+
     Uses the specified tokenizer for accurate counting, with fallback
     to character-based estimation.
     """
-    
+
     def __init__(self, model_name: str = "gpt-4o"):
         self.model_name = model_name
         self._encoder = None
-        
+
         if TIKTOKEN_AVAILABLE:
             try:
                 self._encoder = tiktoken.encoding_for_model(model_name)
@@ -241,42 +258,42 @@ class TokenCounter:
                     self._encoder = tiktoken.get_encoding("cl100k_base")
                 except Exception:
                     self._encoder = None
-    
+
     def count_tokens(self, text: str) -> int:
         """Count tokens in a string."""
         if not text:
             return 0
-        
+
         if self._encoder is not None:
             try:
                 return len(self._encoder.encode(text))
             except Exception:
                 # Fall back to estimation if encoding fails
                 return self._estimate_tokens(text)
-        
+
         # Fall back to estimation
         return self._estimate_tokens(text)
-    
+
     def _estimate_tokens(self, text: str) -> int:
         """Estimate tokens using character-based approximation."""
         # Rough approximation: 1 token ≈ 4 characters for English text
         return len(text) // 4
-    
-    def count_tokens_batch(self, texts: List[str]) -> List[int]:
+
+    def count_tokens_batch(self, texts: list[str]) -> list[int]:
         """Count tokens for multiple texts efficiently."""
         if self._encoder is not None:
             try:
                 # Use batch encoding if available
                 combined = "\n".join(texts)
                 all_tokens = self._encoder.encode(combined)
-                
+
                 # This is a simplified approach; for precise per-text counts,
                 # we'd need to track positions. For our use case, individual
                 # counts are fine.
                 return [self.count_tokens(t) for t in texts]
             except Exception:
                 pass
-        
+
         return [self._estimate_tokens(t) for t in texts]
 
 
@@ -284,24 +301,27 @@ class TokenCounter:
 # Context Builder
 # ============================================================================
 
+
 @dataclass
 class ClassifiedChunk:
     """A chunk with its classification for template ordering."""
+
     chunk: RerankedChunk
-    section_type: str           # "definition", "example", "formula", etc.
-    citation: str               # Formatted source citation
-    display_content: str        # Content with citation prepended
-    token_count: int = 0        # Token count of display_content
+    section_type: str  # "definition", "example", "formula", etc.
+    citation: str  # Formatted source citation
+    display_content: str  # Content with citation prepended
+    token_count: int = 0  # Token count of display_content
 
 
 @dataclass
 class AssembledContext:
     """Final assembled context ready for the generation layer."""
+
     formatted_context: str
     chunks_used: int
     tokens_used: int
-    sections: List[str]
-    citations: List[str]
+    sections: list[str]
+    citations: list[str]
     template_used: str
     metadata_header: str = ""
     truncated: bool = False
@@ -311,57 +331,52 @@ class AssembledContext:
     # Application layer's Generation bridge) must use to build real
     # RetrievedChunk objects — never parse `citations` strings for structure,
     # they are display-only formatted text, not a data contract.
-    chunks: List[RetrievedChunk] = field(default_factory=list)
+    chunks: list[RetrievedChunk] = field(default_factory=list)
 
 
 class ContextBuilder:
     """
     Assembles reranked chunks into structured, generation-ready context.
-    
+
     Organizes by template, classifies chunks into sections,
     injects citations, enforces token limits, and ensures
     content diversity.
-    
+
     Configuration-driven — all templates and rules from YAML.
     """
-    
-    def __init__(
-        self,
-        config: Optional[ContextBuilderConfig] = None,
-        config_path: Optional[str] = None
-    ):
+
+    def __init__(self, config: ContextBuilderConfig | None = None, config_path: str | None = None):
         """
         Initialize the context builder.
-        
+
         Args:
             config: ContextBuilderConfig object
             config_path: Path to YAML config file
         """
         self.config = config or ContextBuilderConfig.from_yaml(config_path)
         self.token_counter = TokenCounter(self.config.tokenizer_model)
-        
+
         # Pre-compile heuristic patterns
         self._compiled_heuristics = {}
         for section_type, heuristic in self.config.heuristics.items():
             self._compiled_heuristics[section_type] = [
-                re.compile(pattern, re.IGNORECASE) 
-                for pattern in heuristic.patterns
+                re.compile(pattern, re.IGNORECASE) for pattern in heuristic.patterns
             ]
-    
+
     def build(
         self,
-        chunks: List[RerankedChunk],
+        chunks: list[RerankedChunk],
         template: ContextTemplate,
-        pipeline_name: str = "learning"
+        pipeline_name: str = "learning",
     ) -> AssembledContext:
         """
         Assemble reranked chunks into structured context.
-        
+
         Args:
             chunks: Reranked chunks from the reranker
             template: Context template for organization
             pipeline_name: Pipeline name for diagnostics
-            
+
         Returns:
             AssembledContext with formatted context string
         """
@@ -374,40 +389,40 @@ class ContextBuilder:
                 citations=[],
                 template_used=template.value,
                 truncated=False,
-                diversity_applied=False
+                diversity_applied=False,
             )
-        
+
         template_config = self.config.get_template(template)
-        
+
         # Step 1: Classify chunks into sections
         classified = self._classify_chunks(chunks, template_config)
-        
+
         # Step 2: Sort by template order (primary) and score (secondary)
         if self.config.sort_by == "template_order" and template_config.order:
             classified = self._sort_by_template(classified, template_config.order)
         elif self.config.sort_by == "score":
             classified.sort(key=lambda c: c.chunk.rerank_score, reverse=True)
-        
+
         # Step 3: Apply diversity filtering (if enabled)
         diversity_applied = False
         if self.config.diversity_enabled:
             classified, diversity_applied = self._apply_diversity_filtering(classified)
-        
+
         # Step 4: Limit to max chunks
-        classified = classified[:self.config.max_chunks]
-        
+        classified = classified[: self.config.max_chunks]
+
         # Step 5: Pre-calculate token counts
         for c in classified:
             c.token_count = self.token_counter.count_tokens(c.display_content)
-        
+
         # Step 6: Group by section type
         sections = self._group_by_section(classified, template_config)
-        
+
         # Step 7: Build formatted context with token limiting
         formatted, tokens_used, truncated = self._build_formatted_context(
             sections, template_config, chunks
         )
-        
+
         # Step 8: Extract citations
         citations = [c.citation for c in classified if c.citation]
 
@@ -442,7 +457,9 @@ class ContextBuilder:
         chunk = classified.chunk
         metadata = chunk.metadata
         file_type = metadata.get("file_type", "")
-        location_type = CitationLocationType.SLIDE if file_type == "pptx" else CitationLocationType.PAGE
+        location_type = (
+            CitationLocationType.SLIDE if file_type == "pptx" else CitationLocationType.PAGE
+        )
 
         return RetrievedChunk(
             chunk_id=chunk.chunk_id,
@@ -460,33 +477,32 @@ class ContextBuilder:
             file_type=file_type,
             source_prefix=metadata.get("source_prefix", ""),
         )
-    
+
     # ========================================================================
     # Diversity Filtering
     # ========================================================================
-    
+
     def _apply_diversity_filtering(
-        self,
-        classified: List[ClassifiedChunk]
-    ) -> Tuple[List[ClassifiedChunk], bool]:
+        self, classified: list[ClassifiedChunk]
+    ) -> tuple[list[ClassifiedChunk], bool]:
         """
         Apply diversity filtering to ensure chunks from different sources.
-        
+
         Uses a simple heuristic: prefer chunks from different pages/sections.
         """
         if len(classified) <= 1:
             return classified, False
-        
+
         # Group chunks by source (page, section, or file)
-        source_groups: Dict[str, List[ClassifiedChunk]] = defaultdict(list)
-        
+        source_groups: dict[str, list[ClassifiedChunk]] = defaultdict(list)
+
         for c in classified:
             # Create a source key based on available metadata
             metadata = c.chunk.metadata
             page = metadata.get("page_start", "")
             chapter = metadata.get("chapter_title", "")
             chunk_type = metadata.get("chunk_type", "")
-            
+
             # Prefer page-level diversity, then chapter, then chunk type
             if page:
                 key = f"page_{page}"
@@ -496,33 +512,33 @@ class ContextBuilder:
                 key = f"type_{chunk_type}"
             else:
                 key = "unknown"
-            
+
             source_groups[key].append(c)
-        
+
         # If all chunks are from the same source, no diversity to apply
         if len(source_groups) <= 1:
             return classified, False
-        
+
         # Diversify: take best from each source, then fill remaining slots
         diversified = []
         source_keys = list(source_groups.keys())
-        
+
         # Round-robin: take the top chunk from each source
         source_iterators = {
             key: iter(sorted(group, key=lambda c: c.chunk.rerank_score, reverse=True))
             for key, group in source_groups.items()
         }
-        
+
         # Keep track of which sources have been used
         active_sources = set(source_keys)
         remaining_slots = self.config.max_chunks
-        
+
         while active_sources and remaining_slots > 0:
             # Cycle through active sources
             for source in list(active_sources):
                 if remaining_slots <= 0:
                     break
-                
+
                 try:
                     chunk = next(source_iterators[source])
                     diversified.append(chunk)
@@ -530,51 +546,51 @@ class ContextBuilder:
                 except StopIteration:
                     # This source is exhausted
                     active_sources.remove(source)
-        
+
         # If we didn't fill all slots, take the next best from any source
         if remaining_slots > 0 and len(diversified) < len(classified):
             # Get chunks that weren't selected
             selected_ids = {c.chunk.chunk_id for c in diversified}
             remaining_chunks = [c for c in classified if c.chunk.chunk_id not in selected_ids]
-            
+
             # Add more chunks sorted by score
             for c in remaining_chunks[:remaining_slots]:
                 diversified.append(c)
-        
+
         return diversified, True
-    
+
     # ========================================================================
     # Chunk Classification
     # ========================================================================
-    
+
     def _classify_chunks(
-        self,
-        chunks: List[RerankedChunk],
-        template: TemplateConfig
-    ) -> List[ClassifiedChunk]:
+        self, chunks: list[RerankedChunk], template: TemplateConfig
+    ) -> list[ClassifiedChunk]:
         """Classify each chunk into a section type."""
         classified = []
-        
+
         for chunk in chunks:
             # Determine section type
             section_type = self._determine_section_type(chunk)
-            
+
             # Build citation
             citation = self._build_citation(chunk)
-            
+
             # Prepare display content
             display_content = self._prepare_display_content(chunk, citation)
-            
-            classified.append(ClassifiedChunk(
-                chunk=chunk,
-                section_type=section_type,
-                citation=citation,
-                display_content=display_content,
-                token_count=0  # Will be set later
-            ))
-        
+
+            classified.append(
+                ClassifiedChunk(
+                    chunk=chunk,
+                    section_type=section_type,
+                    citation=citation,
+                    display_content=display_content,
+                    token_count=0,  # Will be set later
+                )
+            )
+
         return classified
-    
+
     def _determine_section_type(self, chunk: RerankedChunk) -> str:
         """Determine which section a chunk belongs to."""
         # Method 1: Use metadata chunk_type from ingestion
@@ -582,21 +598,21 @@ class ContextBuilder:
             chunk_type = chunk.metadata.get("chunk_type", "")
             if chunk_type in self.config.heuristics:
                 return chunk_type
-        
+
         # Method 2: Heuristic pattern matching
         if self.config.classification_enabled:
             content = chunk.raw_content or chunk.content
-            
+
             for section_type, patterns in self._compiled_heuristics.items():
                 for pattern in patterns:
                     if pattern.search(content):
                         return section_type
-        
+
         # Fallback
         return "general"
-    
+
     @staticmethod
-    def _to_display_int(value: Any) -> Optional[int]:
+    def _to_display_int(value: Any) -> int | None:
         """Coerce a possibly-float metadata number (e.g. Pinecone's 6.0) to a clean int for display."""
         if value is None or value == "":
             return None
@@ -609,7 +625,7 @@ class ContextBuilder:
         """Build a formatted citation string for a chunk."""
         if not self.config.citations_enabled:
             return ""
-        
+
         metadata = chunk.metadata
 
         course = metadata.get("course_name", "")
@@ -631,64 +647,56 @@ class ContextBuilder:
             page = str(page_start)
         else:
             page = "N/A"
-        
+
         return self.config.citation_format.format(
-            course=course or "Unknown",
-            chapter=chapter or "Unknown",
-            location=location,
-            page=page
+            course=course or "Unknown", chapter=chapter or "Unknown", location=location, page=page
         )
-    
+
     def _prepare_display_content(self, chunk: RerankedChunk, citation: str) -> str:
         """Prepare chunk content for display with optional citation."""
         content = chunk.content
-        
+
         # Optionally strip source prefix that was added during enrichment
         if self.config.strip_source_prefix:
             source_prefix = chunk.metadata.get("source_prefix", "")
             if source_prefix and content.startswith(source_prefix):
-                content = content[len(source_prefix):].strip()
-        
+                content = content[len(source_prefix) :].strip()
+
         # Add citation if enabled
         if self.config.include_citations_in_context and citation:
             content = f"{citation}\n{content}"
-        
+
         return content
-    
+
     # ========================================================================
     # Sorting & Grouping
     # ========================================================================
-    
+
     def _sort_by_template(
-        self,
-        classified: List[ClassifiedChunk],
-        order: List[str]
-    ) -> List[ClassifiedChunk]:
+        self, classified: list[ClassifiedChunk], order: list[str]
+    ) -> list[ClassifiedChunk]:
         """Sort chunks according to template section order."""
         # Create priority map
         priority = {section: i for i, section in enumerate(order)}
-        
+
         # Sort: by template priority, then by rerank score within same section
-        classified.sort(key=lambda c: (
-            priority.get(c.section_type, len(order)),
-            -c.chunk.rerank_score
-        ))
-        
+        classified.sort(
+            key=lambda c: (priority.get(c.section_type, len(order)), -c.chunk.rerank_score)
+        )
+
         return classified
-    
+
     def _group_by_section(
-        self,
-        classified: List[ClassifiedChunk],
-        template: TemplateConfig
-    ) -> Dict[str, List[ClassifiedChunk]]:
+        self, classified: list[ClassifiedChunk], template: TemplateConfig
+    ) -> dict[str, list[ClassifiedChunk]]:
         """Group classified chunks by section type."""
-        sections: Dict[str, List[ClassifiedChunk]] = {}
-        
+        sections: dict[str, list[ClassifiedChunk]] = {}
+
         for c in classified:
             if c.section_type not in sections:
                 sections[c.section_type] = []
             sections[c.section_type].append(c)
-        
+
         # If template has an order, preserve it
         if template.order:
             ordered_sections = {}
@@ -700,29 +708,29 @@ class ContextBuilder:
                 if section_type not in ordered_sections:
                     ordered_sections[section_type] = items
             return ordered_sections
-        
+
         return sections
-    
+
     # ========================================================================
     # Context Assembly
     # ========================================================================
-    
+
     def _build_formatted_context(
         self,
-        sections: Dict[str, List[ClassifiedChunk]],
+        sections: dict[str, list[ClassifiedChunk]],
         template: TemplateConfig,
-        original_chunks: List[RerankedChunk]
-    ) -> Tuple[str, int, bool]:
+        original_chunks: list[RerankedChunk],
+    ) -> tuple[str, int, bool]:
         """
         Build the final formatted context string with token limiting.
-        
+
         Returns:
             Tuple of (formatted_context, token_count, was_truncated)
         """
         parts = []
         total_tokens = 0
         max_tokens = self.config.max_total_tokens
-        
+
         # Add metadata header
         if self.config.include_metadata_header:
             header = self._build_metadata_header(original_chunks)
@@ -734,23 +742,25 @@ class ContextBuilder:
                 else:
                     # Can't even include header, return empty
                     return "", 0, True
-        
+
         # Build each section incrementally, checking token budget
         truncated = False
-        
+
         for section_type, items in sections.items():
             # Section label
-            label = template.section_labels.get(section_type, section_type.upper().replace("_", " "))
+            label = template.section_labels.get(
+                section_type, section_type.upper().replace("_", " ")
+            )
             section_label = f"## {label}"
-            
+
             label_tokens = self.token_counter.count_tokens(section_label)
             if total_tokens + label_tokens > max_tokens:
                 truncated = True
                 break
-            
+
             section_parts = [section_label]
             section_tokens = label_tokens
-            
+
             for item in items:
                 # Clean content
                 content = item.display_content
@@ -758,57 +768,56 @@ class ContextBuilder:
                     content = self._normalize_whitespace(content)
                 if self.config.remove_duplicate_lines:
                     content = self._remove_duplicate_lines(content)
-                
+
                 content_tokens = self.token_counter.count_tokens(content)
-                
+
                 # Check if we can add this chunk
                 if section_tokens + content_tokens > max_tokens - total_tokens:
                     # Try to truncate at sentence boundary if possible
                     if self.config.truncate_at_sentence:
                         truncated_content, truncated_tokens = self._truncate_at_sentence(
-                            content, 
-                            max_tokens - total_tokens - section_tokens
+                            content, max_tokens - total_tokens - section_tokens
                         )
                         if truncated_content:
                             section_parts.append(truncated_content)
                             section_tokens += truncated_tokens
                             truncated = True
                     break
-                
+
                 section_parts.append(content)
                 section_tokens += content_tokens
-            
+
             # Add this section if we have content
             if len(section_parts) > 1:
                 section_text = "\n".join(section_parts)
                 parts.append(section_text)
                 total_tokens += section_tokens
-        
+
         # Join sections
         formatted = self.config.separator.join(parts)
-        
+
         # Add truncation marker if truncated
         if truncated:
             formatted += self.config.truncation_marker
-        
+
         return formatted, total_tokens, truncated
-    
-    def _truncate_at_sentence(self, text: str, max_tokens: int) -> Tuple[str, int]:
+
+    def _truncate_at_sentence(self, text: str, max_tokens: int) -> tuple[str, int]:
         """
         Truncate text at a sentence boundary within the token budget.
-        
+
         Returns:
             Tuple of (truncated_text, token_count)
         """
         if max_tokens <= 0:
             return "", 0
-        
+
         # Split into sentences (simple heuristic)
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+
         truncated_parts = []
         current_tokens = 0
-        
+
         for sentence in sentences:
             sentence_tokens = self.token_counter.count_tokens(sentence)
             if current_tokens + sentence_tokens <= max_tokens:
@@ -826,101 +835,100 @@ class ContextBuilder:
                     if truncated:
                         return truncated + "...", self.token_counter.count_tokens(truncated + "...")
                     return "", 0
-        
+
         if not truncated_parts:
             return "", 0
-        
+
         result = " ".join(truncated_parts)
         return result, self.token_counter.count_tokens(result)
-    
-    def _build_metadata_header(self, chunks: List[RerankedChunk]) -> str:
+
+    def _build_metadata_header(self, chunks: list[RerankedChunk]) -> str:
         """Build a metadata header from chunk information."""
         if not chunks or not self.config.include_metadata_header:
             return ""
-        
+
         # Get metadata from first chunk (all should be from same document)
         first = chunks[0].metadata
-        
+
         course = first.get("course_name", "")
         chapter = first.get("chapter_title", "")
-        
+
         if not course and not chapter:
             return ""
-        
+
         return self.config.metadata_header_format.format(
-            course=course or "Unknown Course",
-            chapter=chapter or "Unknown Chapter"
+            course=course or "Unknown Course", chapter=chapter or "Unknown Chapter"
         )
-    
+
     # ========================================================================
     # Content Cleaning
     # ========================================================================
-    
+
     def _normalize_whitespace(self, text: str) -> str:
         """Normalize whitespace without collapsing intentional structure."""
         # Remove trailing whitespace per line
-        lines = text.split('\n')
+        lines = text.split("\n")
         lines = [line.rstrip() for line in lines]
-        text = '\n'.join(lines)
-        
+        text = "\n".join(lines)
+
         # Replace multiple spaces (but not newlines)
-        text = re.sub(r' {2,}', ' ', text)
-        
+        text = re.sub(r" {2,}", " ", text)
+
         # Normalize multiple newlines to max 2
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        
+        text = re.sub(r"\n{3,}", "\n\n", text)
+
         return text.strip()
-    
+
     def _remove_duplicate_lines(self, text: str) -> str:
         """Remove duplicate consecutive lines."""
-        lines = text.split('\n')
+        lines = text.split("\n")
         unique = []
         prev = None
-        
+
         for line in lines:
             stripped = line.strip()
             if stripped != prev or not stripped:
                 unique.append(line)
             prev = stripped
-        
-        return '\n'.join(unique)
-    
+
+        return "\n".join(unique)
+
     # ========================================================================
     # Public Utility Methods
     # ========================================================================
-    
+
     def count_tokens(self, text: str) -> int:
         """Public method to count tokens using the configured tokenizer."""
         return self.token_counter.count_tokens(text)
-    
-    def estimate_context_size(self, chunks: List[RerankedChunk]) -> int:
+
+    def estimate_context_size(self, chunks: list[RerankedChunk]) -> int:
         """
         Estimate the token size of the context that would be built.
-        
+
         Useful for pre-validation before building.
         """
         if not chunks:
             return 0
-        
+
         total = 0
-        
+
         # Header
         if self.config.include_metadata_header:
             header = self._build_metadata_header(chunks)
             if header:
                 total += self.token_counter.count_tokens(header)
-        
+
         # Chunks
         for chunk in chunks:
             content = chunk.content
             if self.config.normalize_whitespace:
                 content = self._normalize_whitespace(content)
             total += self.token_counter.count_tokens(content)
-        
+
         # Separators
         num_separators = min(len(chunks) - 1, 0)
         total += num_separators * self.token_counter.count_tokens(self.config.separator)
-        
+
         return total
 
 
@@ -932,11 +940,11 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Context Builder - Validation (Enhanced)")
     print("=" * 60)
-    
+
     config = ContextBuilderConfig.from_yaml()
     builder = ContextBuilder(config=config)
-    
-    print(f"\n📋 Configuration loaded:")
+
+    print("\n📋 Configuration loaded:")
     print(f"   Templates: {list(config.templates.keys())}")
     print(f"   Classification: {config.classification_method}")
     print(f"   Citations: {config.citations_enabled}")
@@ -947,10 +955,10 @@ if __name__ == "__main__":
     print(f"   Diversity threshold: {config.diversity_threshold}")
     print(f"   Tokenizer model: {config.tokenizer_model}")
     print(f"   Truncate at sentence: {config.truncate_at_sentence}")
-    
+
     # Create sample reranked chunks
     from src.retrieval.reranker import RerankedChunk
-    
+
     sample_chunks = [
         RerankedChunk(
             chunk_id="doc1_0001",
@@ -966,8 +974,8 @@ if __name__ == "__main__":
                 "page_start": 12,
                 "page_end": 12,
                 "file_type": "pptx",
-                "chunk_type": "definition"
-            }
+                "chunk_type": "definition",
+            },
         ),
         RerankedChunk(
             chunk_id="doc1_0002",
@@ -983,8 +991,8 @@ if __name__ == "__main__":
                 "page_start": 13,
                 "page_end": 13,
                 "file_type": "pptx",
-                "chunk_type": "explanation"
-            }
+                "chunk_type": "explanation",
+            },
         ),
         RerankedChunk(
             chunk_id="doc1_0003",
@@ -1000,8 +1008,8 @@ if __name__ == "__main__":
                 "page_start": 14,
                 "page_end": 14,
                 "file_type": "pptx",
-                "chunk_type": "example"
-            }
+                "chunk_type": "example",
+            },
         ),
         RerankedChunk(
             chunk_id="doc1_0004",
@@ -1017,8 +1025,8 @@ if __name__ == "__main__":
                 "page_start": 15,
                 "page_end": 15,
                 "file_type": "pptx",
-                "chunk_type": "important_notes"
-            }
+                "chunk_type": "important_notes",
+            },
         ),
         RerankedChunk(
             chunk_id="doc1_0005",
@@ -1034,8 +1042,8 @@ if __name__ == "__main__":
                 "page_start": 20,
                 "page_end": 20,
                 "file_type": "pptx",
-                "chunk_type": "definition"
-            }
+                "chunk_type": "definition",
+            },
         ),
         RerankedChunk(
             chunk_id="doc1_0006",
@@ -1051,11 +1059,11 @@ if __name__ == "__main__":
                 "page_start": 21,
                 "page_end": 21,
                 "file_type": "pptx",
-                "chunk_type": "important_notes"
-            }
+                "chunk_type": "important_notes",
+            },
         ),
     ]
-    
+
     # Test each template
     test_templates = [
         ContextTemplate.LEARNING,
@@ -1064,27 +1072,27 @@ if __name__ == "__main__":
         ContextTemplate.COMPARISON,
         ContextTemplate.RAW,
     ]
-    
+
     for template in test_templates:
         print(f"\n{'─' * 50}")
         print(f"Template: {template.value}")
-        
+
         result = builder.build(sample_chunks, template)
-        
+
         print(f"   Chunks used: {result.chunks_used}")
         print(f"   Sections: {result.sections}")
         print(f"   Citations: {len(result.citations)}")
         print(f"   Estimated tokens: {result.tokens_used}")
         print(f"   Diversity applied: {result.diversity_applied}")
         print(f"   Truncated: {result.truncated}")
-        
+
         if result.metadata_header:
             print(f"   Header: {result.metadata_header}")
-        
+
         # Show first 200 chars of formatted context
-        preview = result.formatted_context[:300].replace('\n', '\\n')
+        preview = result.formatted_context[:300].replace("\n", "\\n")
         print(f"   Preview: {preview}...")
-    
+
     print(f"\n{'=' * 60}")
     print("✅ Enhanced Context Builder ready for integration")
     print("=" * 60)

@@ -4,15 +4,14 @@ Uses DeepSeek to create intelligent, topic-aware chunks aligned with
 slide boundaries (PPTX) or topic transitions (PDF/DOCX).
 """
 
-import os
 import json
+import os
 import re
-from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dotenv import load_dotenv
 import tiktoken
+from dotenv import load_dotenv
 
 from src.common.llm_client import simple_generate
 
@@ -24,7 +23,8 @@ from src.common.llm_client import simple_generate
 try:
     import nltk
     from nltk.tokenize import sent_tokenize
-    nltk.data.find('tokenizers/punkt')
+
+    nltk.data.find("tokenizers/punkt")
     NLTK_AVAILABLE = True
 except (ImportError, LookupError):
     NLTK_AVAILABLE = False
@@ -39,6 +39,7 @@ load_dotenv()
 @dataclass
 class Chunk:
     """A single semantic chunk enriched with document metadata."""
+
     # Required chunk metadata
     chunk_id: str
     content: str
@@ -57,12 +58,12 @@ class Chunk:
     chapter_title: str
     subject_area: str
     global_context: str
-    key_topics: List[str]
+    key_topics: list[str]
 
     parent_chunk_id: str = ""
     extraction_confidence: float = 0.0
     token_count: int = 0
-    element_ids: List[int] = field(default_factory=list)
+    element_ids: list[int] = field(default_factory=list)
 
 
 class SemanticChunker:
@@ -76,10 +77,7 @@ class SemanticChunker:
     """
 
     def __init__(
-        self,
-        api_key: Optional[str] = None,
-        max_chunk_tokens: int = 512,
-        min_chunk_tokens: int = 75
+        self, api_key: str | None = None, max_chunk_tokens: int = 512, min_chunk_tokens: int = 75
     ):
         """
         Initialize the semantic chunker.
@@ -96,13 +94,13 @@ class SemanticChunker:
         # Token-based chunking configuration for text-embedding-3-small
         self.max_chunk_tokens = max_chunk_tokens
         self.min_chunk_tokens = min_chunk_tokens
-        
+
         # Initialize tiktoken for the embedding model
         self.encoding = tiktoken.encoding_for_model("text-embedding-3-small")
-        
+
         # Slide boundary tolerance (still used for PPTX)
         self.slide_boundary_tolerance = 2
-        
+
         # Sentence splitting configuration
         self.use_nltk = NLTK_AVAILABLE
 
@@ -116,15 +114,15 @@ class SemanticChunker:
             return 0
         return len(self.encoding.encode(text))
 
-    def _encode(self, text: str) -> List[int]:
+    def _encode(self, text: str) -> list[int]:
         """Encode text to token IDs."""
         return self.encoding.encode(text)
 
-    def _decode(self, tokens: List[int]) -> str:
+    def _decode(self, tokens: list[int]) -> str:
         """Decode token IDs back to text."""
         return self.encoding.decode(tokens)
 
-    def _get_token_info(self, text: str) -> Tuple[int, List[int]]:
+    def _get_token_info(self, text: str) -> tuple[int, list[int]]:
         """Get both token count and token IDs in one operation."""
         tokens = self._encode(text)
         return len(tokens), tokens
@@ -133,7 +131,7 @@ class SemanticChunker:
     # Main Chunking Pipeline
     # ------------------------------------------------------------------
 
-    def chunk(self, cleaned_doc: CleanedDocument, metadata: DocumentMetadata) -> List[Chunk]:
+    def chunk(self, cleaned_doc: CleanedDocument, metadata: DocumentMetadata) -> list[Chunk]:
         """
         Create semantic chunks from a cleaned document.
 
@@ -169,13 +167,13 @@ class SemanticChunker:
     # Sentence Splitting (with NLTK fallback)
     # ------------------------------------------------------------------
 
-    def _split_into_sentences(self, text: str) -> List[str]:
+    def _split_into_sentences(self, text: str) -> list[str]:
         """
         Split text into sentences using NLTK if available, otherwise fallback to regex.
-        
+
         Args:
             text: Text to split into sentences
-            
+
         Returns:
             List of sentences
         """
@@ -188,40 +186,38 @@ class SemanticChunker:
         else:
             return self._fallback_sentence_split(text)
 
-    def _fallback_sentence_split(self, text: str) -> List[str]:
+    def _fallback_sentence_split(self, text: str) -> list[str]:
         """
         Fallback sentence splitting using regex.
         Handles common abbreviations and punctuation.
         """
         # Pattern for sentence boundaries: ., !, ? followed by space or end of string
         # Exclude common abbreviations
-        abbreviations = r'\b(?:Dr|Mr|Mrs|Ms|Prof|Rev|Hon|St|Ave|Blvd|Rd|Jr|Sr|vs|etc|e\.g|i\.e|U\.S|U\.S\.A|U\.K|U\.N)\b'
-        
+        abbreviations = r"\b(?:Dr|Mr|Mrs|Ms|Prof|Rev|Hon|St|Ave|Blvd|Rd|Jr|Sr|vs|etc|e\.g|i\.e|U\.S|U\.S\.A|U\.K|U\.N)\b"
+
         # Replace abbreviations with placeholders
         placeholder = "___ABBR___"
         abbr_map = {}
-        
+
         def replace_abbr(match):
             abbr = match.group(0)
             key = f"{placeholder}_{len(abbr_map)}"
             abbr_map[key] = abbr
             return key
-        
+
         text_with_placeholders = re.sub(abbreviations, replace_abbr, text)
-        
+
         # Split on sentence boundaries: ., !, ? followed by space or end
-        sentences = re.split(r'(?<=[.!?])\s+', text_with_placeholders)
-        
+        sentences = re.split(r"(?<=[.!?])\s+", text_with_placeholders)
+
         # Restore abbreviations
         sentences = [
-            self._restore_abbreviations(sent, abbr_map)
-            for sent in sentences
-            if sent.strip()
+            self._restore_abbreviations(sent, abbr_map) for sent in sentences if sent.strip()
         ]
-        
+
         return sentences
 
-    def _restore_abbreviations(self, text: str, abbr_map: Dict[str, str]) -> str:
+    def _restore_abbreviations(self, text: str, abbr_map: dict[str, str]) -> str:
         """Restore abbreviation placeholders."""
         result = text
         for placeholder, abbr in abbr_map.items():
@@ -232,7 +228,7 @@ class SemanticChunker:
     # Token-Based Chunk Size Management
     # ------------------------------------------------------------------
 
-    def _split_oversized_chunks(self, chunks: List[Chunk]) -> List[Chunk]:
+    def _split_oversized_chunks(self, chunks: list[Chunk]) -> list[Chunk]:
         """
         Split chunks that exceed max_chunk_tokens into smaller pieces.
         """
@@ -240,7 +236,7 @@ class SemanticChunker:
             return chunks
 
         final_chunks = []
-        
+
         for chunk in chunks:
             token_count = self._count_tokens(chunk.content)
             if token_count <= self.max_chunk_tokens:
@@ -250,64 +246,58 @@ class SemanticChunker:
                 # Split oversized chunk
                 split_chunks = self._split_chunk_by_tokens(chunk)
                 final_chunks.extend(split_chunks)
-        
+
         return final_chunks
 
-    def _split_chunk_by_tokens(self, chunk: Chunk) -> List[Chunk]:
+    def _split_chunk_by_tokens(self, chunk: Chunk) -> list[Chunk]:
         """
         Split a single chunk into smaller chunks by token count.
         Attempts to split at sentence boundaries.
-        
+
         Returns:
             List of split chunks with parent relationships preserved
         """
         content = chunk.content
         max_tokens = self.max_chunk_tokens
-        
+
         # Get sentences using NLTK or fallback
         sentences = self._split_into_sentences(content)
-        
+
         split_chunks = []
         current_sentences = []
         current_tokens = 0
         chunk_counter = 0
-        
+
         for sentence in sentences:
             sentence_tokens = self._count_tokens(sentence)
-            
+
             # If this sentence alone exceeds max tokens, split it further by tokens
             if sentence_tokens > max_tokens:
                 # Flush current chunk if exists
                 if current_sentences:
                     split_chunks.append(
                         self._create_split_chunk(
-                            chunk,
-                            " ".join(current_sentences),
-                            chunk.element_ids,
-                            chunk_counter
+                            chunk, " ".join(current_sentences), chunk.element_ids, chunk_counter
                         )
                     )
                     chunk_counter += 1
                     current_sentences = []
                     current_tokens = 0
-                
+
                 # Split long sentence by token boundaries
                 tokens = self._encode(sentence)
                 for i in range(0, len(tokens), max_tokens):
-                    part_tokens = tokens[i:i+max_tokens]
+                    part_tokens = tokens[i : i + max_tokens]
                     part_text = self._decode(part_tokens)
                     if part_text:
                         split_chunks.append(
                             self._create_split_chunk(
-                                chunk,
-                                part_text.strip(),
-                                chunk.element_ids,
-                                chunk_counter
+                                chunk, part_text.strip(), chunk.element_ids, chunk_counter
                             )
                         )
                         chunk_counter += 1
                 continue
-            
+
             # Check if adding this sentence would exceed max tokens
             if current_tokens + sentence_tokens <= max_tokens:
                 current_sentences.append(sentence)
@@ -317,37 +307,27 @@ class SemanticChunker:
                 if current_sentences:
                     split_chunks.append(
                         self._create_split_chunk(
-                            chunk,
-                            " ".join(current_sentences),
-                            chunk.element_ids,
-                            chunk_counter
+                            chunk, " ".join(current_sentences), chunk.element_ids, chunk_counter
                         )
                     )
                     chunk_counter += 1
-                
+
                 # Start new chunk with this sentence
                 current_sentences = [sentence]
                 current_tokens = sentence_tokens
-        
+
         # Don't forget the last chunk
         if current_sentences:
             split_chunks.append(
                 self._create_split_chunk(
-                    chunk,
-                    " ".join(current_sentences),
-                    chunk.element_ids,
-                    chunk_counter
+                    chunk, " ".join(current_sentences), chunk.element_ids, chunk_counter
                 )
             )
-        
+
         return split_chunks
 
     def _create_split_chunk(
-        self, 
-        original: Chunk, 
-        content: str, 
-        element_ids: List[int], 
-        part_num: int
+        self, original: Chunk, content: str, element_ids: list[int], part_num: int
     ) -> Chunk:
         """
         Create a new chunk from an original chunk with modified content.
@@ -370,20 +350,22 @@ class SemanticChunker:
             key_topics=original.key_topics,
             extraction_confidence=original.extraction_confidence,
             token_count=self._count_tokens(content),
-            element_ids=element_ids
+            element_ids=element_ids,
         )
 
     # ------------------------------------------------------------------
     # PPTX: Slide-Boundary-Aware Chunking
     # ------------------------------------------------------------------
 
-    def _chunk_by_slides(self, cleaned_doc: CleanedDocument, metadata: DocumentMetadata) -> List[Chunk]:
+    def _chunk_by_slides(
+        self, cleaned_doc: CleanedDocument, metadata: DocumentMetadata
+    ) -> list[Chunk]:
         """
         Group elements by slide. Merge small adjacent slides into one chunk.
         Uses token counts for size decisions.
         """
         # Group elements by page_number (slide number for PPTX)
-        slides: Dict[int, List] = {}
+        slides: dict[int, list] = {}
         for idx, element in enumerate(cleaned_doc.elements):
             page = element.page_number
             if page not in slides:
@@ -398,58 +380,48 @@ class SemanticChunker:
             element_ids = [idx for idx, _ in elements]
             token_count = self._count_tokens(content)
 
-            slide_chunks.append({
-                "page": page_num,
-                "content": content,
-                "element_ids": element_ids,
-                "tokens": token_count
-            })
+            slide_chunks.append(
+                {
+                    "page": page_num,
+                    "content": content,
+                    "element_ids": element_ids,
+                    "tokens": token_count,
+                }
+            )
 
         # Merge small adjacent slides
         merged = self._merge_small_chunks(slide_chunks)
 
         # Assign topics via DeepSeek (batch)
-        topics = self._assign_topics_batch(
-            [m["content"][:500] for m in merged],
-            metadata
-        )
+        topics = self._assign_topics_batch([m["content"][:500] for m in merged], metadata)
 
         # Build Chunk objects
         chunks = []
         for i, m in enumerate(merged):
             chunk = Chunk(
                 chunk_id="",
-
                 content=m["content"],
                 chunk_type="slide",
-
                 page_start=m["page"],
                 page_end=m["page"] if len(m["pages"]) == 1 else m["pages"][-1],
-
                 topic=topics[i] if i < len(topics) else "General",
-
                 parent_chunk_id="",  # No parent for original chunks
-
                 filename=metadata.filename,
                 file_type=metadata.file_type,
-
                 course_name=metadata.course_name,
                 chapter_title=metadata.chapter_title,
                 subject_area=metadata.subject_area,
                 global_context=metadata.global_context,
                 key_topics=metadata.key_topics,
-
                 extraction_confidence=metadata.extraction_confidence,
-
                 token_count=m["tokens"],
-
-                element_ids=m["element_ids"]
+                element_ids=m["element_ids"],
             )
             chunks.append(chunk)
 
         return chunks
 
-    def _merge_small_chunks(self, slide_chunks: List[Dict]) -> List[Dict]:
+    def _merge_small_chunks(self, slide_chunks: list[dict]) -> list[dict]:
         """
         Merge adjacent slides that are individually below min_chunk_tokens.
         Respects slide_boundary_tolerance limit.
@@ -467,7 +439,7 @@ class SemanticChunker:
                     "pages": [sc["page"]],
                     "content": sc["content"],
                     "element_ids": sc["element_ids"][:],
-                    "tokens": sc["tokens"]
+                    "tokens": sc["tokens"],
                 }
             elif buffer["tokens"] < self.min_chunk_tokens:
                 # Merge current into buffer
@@ -485,7 +457,7 @@ class SemanticChunker:
                         "pages": [sc["page"]],
                         "content": sc["content"],
                         "element_ids": sc["element_ids"][:],
-                        "tokens": sc["tokens"]
+                        "tokens": sc["tokens"],
                     }
             else:
                 # Buffer is large enough, flush it
@@ -495,7 +467,7 @@ class SemanticChunker:
                     "pages": [sc["page"]],
                     "content": sc["content"],
                     "element_ids": sc["element_ids"][:],
-                    "tokens": sc["tokens"]
+                    "tokens": sc["tokens"],
                 }
 
         # Don't forget the last buffer
@@ -520,7 +492,9 @@ class SemanticChunker:
     # PDF / DOCX: Topic-Transition Chunking via DeepSeek
     # ------------------------------------------------------------------
 
-    def _chunk_by_topics(self, cleaned_doc: CleanedDocument, metadata: DocumentMetadata) -> List[Chunk]:
+    def _chunk_by_topics(
+        self, cleaned_doc: CleanedDocument, metadata: DocumentMetadata
+    ) -> list[Chunk]:
         """
         Use DeepSeek to identify topic transition points, then split.
         """
@@ -528,33 +502,26 @@ class SemanticChunker:
         indexed_elements = []
         for idx, element in enumerate(cleaned_doc.elements):
             location = f"[Page {element.page_number}]"
-            indexed_elements.append({
-                "index": idx,
-                "location": location,
-                "content": element.content,
-                "page": element.page_number
-            })
+            indexed_elements.append(
+                {
+                    "index": idx,
+                    "location": location,
+                    "content": element.content,
+                    "page": element.page_number,
+                }
+            )
 
         # Get transition points with topics from DeepSeek (single API call)
-        chunk_definitions = self._detect_transitions_with_topics(
-            indexed_elements,
-            metadata
-        )
+        chunk_definitions = self._detect_transitions_with_topics(indexed_elements, metadata)
 
         # Split into chunks at transition points with assigned topics
-        chunks = self._split_with_topics(
-            indexed_elements,
-            chunk_definitions,
-            metadata
-        )
+        chunks = self._split_with_topics(indexed_elements, chunk_definitions, metadata)
 
         return chunks
 
     def _detect_transitions_with_topics(
-        self,
-        elements: List[Dict],
-        metadata: DocumentMetadata
-    ) -> List[Dict]:
+        self, elements: list[dict], metadata: DocumentMetadata
+    ) -> list[dict]:
         """
         Ask DeepSeek to identify topic transitions AND assign topics in one call.
         Returns list of {start_index, topic} dictionaries.
@@ -576,7 +543,7 @@ class SemanticChunker:
             context_parts.append(f"Subject: {metadata.subject_area}")
         if metadata.filename:
             context_parts.append(f"Document: {metadata.filename}")
-        
+
         context_text = "\n".join(context_parts) if context_parts else ""
 
         prompt = f"""
@@ -617,22 +584,22 @@ Elements:
                 response_text = response_text.strip()
 
             chunk_defs = json.loads(response_text)
-            
+
             # Validate and ensure required fields
             if isinstance(chunk_defs, list) and len(chunk_defs) > 0:
                 # Ensure first chunk starts at 0
                 if chunk_defs[0].get("start", 0) != 0:
                     chunk_defs.insert(0, {"start": 0, "topic": "Introduction"})
-                
+
                 # Validate each has start and topic
                 for c in chunk_defs:
                     if "start" not in c:
                         c["start"] = 0
                     if "topic" not in c:
                         c["topic"] = "General"
-                
+
                 return chunk_defs
-            
+
             # Fallback to uniform chunking
             return self._uniform_transitions_with_topics(elements)
 
@@ -640,7 +607,7 @@ Elements:
             print(f"⚠️  Topic detection failed: {e}. Using uniform chunking.")
             return self._uniform_transitions_with_topics(elements)
 
-    def _uniform_transitions_with_topics(self, elements: List[Dict]) -> List[Dict]:
+    def _uniform_transitions_with_topics(self, elements: list[dict]) -> list[dict]:
         """
         Fallback: Create uniform chunk boundaries with generic topics.
         """
@@ -657,11 +624,8 @@ Elements:
         return chunk_defs
 
     def _split_with_topics(
-        self,
-        elements: List[Dict],
-        chunk_defs: List[Dict],
-        metadata: DocumentMetadata
-    ) -> List[Chunk]:
+        self, elements: list[dict], chunk_defs: list[dict], metadata: DocumentMetadata
+    ) -> list[Chunk]:
         """
         Split elements into chunks using predefined chunk definitions with topics.
         """
@@ -673,7 +637,7 @@ Elements:
         for i, chunk_def in enumerate(chunk_defs):
             start_idx = chunk_def["start"]
             topic = chunk_def.get("topic", "General")
-            
+
             # Find end index (start of next chunk, or end of elements)
             if i + 1 < len(chunk_defs):
                 end_idx = chunk_defs[i + 1]["start"]
@@ -681,10 +645,7 @@ Elements:
                 end_idx = len(elements)
 
             # Collect elements for this chunk
-            chunk_elements = [
-                e for e in elements
-                if start_idx <= e["index"] < end_idx
-            ]
+            chunk_elements = [e for e in elements if start_idx <= e["index"] < end_idx]
 
             if not chunk_elements:
                 continue
@@ -695,31 +656,22 @@ Elements:
 
             chunk = Chunk(
                 chunk_id="",
-
                 content=content,
                 chunk_type="topic_section",
-
                 page_start=min(pages) if pages else 1,
                 page_end=max(pages) if pages else 1,
-
                 topic=topic,
-
                 parent_chunk_id="",  # No parent for original chunks
-
                 filename=metadata.filename,
                 file_type=metadata.file_type,
-
                 course_name=metadata.course_name,
                 chapter_title=metadata.chapter_title,
                 subject_area=metadata.subject_area,
                 global_context=metadata.global_context,
                 key_topics=metadata.key_topics,
-
                 extraction_confidence=metadata.extraction_confidence,
-
                 token_count=self._count_tokens(content),
-
-                element_ids=element_ids
+                element_ids=element_ids,
             )
             chunks.append(chunk)
 
@@ -729,11 +681,7 @@ Elements:
     # Topic Assignment (shared)
     # ------------------------------------------------------------------
 
-    def _assign_topics_batch(
-        self,
-        samples: List[str],
-        metadata: DocumentMetadata
-    ) -> List[str]:
+    def _assign_topics_batch(self, samples: list[str], metadata: DocumentMetadata) -> list[str]:
         """
         Assign topics to multiple chunks in one DeepSeek call.
         """
@@ -750,7 +698,7 @@ Elements:
             context_parts.append(f"Subject: {metadata.subject_area}")
         if metadata.filename:
             context_parts.append(f"Document: {metadata.filename}")
-        
+
         context_text = "\n".join(context_parts) if context_parts else ""
 
         # Build prompt with numbered samples
@@ -786,7 +734,7 @@ Do NOT use markdown or code blocks.
             # Ensure same length
             while len(topics) < len(samples):
                 topics.append("General")
-            return topics[:len(samples)]
+            return topics[: len(samples)]
 
         except Exception as e:
             print(f"⚠️  Batch topic assignment failed: {e}")
@@ -799,9 +747,10 @@ Do NOT use markdown or code blocks.
 
 if __name__ == "__main__":
     import os
-    from src.ingestion.parser import DocumentParser
+
     from src.ingestion.cleaner import TextCleaner
     from src.ingestion.metadata_extractor import MetadataExtractor
+    from src.ingestion.parser import DocumentParser
 
     parser = DocumentParser()
     cleaner = TextCleaner()
@@ -810,9 +759,7 @@ if __name__ == "__main__":
 
     # Bundled sample corpus file — swap in your own files to test other formats.
     SAMPLE_FILE = str(Path(__file__).resolve().parents[2] / "sample_data" / "sample_lecture.pptx")
-    test_files = [
-        SAMPLE_FILE
-    ]
+    test_files = [SAMPLE_FILE]
 
     for file_path in test_files:
         if os.path.exists(file_path):
@@ -831,17 +778,17 @@ if __name__ == "__main__":
             print(f"\n📦 Created {len(chunks)} semantic chunks:")
             print(f"   Max tokens per chunk: {chunker.max_chunk_tokens}")
             print(f"   Min tokens per chunk: {chunker.min_chunk_tokens}")
-            
+
             # Statistics
             total_tokens = sum(chunk.token_count for chunk in chunks)
             avg_tokens = total_tokens / len(chunks) if chunks else 0
-            
-            print(f"\n📊 Token Statistics:")
+
+            print("\n📊 Token Statistics:")
             print(f"   Total tokens: {total_tokens}")
             print(f"   Average per chunk: {avg_tokens:.1f}")
             print(f"   Min: {min(c.token_count for c in chunks) if chunks else 0}")
             print(f"   Max: {max(c.token_count for c in chunks) if chunks else 0}")
-            
+
             # Group chunks by parent to show splitting
             parent_groups = {}
             for chunk in chunks:
@@ -849,20 +796,20 @@ if __name__ == "__main__":
                 if parent not in parent_groups:
                     parent_groups[parent] = []
                 parent_groups[parent].append(chunk)
-            
-            print(f"\n📄 Chunk Details:")
+
+            print("\n📄 Chunk Details:")
             for chunk in chunks:
                 page_range = (
                     f"Slide {chunk.page_start}"
                     if chunk.page_start == chunk.page_end
                     else f"Slides {chunk.page_start}-{chunk.page_end}"
                 )
-                
+
                 # Show if this is a split chunk
                 split_info = ""
                 if chunk.parent_chunk_id:
                     split_info = f" (part of {chunk.parent_chunk_id})"
-                
+
                 print(f"\n   [{chunk.chunk_type}] {chunk.chunk_id}{split_info}")
                 print(f"   Topic: {chunk.topic}")
                 print(f"   {page_range} | {chunk.token_count} tokens | {len(chunk.content)} chars")

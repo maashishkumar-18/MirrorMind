@@ -1,5 +1,6 @@
 """Learning pipeline configuration."""
-from ..config import PipelineConfig, HybridWeights, ContextTemplate, ConfidenceLevel
+
+from ..config import ConfidenceLevel, ContextTemplate, HybridWeights, PipelineConfig
 
 LEARNING_PIPELINE = PipelineConfig(
     name="learning",

@@ -1,5 +1,6 @@
 """Quiz generation pipeline configuration."""
-from ..config import PipelineConfig, HybridWeights, ContextTemplate, ConfidenceLevel
+
+from ..config import ConfidenceLevel, ContextTemplate, HybridWeights, PipelineConfig
 
 QUIZ_PIPELINE = PipelineConfig(
     name="quiz",
@@ -13,7 +14,7 @@ QUIZ_PIPELINE = PipelineConfig(
     expansion_terms=4,
     enable_query_rewriting=False,
     min_confidence=ConfidenceLevel.MEDIUM,
-    retry_on_low_confidence=False,    # Quiz can work with medium confidence
+    retry_on_low_confidence=False,  # Quiz can work with medium confidence
     cache_ttl_seconds=1800,
     include_source_prefix=False,
     include_page_numbers=False,

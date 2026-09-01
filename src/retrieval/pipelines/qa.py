@@ -1,5 +1,6 @@
 """Question answering pipeline configuration."""
-from ..config import PipelineConfig, HybridWeights, ContextTemplate, ConfidenceLevel
+
+from ..config import ConfidenceLevel, ContextTemplate, HybridWeights, PipelineConfig
 
 QA_PIPELINE = PipelineConfig(
     name="qa",

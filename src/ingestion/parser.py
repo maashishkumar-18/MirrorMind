@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 @dataclass
 class ParsedElement:
     """Represents a single parsed element from a document."""
+
     content: str
     element_type: str
     page_number: int
@@ -21,6 +22,7 @@ class ParsedElement:
 @dataclass
 class ParsedDocument:
     """Represents a fully parsed document with all elements and metadata."""
+
     filename: str
     file_type: str
     elements: List[ParsedElement] = field(default_factory=list)
@@ -40,10 +42,10 @@ class DocumentParser:
     def parse(self, file_path: str) -> ParsedDocument:
         """
         Parse a document and return a structured ParsedDocument object.
-        
+
         Args:
             file_path: Path to the document file (PDF, PPTX, or DOCX)
-            
+
         Returns:
             ParsedDocument with all elements, structure markers, and metadata
         """
@@ -55,8 +57,7 @@ class DocumentParser:
         file_extension = file_path.suffix.lower()
         if file_extension not in self.SUPPORTED_FORMATS:
             raise ValueError(
-                f"Unsupported format: {file_extension}. "
-                f"Supported: {self.SUPPORTED_FORMATS}"
+                f"Unsupported format: {file_extension}. " f"Supported: {self.SUPPORTED_FORMATS}"
             )
 
         # Route to appropriate parser
@@ -121,10 +122,7 @@ class DocumentParser:
         Process raw unstructured elements into our ParsedDocument format.
         Tracks page/slide numbers and identifies structural markers.
         """
-        parsed_doc = ParsedDocument(
-            filename=filename,
-            file_type=file_type
-        )
+        parsed_doc = ParsedDocument(filename=filename, file_type=file_type)
 
         full_text_parts = []
 
@@ -141,31 +139,28 @@ class DocumentParser:
             if not element_text:
                 continue
 
-
             # Map element category to our type
             element_type = self._map_element_type(element)
 
-
             # Create parsed element
             parsed_element = ParsedElement(
-            content=element_text,
-            element_type=element_type,
-            page_number=page_number,
-            metadata={
-                "source_file": filename,
-                "element_category": getattr(element, "category", "unknown"),
-                "parent_id": getattr(metadata, "parent_id", None),
-                "languages": getattr(metadata, "languages", None),
-            }
-        )
+                content=element_text,
+                element_type=element_type,
+                page_number=page_number,
+                metadata={
+                    "source_file": filename,
+                    "element_category": getattr(element, "category", "unknown"),
+                    "parent_id": getattr(metadata, "parent_id", None),
+                    "languages": getattr(metadata, "languages", None),
+                },
+            )
 
             parsed_doc.elements.append(parsed_element)
             full_text_parts.append(element_text)
 
         # Populate document-level metadata
         parsed_doc.total_pages = max(
-            (element.page_number for element in parsed_doc.elements),
-            default=0
+            (element.page_number for element in parsed_doc.elements), default=0
         )
         parsed_doc.raw_text = "\n".join(full_text_parts)
 
@@ -173,7 +168,7 @@ class DocumentParser:
 
     def _map_element_type(self, element) -> str:
         """Map unstructured element category to our simplified types."""
-        if not hasattr(element, 'category'):
+        if not hasattr(element, "category"):
             return "text"
 
         category = str(element.category)
@@ -185,19 +180,16 @@ class DocumentParser:
             "Table": "table",
             "Image": "image_caption",
             "Header": "title",
-            "Footer": "text"
+            "Footer": "text",
         }
 
         return mapping.get(category, "text")
-
 
     def get_element_summary(self, parsed_doc: ParsedDocument) -> Dict[str, Any]:
         """Generate a summary of parsed document structure."""
         element_counts = {}
         for element in parsed_doc.elements:
-            element_counts[element.element_type] = element_counts.get(
-                element.element_type, 0
-            ) + 1
+            element_counts[element.element_type] = element_counts.get(element.element_type, 0) + 1
 
         return {
             "filename": parsed_doc.filename,
@@ -246,8 +238,8 @@ if __name__ == "__main__":
             for i, elem in enumerate(parsed.elements[:3]):
                 location = "Slide" if parsed.file_type == "pptx" else "Page"
                 print(
-                f"[{elem.element_type}] {location} {elem.page_number}: "
-                f"{elem.content[:100]}..."
-            )
+                    f"[{elem.element_type}] {location} {elem.page_number}: "
+                    f"{elem.content[:100]}..."
+                )
         else:
             print(f"⚠️  Test file not found: {file_path}")
