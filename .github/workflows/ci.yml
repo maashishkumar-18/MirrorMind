@@ -18,9 +18,8 @@ jobs:
       - run: black --check .
       - run: ruff check .
       # tools/ is intentionally omitted: it is 100% mypy-excluded (see pyproject.toml),
-      # so passing it as an explicit target only errors ("no .py[i] files"). db/ is
-      # added here once Phase 0 Step 0.4 creates it.
-      - run: mypy src observability
+      # so passing it as an explicit target only errors ("no .py[i] files").
+      - run: mypy src observability db
 
   lint-ipc-schema:
     runs-on: windows-latest

@@ -17,8 +17,8 @@ repos:
       - id: mypy
         additional_dependencies: [types-PyYAML, pydantic==2.13.4]
         # tools/ omitted: 100% mypy-excluded (see pyproject.toml), passing it as an
-        # explicit target only errors. db/ is added once Step 0.4 creates it.
-        files: ^(src|observability)/
+        # explicit target only errors.
+        files: ^(src|observability|db)/
 
   - repo: local
     hooks:
