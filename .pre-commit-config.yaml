@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        language_version: python3.11
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-PyYAML, pydantic==2.13.4]
+        # tools/ omitted: 100% mypy-excluded (see pyproject.toml), passing it as an
+        # explicit target only errors. db/ is added once Step 0.4 creates it.
+        files: ^(src|observability)/
+
+  - repo: local
+    hooks:
+      - id: ipc-schema-typecheck
+        name: ipc schema — tsc --noEmit
+        entry: npm --prefix ipc run typecheck
+        language: system
+        files: ^ipc/
+        pass_filenames: false
+      - id: ipc-schema-lint
+        name: ipc schema — eslint
+        entry: npm --prefix ipc run lint
+        language: system
+        files: ^ipc/
+        pass_filenames: false

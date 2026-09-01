@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main, release]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-python:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements-dev.txt
+      - run: black --check .
+      - run: ruff check .
+      # tools/ is intentionally omitted: it is 100% mypy-excluded (see pyproject.toml),
+      # so passing it as an explicit target only errors ("no .py[i] files"). db/ is
+      # added here once Phase 0 Step 0.4 creates it.
+      - run: mypy src observability
+
+  lint-ipc-schema:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm ci --prefix ipc
+      - run: npm run typecheck --prefix ipc
+      - run: npm run lint --prefix ipc
+      - run: npm test --prefix ipc
+
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4 # the IPC round-trip test shells out to node
+        with: { node-version: "20" }
+      - run: pip install -r requirements-dev.txt
+      - run: npm ci --prefix ipc
+      - run: pytest
+      - uses: actions/upload-artifact@v4
+        with: { name: coverage-xml, path: coverage.xml }
+
+  # Protected-branch signing: structure only, no secrets exist until Phase 5.
+  # Gates structurally on push+release only (never pull_request) so signing
+  # secrets are never reachable from PR-level CI.
+  sign:
+    needs: [lint-python, lint-ipc-schema, test]
+    if: github.ref == 'refs/heads/release' && github.event_name == 'push'
+    runs-on: windows-latest
+    environment: production-signing
+    steps:
+      - run: echo "Signing not implemented until Phase 5 — structure only."
+
+  # WACK pre-check: manually triggered only, never on PR or push.
+  wack-precheck:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release'
+    runs-on: windows-latest
+    steps:
+      - run: echo "WACK pre-check not implemented until Phase 5 — structure only."

@@ -1,0 +1,24 @@
+{
+  "name": "@ragpipe/ipc-schema",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Versioned IPC envelope schema (zod) — TypeScript counterpart to src/common/ipc/envelope.py. Seed of Phase 3's frontend test/tooling setup.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.1",
+    "tsx": "^4.19.0",
+    "eslint": "^9.10.0",
+    "@eslint/js": "^9.10.0",
+    "typescript-eslint": "^8.7.0"
+  }
+}

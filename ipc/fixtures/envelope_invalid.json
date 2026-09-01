@@ -1,0 +1,50 @@
+[
+  {
+    "description": "wrong version type (string, not int)",
+    "envelope": {
+      "version": "1",
+      "message_type": "request",
+      "request_id": "req-bad-1",
+      "timestamp": "2026-09-01T09:00:00Z",
+      "payload": {}
+    }
+  },
+  {
+    "description": "missing request_id",
+    "envelope": {
+      "version": 1,
+      "message_type": "request",
+      "timestamp": "2026-09-01T09:00:00Z",
+      "payload": {}
+    }
+  },
+  {
+    "description": "invalid message_type enum value",
+    "envelope": {
+      "version": 1,
+      "message_type": "not_a_real_type",
+      "request_id": "req-bad-3",
+      "timestamp": "2026-09-01T09:00:00Z",
+      "payload": {}
+    }
+  },
+  {
+    "description": "missing timestamp",
+    "envelope": {
+      "version": 1,
+      "message_type": "response",
+      "request_id": "req-bad-4",
+      "payload": {}
+    }
+  },
+  {
+    "description": "non-integer version (float)",
+    "envelope": {
+      "version": 1.5,
+      "message_type": "event",
+      "request_id": "req-bad-5",
+      "timestamp": "2026-09-01T09:00:00Z",
+      "payload": {}
+    }
+  }
+]
