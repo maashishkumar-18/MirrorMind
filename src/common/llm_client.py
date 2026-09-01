@@ -638,7 +638,7 @@ class LLMClient:
                 raw_response=None,
             )
 
-        last_error = None
+        last_error: Exception | None = None
 
         for attempt in range(config.max_retries + 1):
             try:
@@ -723,6 +723,8 @@ def simple_generate(
     temperature: float = 0.3,
     max_output_tokens: int = 2048,
     timeout_seconds: int = 30,
+    provider: str = "deepseek",
+    registry: ProviderRegistry | None = None,
 ) -> str:
     """
     Minimal single-turn text completion for callers that just need a raw
@@ -738,12 +740,19 @@ def simple_generate(
 
     Raises ProviderRateLimitError/ProviderAPIError/ProviderCredentialError/
     ProviderTimeoutError on failure — same as any ProviderAdapter.
+
+    `provider`/`registry` (Phase 0 Step 0.2 bug fix): resolves the adapter
+    through ProviderRegistry instead of hardcoding DeepSeekAdapter(), for
+    consistency with LLMClient.__init__'s own pattern
+    (`self.registry.get(config.provider)`). `provider` defaults to
+    "deepseek" so existing behavior is unchanged for every current call
+    site; pass `registry=` to inject a specific registry (e.g. in tests).
     """
     from src.generation.config import ModelConfig, Prompt
 
-    adapter = DeepSeekAdapter()
+    adapter = (registry or ProviderRegistry()).get(provider)
     config = ModelConfig(
-        provider="deepseek",
+        provider=provider,
         model_name=model_name,
         temperature=temperature,
         max_output_tokens=max_output_tokens,

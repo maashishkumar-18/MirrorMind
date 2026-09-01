@@ -404,7 +404,7 @@ class RetrievalOrchestrator:
                     query=query,
                     pipeline_config=current_pipeline,
                     conversation_state=conversation_state,
-                    namespace=namespace,
+                    namespace=namespace,  # type: ignore[arg-type]  # pre-existing str|list[str] looseness, unrelated to Step 0.2
                     state=state,
                 )
 
@@ -734,7 +734,7 @@ class RetrievalOrchestrator:
             try:
                 # Use a simpler search configuration
                 return self._fallback_search(*args, **kwargs)
-            except:
+            except Exception:
                 return None
 
         elif name == "reranker":
@@ -752,12 +752,28 @@ class RetrievalOrchestrator:
         self, query: str, keywords: str, namespace: str, metadata_filters: dict | None, **kwargs
     ) -> Any:
         """Fallback search with lower requirements."""
-        from hybrid_search import SearchCandidate, SearchResult
+        from src.retrieval.hybrid_search import HybridSearchResult, SearchCandidate
 
         # Simplified search - just use vector search with fewer constraints
         try:
-            results = self.vector_store.query(
-                query=query,
+            # VectorStore.query() takes an already-embedded vector, not a raw
+            # query string (see src/ingestion/vector_store.py:412-418) — embed
+            # it here first, mirroring HybridSearch's own lazy-embedder
+            # pattern (src/retrieval/hybrid_search.py:511-514).
+            from src.ingestion.embedder import EmbeddingGenerator
+
+            embedder = EmbeddingGenerator()
+            embedded = embedder.embed_query(query)
+            if embedded is None:
+                # embed_query() returns None for an empty/whitespace-only query
+                # (src/ingestion/embedder.py:657-658) or on embedding failure —
+                # either way, there's no vector to search with.
+                raise ValueError(f"Could not embed fallback query: {query!r}")
+
+            # VectorStore.query() returns list[dict[str, Any]] (id/score/metadata
+            # keys) — not an object with a `.matches` attribute.
+            matches = self.vector_store.query(
+                vector=embedded,
                 top_k=20,
                 namespace=namespace,
                 filter=metadata_filters if metadata_filters else {},
@@ -765,60 +781,63 @@ class RetrievalOrchestrator:
 
             candidates = [
                 SearchCandidate(
-                    chunk_id=match.id,
-                    content=match.metadata.get("text", ""),
-                    raw_content=match.metadata.get("raw_text", ""),
-                    score=match.score,
-                    metadata=match.metadata,
+                    chunk_id=match["id"],
+                    content=match.get("metadata", {}).get("text", ""),
+                    raw_content=match.get("metadata", {}).get("raw_text", ""),
+                    score=match["score"],
+                    source="semantic_fallback",
+                    original_rank=rank,
+                    metadata=match.get("metadata", {}),
                 )
-                for match in results.matches[:10]
+                for rank, match in enumerate(matches[:10])
             ]
 
-            return SearchResult(
+            return HybridSearchResult(
                 candidates=candidates,
+                total_retrieved=len(candidates),
                 sources_used=["vector_fallback"],
-                total_candidates=len(candidates),
-                query_used=query,
-                execution_time_ms=0,
+                processing_time_ms=0,
+                query=query,
             )
-        except:
+        except Exception:
             # Ultimate fallback - empty result
-            return SearchResult(
+            return HybridSearchResult(
                 candidates=[],
+                total_retrieved=0,
                 sources_used=[],
-                total_candidates=0,
-                query_used=query,
-                execution_time_ms=0,
+                processing_time_ms=0,
+                query=query,
             )
 
     def _fallback_reranker(self, candidates: list[dict]) -> Any:
         """Fallback reranker that preserves original order."""
-        from reranker import RerankedChunk, RerankerResult
+        from src.retrieval.reranker import RerankedChunk, RerankerResult
 
         chunks = [
             RerankedChunk(
                 chunk_id=c["chunk_id"],
                 content=c["content"],
                 raw_content=c.get("raw_content", c["content"]),
-                score=c["score"],
-                metadata=c["metadata"],
                 original_score=c["score"],
                 rerank_score=c["score"],
+                rank=rank,
+                metadata=c["metadata"],
             )
-            for c in candidates[:10]
+            for rank, c in enumerate(candidates[:10], start=1)
         ]
 
         return RerankerResult(
             chunks=chunks,
             total_input=len(candidates),
-            top_k=len(chunks),
+            total_output=len(chunks),
+            backend_used="fallback",
             model_used="fallback",
-            execution_time_ms=0,
+            processing_time_ms=0,
         )
 
     def _fallback_confidence_scorer(self, **kwargs) -> Any:
         """Fallback confidence scorer."""
-        from confidence import ConfidenceLevel, ConfidenceResult
+        from src.retrieval.confidence import ConfidenceLevel, ConfidenceResult
 
         return ConfidenceResult(
             score=0.3,
@@ -889,7 +908,9 @@ class RetrievalOrchestrator:
         This properly merges evidence from all sub-queries instead of
         re-retrieving the original query.
         """
-        from reranker import RerankedChunk
+        # Broken import in dead code -- see this method's docstring; deleted
+        # whole in Phase 1 Step 1.3, not fixed here.
+        from reranker import RerankedChunk  # type: ignore[import-not-found]
 
         all_chunks: list[RerankedChunk] = []
         all_sources: set[str] = set()
@@ -1027,7 +1048,7 @@ class RetrievalOrchestrator:
         return PipelineConfig(
             name=f"{base_config.name}_fallback",
             description="Fallback pipeline",
-            hybrid_weights={"semantic": 1.0, "bm25": 0.0},  # Semantic only
+            hybrid_weights={"semantic": 1.0, "bm25": 0.0},  # type: ignore[arg-type]  # pre-existing dict/HybridWeights mismatch, unrelated to Step 0.2
             candidate_k=10,
             rerank_k=3,
             metadata_filters={},  # No filters
