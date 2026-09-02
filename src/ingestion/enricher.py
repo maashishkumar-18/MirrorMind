@@ -1,28 +1,27 @@
 """
-Step 5: Chunk Enrichment
-Injects source traceability (slide/page references) directly into chunk content
-so each chunk is self-contained for retrieval and generation.
+Chunk enrichment for the session ingestion pipeline (Phase 1 Step 1.2).
+
+Each chunk gets a short source-traceability prefix
+``[Session: <id> | <approx timestamp> | Topic: <primary topic>]`` prepended
+to a COPY of its text that is used only as the embedding input. The prefix is
+never persisted — ``session_chunks.content`` stores the raw session text
+(``docs/schema_review.md`` §4).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-import tiktoken
-
 from src.ingestion.chunker import Chunk
+from src.ingestion.tokenizer import count_tokens
 
-# Constants
-ENRICHMENT_VERSION = "1.0"
+ENRICHMENT_VERSION = "2.0"
+METADATA_VERSION = "2.0"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 DEFAULT_MAX_PREFIX_LENGTH = 200
-EMBEDDING_MODEL = "text-embedding-3-small"
-METADATA_VERSION = "1.0"
-PIPELINE_STAGE = "Step 5"
 
 
 @dataclass
 class EnricherConfig:
-    """Configuration for the chunk enricher."""
-
     add_source_prefix: bool = True
     validate_chunks: bool = True
     max_prefix_length: int = DEFAULT_MAX_PREFIX_LENGTH
@@ -30,10 +29,6 @@ class EnricherConfig:
 
 @dataclass
 class ValidationReport:
-    """
-    Structured validation report for enriched chunks.
-    """
-
     valid: bool
     total_chunks: int
     errors: list[str]
@@ -42,428 +37,145 @@ class ValidationReport:
 
 @dataclass
 class EnrichedChunk:
-    """
-    A fully enriched chunk ready for embedding and vector storage.
-    Every chunk is self-contained with all metadata and source references.
-    """
+    """A chunk with its embedding-input text and session metadata, ready to embed."""
 
     chunk_id: str
-    content: str  # Enriched text with source prefix
-    raw_content: str  # Original content without enrichment
+    content: str  # raw session text + source prefix (embedding input only)
+    raw_content: str  # the persisted session text (no prefix)
     chunk_type: str
-    page_start: int
-    page_end: int
-    topic: str
-    token_count: int  # Token count of enriched content
-    element_ids: list[int]
     parent_chunk_id: str
+    token_count: int  # tokens of `content`
 
-    # Document metadata (carried forward)
-    filename: str
-    file_type: str
-    course_name: str
-    chapter_title: str
-    subject_area: str
-    global_context: str
-    key_topics: list[str]
-    extraction_confidence: float
+    session_id: str
+    message_roles: list[str] = field(default_factory=list)
+    message_indices: list[int] = field(default_factory=list)
+    topics: list[str] = field(default_factory=list)
+    action_types: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
+    sentiment: str = ""
+    timestamp: str = ""
 
-    # Enrichment metadata
     source_prefix: str | None = None
     enrichment_version: str = ENRICHMENT_VERSION
-    pipeline_stage: str = PIPELINE_STAGE
+    metadata_version: str = METADATA_VERSION
 
-    # Free-form document category, set per-document at ingestion time (see
-    # ChunkEnricher.enrich(document_category=...)), not derived from chunk
-    # content — every chunk from one upload shares the same value. Callers
-    # can use this for whatever corpus-specific taxonomy they need (e.g.
-    # "manual" vs "changelog", or leave it unset) — retrieval can filter on
-    # it via metadata_filter.py without the ingestion/enrichment layer
-    # needing to know what the categories mean.
-    document_category: str | None = None
-
-    # Embedding metadata (to be populated by EmbeddingGenerator)
+    # Populated by EmbeddingGenerator.
     embedding_ready: bool = False
     embedding_model: str = EMBEDDING_MODEL
     embedding_dimensions: int | None = None
     embedding_version: str | None = None
-    metadata_version: str = METADATA_VERSION
 
 
 class ChunkEnricher:
-    """
-    Enriches chunks with source traceability prefixes and validates completeness.
-
-    Each chunk gets a source prefix like:
-    "[Course: CS101 | Chapter: Trees | Slides 5-7 | Topic: Binary Search Trees]"
-    """
+    """Adds source-prefix enrichment and validates chunk completeness."""
 
     def __init__(self, config: EnricherConfig | None = None):
-        """
-        Initialize the enricher with optional configuration.
-
-        Args:
-            config: Optional EnricherConfig object
-        """
         self.config = config or EnricherConfig()
-
-        # Pre-compute max field length for optimization
-        self.max_field_len = self.config.max_prefix_length // 4
-
-        # Initialize token counter
-        self.encoding = tiktoken.encoding_for_model(EMBEDDING_MODEL)
-
-        # Storage for last validation report
         self._last_validation_report: ValidationReport | None = None
 
-    def enrich(
-        self, chunks: list[Chunk], document_category: str | None = None
-    ) -> list[EnrichedChunk]:
-        """
-        Enrich all chunks with source traceability and validate completeness.
-
-        Args:
-            chunks: List of Chunk objects from Step 4
-            document_category: Optional free-form category for the document
-                this whole batch of chunks came from. Stamped onto every
-                chunk unchanged; meaning is entirely caller-defined.
-
-        Returns:
-            List of EnrichedChunk objects ready for embedding
-        """
-        # Enrich all chunks using list comprehension
-        enriched_chunks = [self._enrich_single(chunk, document_category) for chunk in chunks]
-
-        # Validate if configured and store report
+    def enrich(self, chunks: list[Chunk]) -> list[EnrichedChunk]:
+        enriched = [self._enrich_single(c) for c in chunks]
         if self.config.validate_chunks:
-            self._last_validation_report = self.get_validation_report(enriched_chunks)
+            self._last_validation_report = self.get_validation_report(enriched)
+        return enriched
 
-        return enriched_chunks
-
-    def _enrich_single(self, chunk: Chunk, document_category: str | None = None) -> EnrichedChunk:
-        """
-        Enrich a single chunk with source traceability prefix.
-        """
-        # Build source prefix
-        source_prefix = self._build_source_prefix(chunk)
-
-        # Build enriched content
-        enriched_content = self._build_enriched_content(chunk, source_prefix)
-
-        # Count tokens for enriched content
-        token_count = self._count_tokens(enriched_content)
-
+    def _enrich_single(self, chunk: Chunk) -> EnrichedChunk:
+        prefix = self._build_source_prefix(chunk) if self.config.add_source_prefix else None
+        content = f"{prefix}\n{chunk.content}" if prefix else chunk.content
         return EnrichedChunk(
             chunk_id=chunk.chunk_id,
-            content=enriched_content,
+            content=content,
             raw_content=chunk.content,
             chunk_type=chunk.chunk_type,
-            page_start=chunk.page_start,
-            page_end=chunk.page_end,
-            topic=chunk.topic,
-            token_count=token_count,
-            element_ids=chunk.element_ids,
             parent_chunk_id=chunk.parent_chunk_id,
-            filename=chunk.filename,
-            file_type=chunk.file_type,
-            course_name=chunk.course_name,
-            chapter_title=chunk.chapter_title,
-            subject_area=chunk.subject_area,
-            global_context=chunk.global_context,
-            key_topics=chunk.key_topics,
-            extraction_confidence=chunk.extraction_confidence,
-            source_prefix=source_prefix,
-            document_category=document_category,
+            token_count=count_tokens(content),
+            session_id=chunk.session_id,
+            message_roles=list(chunk.message_roles),
+            message_indices=list(chunk.message_indices),
+            topics=list(chunk.topics),
+            action_types=list(chunk.action_types),
+            entities=list(chunk.entities),
+            sentiment=chunk.sentiment,
+            timestamp=chunk.timestamp,
+            source_prefix=prefix,
         )
 
-    def _build_source_prefix(self, chunk: Chunk) -> str | None:
-        """
-        Build a source traceability prefix for a chunk.
-
-        Format depends on document type:
-        - PPTX: "[Course: X | Chapter: Y | Slides 5-7 | Topic: Z]"
-        - PDF/DOCX: "[Course: X | Chapter: Y | Pages 5-7 | Topic: Z]"
-        """
-        if not self.config.add_source_prefix:
-            return None
-
-        return self._format_source_prefix(chunk)
-
-    def _format_source_prefix(self, chunk: Chunk) -> str:
-        """
-        Format the source prefix with proper truncation of individual fields.
-        """
-        parts = []
-
-        # Course name
-        if chunk.course_name and chunk.course_name != "Unknown":
-            course = self._truncate_field(chunk.course_name, self.max_field_len)
-            parts.append(f"Course: {course}")
-
-        # Chapter title
-        if chunk.chapter_title and chunk.chapter_title != "Unknown":
-            chapter = self._truncate_field(chunk.chapter_title, self.max_field_len)
-            parts.append(f"Chapter: {chapter}")
-
-        # Page/Slide range
-        location_label = "Slides" if chunk.file_type == "pptx" else "Pages"
-        if chunk.page_start == chunk.page_end:
-            parts.append(f"{location_label}: {chunk.page_start}")
-        else:
-            parts.append(f"{location_label}: {chunk.page_start}-{chunk.page_end}")
-
-        # Topic
-        if chunk.topic and chunk.topic != "General":
-            topic = self._truncate_field(chunk.topic, self.max_field_len)
-            parts.append(f"Topic: {topic}")
-
-        prefix = " | ".join(parts)
-        prefix = f"[{prefix}]"
-
-        # Final safety truncation (should rarely trigger now)
+    def _build_source_prefix(self, chunk: Chunk) -> str:
+        topic = chunk.topics[0] if chunk.topics else "general"
+        topic = self._truncate(topic, self.config.max_prefix_length // 2)
+        prefix = f"[Session: {chunk.session_id} | {chunk.timestamp} | Topic: {topic}]"
         if len(prefix) > self.config.max_prefix_length:
-            prefix = prefix[: self.config.max_prefix_length - 3] + "...]"
-
+            prefix = prefix[: self.config.max_prefix_length - 4] + "...]"
         return prefix
 
-    def _truncate_field(self, text: str, max_length: int) -> str:
-        """Truncate a field to max_length if needed."""
-        if len(text) > max_length:
-            return text[: max_length - 3] + "..."
-        return text
+    @staticmethod
+    def _truncate(text: str, max_length: int) -> str:
+        return text if len(text) <= max_length else text[: max_length - 3] + "..."
 
-    def _build_enriched_content(self, chunk: Chunk, source_prefix: str | None) -> str:
-        """
-        Build the final enriched content by prepending source prefix.
-        Context is NOT added to content (stored in metadata only).
-        """
-        # Check if already enriched with the same prefix
-        if source_prefix and chunk.content.startswith(source_prefix):
-            return chunk.content
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
 
-        # If no source prefix, just return original content
-        if not source_prefix:
-            return chunk.content
+    def get_validation_report(self, enriched: list[EnrichedChunk]) -> ValidationReport:
+        if not enriched:
+            return ValidationReport(False, 0, ["No chunks to validate"], [])
 
-        # Add source prefix to content
-        return f"{source_prefix}\n{chunk.content}"
-
-    def _count_tokens(self, text: str) -> int:
-        """Count tokens in text using the embedding model's tokenizer."""
-        return len(self.encoding.encode(text))
-
-    def get_validation_report(self, enriched_chunks: list[EnrichedChunk]) -> ValidationReport:
-        """
-        Validate that all chunks meet minimum requirements.
-        Returns structured validation report.
-
-        Returns:
-            ValidationReport object with valid flag, total chunks, errors, and warnings
-        """
-        if not enriched_chunks:
-            return ValidationReport(
-                valid=False, total_chunks=0, errors=["No chunks to validate"], warnings=[]
-            )
-
-        errors = []
-        warnings = []
-
-        for chunk in enriched_chunks:
-            # Check required fields
-            if not chunk.chunk_id:
+        errors: list[str] = []
+        warnings: list[str] = []
+        for c in enriched:
+            if not c.chunk_id:
                 errors.append("Missing chunk_id")
+            if not c.session_id:
+                errors.append(f"{c.chunk_id}: missing session_id")
+            if not c.raw_content or len(c.raw_content.strip()) < 1:
+                errors.append(f"{c.chunk_id}: empty content")
+            if c.token_count == 0:
+                warnings.append(f"{c.chunk_id}: token count is 0")
+            if not c.topics:
+                warnings.append(f"{c.chunk_id}: no topics extracted")
+            if self.config.add_source_prefix and not c.source_prefix:
+                errors.append(f"{c.chunk_id}: missing source prefix")
 
-            if not chunk.content or len(chunk.content.strip()) < 10:
-                errors.append(f"{chunk.chunk_id}: Content too short ({len(chunk.content)} chars)")
-
-            if chunk.token_count == 0:
-                warnings.append(f"{chunk.chunk_id}: Token count is 0")
-
-            if chunk.course_name == "Unknown" and chunk.chapter_title == "Unknown":
-                warnings.append(f"{chunk.chunk_id}: Both course and chapter are Unknown")
-
-            if chunk.page_start == 0 and chunk.page_end == 0:
-                warnings.append(f"{chunk.chunk_id}: Page range is 0-0")
-
-            # Check enrichment
-            if self.config.add_source_prefix:
-                if not chunk.source_prefix:
-                    errors.append(f"{chunk.chunk_id}: Missing source prefix")
-                elif chunk.chunk_type != "metadata":  # Skip metadata chunks
-                    # Check if content starts with the source prefix
-                    if not chunk.content.startswith(chunk.source_prefix):
-                        warnings.append(
-                            f"{chunk.chunk_id}: Content doesn't start with source prefix"
-                        )
-
-        return ValidationReport(
-            valid=len(errors) == 0,
-            total_chunks=len(enriched_chunks),
-            errors=errors,
-            warnings=warnings,
-        )
+        return ValidationReport(len(errors) == 0, len(enriched), errors, warnings)
 
     def get_last_validation_report(self) -> ValidationReport | None:
-        """
-        Get the last validation report generated during enrich().
-
-        Returns:
-            ValidationReport if validation was run, None otherwise
-        """
         return self._last_validation_report
 
-    def get_enrichment_summary(self, enriched_chunks: list[EnrichedChunk]) -> dict[str, Any]:
-        """
-        Generate a summary of enriched chunks for pipeline diagnostics.
-        """
-        if not enriched_chunks:
+    def get_enrichment_summary(self, enriched: list[EnrichedChunk]) -> dict[str, Any]:
+        if not enriched:
             return {"total_chunks": 0}
-
-        total_tokens = sum(c.token_count for c in enriched_chunks)
-        courses = set(c.course_name for c in enriched_chunks if c.course_name != "Unknown")
-        chapters = set(c.chapter_title for c in enriched_chunks if c.chapter_title != "Unknown")
-        topics = set(c.topic for c in enriched_chunks if c.topic != "General")
-
+        total_tokens = sum(c.token_count for c in enriched)
         return {
-            "total_chunks": len(enriched_chunks),
+            "total_chunks": len(enriched),
+            "primary_chunks": sum(1 for c in enriched if c.chunk_type == "primary"),
+            "sub_chunks": sum(1 for c in enriched if c.chunk_type == "sub_chunk"),
             "total_tokens": total_tokens,
-            "avg_tokens": total_tokens / len(enriched_chunks),
-            "unique_courses": list(courses),
-            "unique_chapters": list(chapters),
-            "unique_topics": list(topics),
-            "file_types": list(set(c.file_type for c in enriched_chunks)),
-            "split_chunks": sum(1 for c in enriched_chunks if c.parent_chunk_id),
-            "page_range": f"{min(c.page_start for c in enriched_chunks)}-{max(c.page_end for c in enriched_chunks)}",
+            "avg_tokens": total_tokens / len(enriched),
+            "unique_topics": sorted({t for c in enriched for t in c.topics}),
+            "sessions": sorted({c.session_id for c in enriched}),
             "enrichment_version": ENRICHMENT_VERSION,
             "embedding_model": EMBEDDING_MODEL,
         }
 
     @staticmethod
     def to_metadata(chunk: EnrichedChunk) -> dict[str, Any]:
-        """
-        Convert enriched chunk to metadata dictionary for vector store.
-
-        This is used by VectorStore to extract metadata when adding chunks.
-
-        Args:
-            chunk: EnrichedChunk object
-
-        Returns:
-            Dictionary of metadata fields for vector store
-        """
-        metadata = {
+        """Session-shaped metadata dict (consumed by EmbeddedChunk.metadata)."""
+        return {
             "chunk_id": chunk.chunk_id,
             "content": chunk.content,
             "raw_content": chunk.raw_content,
-            "filename": chunk.filename,
-            "file_type": chunk.file_type,
-            "topic": chunk.topic,
-            "page_start": chunk.page_start,
-            "page_end": chunk.page_end,
-            "course_name": chunk.course_name,
-            "chapter_title": chunk.chapter_title,
-            "subject_area": chunk.subject_area,
-            "global_context": chunk.global_context,
-            "key_topics": chunk.key_topics,
-            "parent_chunk_id": chunk.parent_chunk_id,
+            "session_id": chunk.session_id,
             "chunk_type": chunk.chunk_type,
+            "parent_chunk_id": chunk.parent_chunk_id,
             "token_count": chunk.token_count,
             "source_prefix": chunk.source_prefix,
+            "topics": chunk.topics,
+            "action_types": chunk.action_types,
+            "entities": chunk.entities,
+            "sentiment": chunk.sentiment,
+            "message_roles": chunk.message_roles,
+            "message_indices": chunk.message_indices,
+            "timestamp": chunk.timestamp,
             "enrichment_version": chunk.enrichment_version,
             "metadata_version": chunk.metadata_version,
         }
-        # Only stamp document_category when the caller actually set one —
-        # Pinecone metadata fields are typically expected to be non-null,
-        # and most corpora won't need this field at all.
-        if chunk.document_category is not None:
-            metadata["document_category"] = chunk.document_category
-        return metadata
-
-
-# ============================================================================
-# Step 5 Validation
-# ============================================================================
-
-if __name__ == "__main__":
-    import os
-    from pathlib import Path
-
-    from src.ingestion.chunker import SemanticChunker
-    from src.ingestion.cleaner import TextCleaner
-    from src.ingestion.metadata_extractor import MetadataExtractor
-    from src.ingestion.parser import DocumentParser
-
-    # Full pipeline
-    parser = DocumentParser()
-    cleaner = TextCleaner()
-    extractor = MetadataExtractor()
-    chunker = SemanticChunker()
-
-    # Create enricher with default config
-    enricher = ChunkEnricher()
-
-    # Bundled sample corpus file — swap in your own files to test other formats.
-    SAMPLE_FILE = str(Path(__file__).resolve().parents[2] / "sample_data" / "sample_lecture.pptx")
-    test_files = [SAMPLE_FILE]
-
-    for file_path in test_files:
-        if os.path.exists(file_path):
-            print(f"\n{'='*60}")
-            print(f"Enriching: {file_path}")
-            print(f"{'='*60}")
-
-            # Steps 1-4
-            parsed = parser.parse(file_path)
-            cleaned = cleaner.clean(parsed)
-            metadata = extractor.extract_with_retry(cleaned)
-            chunks = chunker.chunk(cleaned, metadata)
-
-            # Step 5
-            enriched = enricher.enrich(chunks)
-
-            # Get validation report (stored in enricher)
-            validation = enricher.get_last_validation_report()
-            if validation:
-                print("\n📋 Validation Report:")
-                print(f"   Valid: {validation.valid}")
-                print(f"   Total chunks: {validation.total_chunks}")
-                if validation.errors:
-                    print(f"   Errors: {len(validation.errors)}")
-                    for error in validation.errors[:3]:
-                        print(f"     - {error}")
-                if validation.warnings:
-                    print(f"   Warnings: {len(validation.warnings)}")
-                    for warning in validation.warnings[:3]:
-                        print(f"     - {warning}")
-
-            # Summary
-            summary = enricher.get_enrichment_summary(enriched)
-            print("\n📊 Enrichment Summary:")
-            print(f"   Total chunks: {summary['total_chunks']}")
-            print(f"   Total tokens: {summary['total_tokens']}")
-            print(f"   Avg tokens/chunk: {summary['avg_tokens']:.1f}")
-            print(f"   Split chunks: {summary['split_chunks']}")
-            print(f"   Courses: {summary['unique_courses']}")
-            print(f"   Chapters: {summary['unique_chapters']}")
-            print(f"   Topics: {summary['unique_topics'][:5]}...")
-
-            # Show sample enriched content
-            print("\n📄 Sample Enriched Chunk:")
-            if enriched:
-                sample = enriched[0]
-                print(f"   Source Prefix: {sample.source_prefix}")
-                print(f"   Content Preview: {sample.content[:200]}...")
-                print(f"   Token Count: {sample.token_count}")
-                print(
-                    f"   Full Metadata: course={sample.course_name}, chapter={sample.chapter_title}"
-                )
-                print(f"   Embedding Ready: {sample.embedding_ready}")
-                print(f"   Embedding Model: {sample.embedding_model}")
-
-                # Show metadata export
-                print("\n📦 Metadata Export (for vector store):")
-                metadata_dict = enricher.to_metadata(sample)
-                for key, value in list(metadata_dict.items())[:7]:
-                    print(f"   {key}: {value}")
-        else:
-            print(f"⚠️  Test file not found: {file_path}")

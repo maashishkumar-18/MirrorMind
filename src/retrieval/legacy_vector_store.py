@@ -1,8 +1,16 @@
 """
-Step 7: Vector Storage (Pinecone)
-Stores embedded chunks in Pinecone with full metadata for retrieval,
-filtering, and traceability. Handles index creation, upsert, and namespace
-management.
+LEGACY Pinecone vector store — do NOT use in new code.
+
+Relocated here from ``src/ingestion/vector_store.py`` in Phase 1 Step 1.2 so
+the rewritten ingestion pipeline is genuinely Pinecone-free. It survives only
+as the retrieval layer's crutch (`HybridSearch` / `RetrievalOrchestrator`
+still take a ``VectorStore`` type) until Phase 1 Step 1.3 replaces those with
+``VectorStoreInterface`` and deletes this file. The session pipeline writes
+through ``src/common/sqlite_vector_store.py`` instead.
+
+Original docstring: stores embedded chunks in Pinecone with full metadata for
+retrieval, filtering, and traceability; handles index creation, upsert, and
+namespace management.
 """
 
 import hashlib
@@ -524,98 +532,3 @@ class VectorStore:
             "namespaces": list(stats.namespaces.keys()),
             "namespace_count": len(stats.namespaces),
         }
-
-
-# ============================================================================
-# Step 7 Validation
-# ============================================================================
-
-if __name__ == "__main__":
-    import os
-    from pathlib import Path
-
-    from src.ingestion.chunker import SemanticChunker
-    from src.ingestion.cleaner import TextCleaner
-    from src.ingestion.embedder import EmbeddingGenerator
-    from src.ingestion.enricher import ChunkEnricher
-    from src.ingestion.metadata_extractor import MetadataExtractor
-    from src.ingestion.parser import DocumentParser
-
-    # Full pipeline
-    parser = DocumentParser()
-    cleaner = TextCleaner()
-    extractor = MetadataExtractor()
-    chunker = SemanticChunker()
-    enricher = ChunkEnricher()
-    embedder = EmbeddingGenerator()
-    vector_store = VectorStore()
-
-    # Use deterministic namespace generation. Bundled sample corpus file —
-    # swap in your own files to test other formats.
-    SAMPLE_FILE = str(Path(__file__).resolve().parents[2] / "sample_data" / "sample_lecture.pptx")
-    test_files = [SAMPLE_FILE]
-
-    for file_path in test_files:
-        if os.path.exists(file_path):
-            print(f"\n{'='*60}")
-            print(f"Vector Storage: {file_path}")
-            print(f"{'='*60}")
-
-            # Steps 1-5
-            parsed = parser.parse(file_path)
-            cleaned = cleaner.clean(parsed)
-            doc_metadata = extractor.extract_with_retry(cleaned)
-            chunks = chunker.chunk(cleaned, doc_metadata)
-            enriched = enricher.enrich(chunks)
-
-            # Step 6
-            embedding_result = embedder.embed_chunks(enriched)
-
-            # Step 7 - Use deterministic namespace generation
-            # FIXED: Use doc_metadata.course_name (not .get())
-            course_name = getattr(doc_metadata, "course_name", "unknown")
-            namespace = vector_store.generate_namespace_from_document(file_path, course_name)
-
-            print(f"📍 Using namespace: {namespace}")
-
-            upsert_result = vector_store.upsert(embedding_result, namespace=namespace)
-
-            print("\n📊 Upsert Results:")
-            print(f"   Index: {upsert_result.index_name}")
-            print(f"   Namespace: {upsert_result.namespace}")
-            print(f"   Upserted: {upsert_result.chunks_upserted}/{upsert_result.total_chunks}")
-            print(f"   Failed: {upsert_result.chunks_failed}")
-            print(f"   Processing time: {upsert_result.processing_time:.2f}s")
-            print(f"   Batch stats: {upsert_result.pinecone_response_stats}")
-            print(f"   Avg response time: {upsert_result.avg_response_time:.3f}s")
-            print(f"   Total upserted count: {upsert_result.total_upserted_count}")
-
-            # Verify storage
-            ns_stats = vector_store.get_namespace_stats(namespace)
-            print("\n📊 Namespace Stats:")
-            print(f"   Vector count: {ns_stats['vector_count']}")
-            print(f"   Dimension: {ns_stats['dimension']}")
-
-            # Test query
-            if embedding_result.chunks:
-                test_vector = embedding_result.chunks[0].embedding
-                results = vector_store.query(vector=test_vector, top_k=3, namespace=namespace)
-                print("\n🔍 Test Query (top 3):")
-                for r in results:
-                    print(f"   [{r['score']:.4f}] {r['id']}")
-                    print(f"      Course: {r['metadata'].get('course_name', 'N/A')}")
-                    print(f"      Chapter: {r['metadata'].get('chapter_title', 'N/A')}")
-                    print(f"      Embedding Model: {r['metadata'].get('embedding_model', 'N/A')}")
-                    print(
-                        f"      Embedding Version: {r['metadata'].get('embedding_version', 'N/A')}"
-                    )
-        else:
-            print(f"⚠️  Test file not found: {file_path}")
-
-    # Show overall index stats
-    print(f"\n{'='*60}")
-    print("Index Overview")
-    print(f"{'='*60}")
-    index_stats = vector_store.get_index_stats()
-    for key, value in index_stats.items():
-        print(f"   {key}: {value}")

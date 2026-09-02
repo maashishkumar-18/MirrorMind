@@ -7,8 +7,7 @@ relevant chunks using a cross-encoder model or LLM-based scoring.
 
 Backends:
 - Cross-encoder: Fast, local model (default)
-- LLM: DeepSeek for high-quality but slower reranking
-- ColBERT: Token-level late interaction (future)
+- LLM: local Ollama model for high-quality but slower reranking
 - Hybrid: Weighted combination of multiple rerankers
 
 Configuration-driven — all models, thresholds, and strategies
@@ -256,7 +255,6 @@ class RerankerConfig:
                 "default_models": {
                     "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-6-v2",
                     "llm": "deepseek-chat",
-                    "colbert": "colbert-ir/colbertv2.0",
                 },
             },
             "candidates": {

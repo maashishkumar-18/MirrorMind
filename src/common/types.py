@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+import numpy as np
 from pydantic import BaseModel, Field
 
 
@@ -164,3 +165,80 @@ class AgenticOutput(BaseModel):
     retrieval_route: RetrievalRoute
     search_query: str | None = None
     response: str
+
+
+# ============================================================================
+# Local vector-store contracts (Production Roadmap Phase 1 Step 1.1)
+#
+# The write-side record and the two diagnostic result types for
+# VectorStoreInterface (src/common/vector_store.py). Introduced here, in the
+# shared-contracts module, so that neither the ingestion pipeline (writes) nor
+# the retrieval pipeline (reads) has to import the other — or the concrete
+# SQLiteVectorStore — to name these types.
+# ============================================================================
+
+
+@dataclass
+class SessionChunkRecord:
+    """
+    A chunk to be written to the vector store via
+    ``VectorStoreInterface.upsert()``.
+
+    Fields mirror the writable columns of ``session_chunks``
+    (db/migrations/0001_initial_schema.sql). ``chunk_id`` maps to the
+    ``id`` column; ``window_start_message_idx`` / ``window_end_message_idx``
+    are ``None`` for primary chunks (which cover the whole session).
+    ``embedding`` is a 1-D float32 array of length 384 (all-MiniLM-L6-v2);
+    the store serializes it to the ``embedding`` BLOB as a raw float32 buffer.
+    """
+
+    chunk_id: str
+    session_id: str
+    content: str
+    embedding: np.ndarray
+    token_count: int
+    chunk_type: str = "primary"  # "primary" | "sub_chunk"
+    window_start_message_idx: int | None = None
+    window_end_message_idx: int | None = None
+    topics: list[str] = field(default_factory=list)
+    action_types: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
+    message_roles: list[str] = field(default_factory=list)
+    sentiment: str = ""
+
+
+@dataclass
+class UpsertResult:
+    """Outcome of a single ``VectorStoreInterface.upsert()`` call."""
+
+    chunk_id: str
+    operation: str  # "inserted" | "updated"
+    total_chunks_in_store: int
+
+
+@dataclass
+class StoreStats:
+    """Snapshot of the vector store's contents (``get_stats()``)."""
+
+    total_chunks: int
+    total_sessions: int
+    embedding_dim: int
+    primary_chunks: int
+    sub_chunks: int
+
+
+@dataclass
+class SessionMessage:
+    """
+    One turn of a conversation session — the input unit for the ingestion
+    pipeline (Production Roadmap Phase 1 Step 1.2) and the feature handlers
+    (Step 1.5).
+
+    ``role`` is ``"user"`` or ``"assistant"`` (mirrors ``messages.role`` in
+    db/migrations/0001_initial_schema.sql). A message's turn index is its
+    position in the ``list[SessionMessage]`` passed to the pipeline, not a
+    field here.
+    """
+
+    role: str
+    content: str

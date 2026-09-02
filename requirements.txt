@@ -1,16 +1,8 @@
-# Document Parsing
-unstructured[all-docs]==0.14.5
-# unstructured's pptx/docx parsing needs libmagic. Linux (incl. CI) gets it
-# via the `libmagic1` system package (see .github/workflows/eval.yml) — no
-# separate pip package needed there, and python-magic-bin isn't published
-# for Linux anyway. Windows has no libmagic system package, so it needs this
-# bundled wheel instead; without it, DocumentParser().parse() segfaults/
-# crashes native-side deep inside unstructured's file-type detection rather
-# than raising a catchable Python exception.
-python-magic-bin==0.4.14; sys_platform == "win32"
-
 # Text Processing
 ftfy==6.2.0
+# tiktoken: still used by the retrieval/generation TokenCounter (pinned by
+# Phase 0 characterization tests). The session ingestion pipeline (Phase 1
+# Step 1.2) counts tokens with all-MiniLM-L6-v2's AutoTokenizer instead.
 tiktoken
 
 # LLM & Embeddings
@@ -42,6 +34,12 @@ google-generativeai==0.8.6
 #   this package was missing from requirements.txt entirely, so the default
 #   embedding path (gemini-embedding-001) could never actually run.
 google-genai==2.16.0
+
+# Local LLM daemon — src/common/llm_client.py OllamaAdapter talks to the
+# Ollama HTTP API over plain requests (Phase 1 Step 1.1). Already present
+# transitively via sentence-transformers/huggingface_hub; pinned explicitly
+# now that it is a first-order dependency.
+requests==2.34.2
 
 # Vector Database
 pinecone-client==4.1.2

@@ -3,12 +3,11 @@
 
 # Reranker backend selection
 backend:
-  type: "cross_encoder"      # "cross_encoder", "llm", "colbert", or "hybrid"
+  type: "cross_encoder"      # "cross_encoder", "llm", or "hybrid"
   model: null                # null = use default model for backend type
   default_models:
     cross_encoder: "cross-encoder/ms-marco-MiniLM-L-6-v2"
     llm: "deepseek-chat"
-    colbert: "colbert-ir/colbertv2.0"
 
 # Candidate selection
 candidates:

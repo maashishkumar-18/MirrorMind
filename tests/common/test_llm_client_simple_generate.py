@@ -1,15 +1,20 @@
 """
-Characterization test for Phase 0 Step 0.2 Bug 2:
-src.common.llm_client.simple_generate() (src/common/llm_client.py).
+Characterization test for src.common.llm_client.simple_generate()
+(src/common/llm_client.py).
 
-Before this fix, simple_generate() hardcoded `adapter = DeepSeekAdapter()`
-directly, bypassing ProviderRegistry entirely -- inconsistent with
-LLMClient.__init__'s own pattern (`self.registry.get(config.provider)`).
+Originally a Phase 0 Step 0.2 bug-fix test: it pinned that simple_generate()
+resolves its adapter through ProviderRegistry (rather than the old hardcoded
+`adapter = DeepSeekAdapter()`), and that the default provider was "deepseek".
+
+Phase 1 Step 1.1 intentionally changes that default: the Personal AI
+Companion runs entirely local, so the only registered provider is now
+"ollama" and simple_generate() defaults to it. The `characterization`
+marker's contract is "pin current behavior, never assert document-era
+behavior Phase 1 is expected to change" — so the resolution-through-registry
+guarantee is still pinned here, retargeted to the new default.
 
 Note: the real ProviderRegistry method is `.get()`, not `.get_provider()`
-(confirmed at src/common/llm_client.py -- ProviderRegistry.get). This test
-asserts `registry.get`, matching the roadmap's intent even though its own
-acceptance-criteria text names the wrong method.
+(the roadmap's Step 0.2 acceptance-criteria text named the wrong method).
 """
 
 from unittest.mock import MagicMock
@@ -29,12 +34,12 @@ def _fake_registry():
     return registry, adapter
 
 
-def test_default_provider_resolves_through_registry_as_deepseek():
+def test_default_provider_resolves_through_registry_as_ollama():
     registry, adapter = _fake_registry()
 
     result = simple_generate("hello", registry=registry)
 
-    registry.get.assert_called_once_with("deepseek")
+    registry.get.assert_called_once_with("ollama")
     adapter.generate.assert_called_once()
     assert result == "the answer"
 
@@ -57,10 +62,10 @@ def test_model_config_provider_field_matches_the_requested_provider():
     assert prompt_obj.user_prompt == "hello"
 
 
-def test_no_registry_injected_still_works_and_defaults_to_deepseek():
+def test_no_registry_injected_still_works_and_defaults_to_ollama():
     """Without an injected registry, simple_generate() must build its own
-    ProviderRegistry() rather than raising -- this is the real, unmocked
-    path every existing call site (chunker.py, metadata_extractor.py,
-    reranker.py, retrieval_agent.py) exercises today."""
+    ProviderRegistry() rather than raising. As of Step 1.1 that registry has
+    exactly one provider — ollama — and the cloud adapters are unregistered."""
     registry = ProviderRegistry()
-    assert "deepseek" in registry.list_providers()
+    assert "ollama" in registry.list_providers()
+    assert "deepseek" not in registry.list_providers()

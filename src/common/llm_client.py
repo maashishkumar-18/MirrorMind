@@ -9,7 +9,8 @@ retrieval agent all call `simple_generate()` directly, alongside the
 generation orchestrator's full `LLMClient`.
 
 Handles:
-- Provider routing (Gemini, OpenAI, Anthropic)
+- Provider routing (Ollama by default; cloud adapters unregistered as of
+  Phase 1 Step 1.1, retained as classes for v1.1)
 - Retry with exponential backoff
 - Timeout enforcement
 - Rate limit handling
@@ -95,6 +96,27 @@ class ProviderTimeoutError(ProviderAPIError):
     """Raised when request times out."""
 
     pass
+
+
+# --- Ollama-specific (Phase 1 Step 1.1) --------------------------------------
+# Each carries a user-readable message (not a stack trace) for the three
+# distinct local-inference failure modes. OllamaNotRunningError and
+# ModelNotDownloadedError subclass ProviderCredentialError so LLMClient.generate
+# surfaces them immediately without burning retries (they are not transient).
+# ModelNotLoadedError subclasses ProviderAPIError — the model may finish
+# loading, so a bounded retry is reasonable.
+
+
+class OllamaNotRunningError(ProviderCredentialError):
+    """The Ollama daemon is unreachable at the configured host."""
+
+
+class ModelNotDownloadedError(ProviderCredentialError):
+    """The requested model is not installed in the local Ollama instance."""
+
+
+class ModelNotLoadedError(ProviderAPIError):
+    """The requested model is installed but not yet loaded into memory."""
 
 
 def _extract_retry_after(exc: Exception, error_msg: str) -> tuple[float | None, bool]:
@@ -537,6 +559,117 @@ class DeepSeekAdapter(OpenAIAdapter):
             return False
 
 
+class OllamaAdapter(ProviderAdapter):
+    """
+    Adapter for a local Ollama daemon (Phase 1 Step 1.1).
+
+    Talks to Ollama's HTTP API (default ``http://localhost:11434``) — the
+    Python backend never manages the Ollama process, only calls it. The
+    three local-inference failure modes are mapped to specific, user-readable
+    exceptions rather than surfacing a raw stack trace:
+    ``ollama_not_running`` / ``model_not_downloaded`` / ``model_not_loaded``.
+    """
+
+    def __init__(self, host: str | None = None):
+        resolved = host or os.getenv("OLLAMA_HOST") or "http://localhost:11434"
+        self.host = resolved.rstrip("/")
+
+    def generate(
+        self, prompt: Prompt, config: ModelConfig, timeout_seconds: int
+    ) -> GeneratedAnswer:
+        import requests
+
+        start_time = time.time()
+
+        messages: list[dict[str, str]] = []
+        if prompt.system_prompt:
+            messages.append({"role": "system", "content": prompt.system_prompt})
+        messages.append({"role": "user", "content": prompt.user_prompt})
+
+        payload: dict[str, Any] = {
+            "model": config.model_name,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": config.temperature,
+                "top_p": config.top_p,
+                "num_predict": config.max_output_tokens,
+            },
+        }
+
+        try:
+            response = requests.post(f"{self.host}/api/chat", json=payload, timeout=timeout_seconds)
+        except requests.exceptions.ConnectionError as e:
+            # Covers connection-refused and connect-timeout — the daemon can't
+            # be reached. (ConnectTimeout subclasses both ConnectionError and
+            # Timeout, so this clause must come first.)
+            raise OllamaNotRunningError(
+                f"Ollama isn't running at {self.host}. Start Ollama and try again. ({e})"
+            )
+        except requests.exceptions.Timeout as e:
+            # A read timeout — the daemon accepted the connection but did not
+            # respond within the budget (e.g. a very large prompt on a slow box).
+            raise ProviderTimeoutError(f"Ollama request timed out after {timeout_seconds}s: {e}")
+
+        if response.status_code != 200:
+            error_body = response.text or ""
+            lowered = error_body.lower()
+            # Match on the error MESSAGE, not the status code alone: a bare 404
+            # (e.g. an nginx "404 Not Found" page in front of a misconfigured
+            # host) is not "model not downloaded" and must not tell the user to
+            # download a model. Ollama's real response is
+            # `model "<name>" not found, try pulling it first`.
+            model_missing = "no such model" in lowered or (
+                "model" in lowered and "not found" in lowered
+            )
+            if model_missing:
+                raise ModelNotDownloadedError(
+                    f"The model '{config.model_name}' isn't downloaded yet. "
+                    "Download it in Settings -> Models."
+                )
+            if response.status_code == 503 or "loading" in lowered or "not loaded" in lowered:
+                raise ModelNotLoadedError(
+                    f"The model '{config.model_name}' is still loading. Try again in a moment.",
+                    status_code=response.status_code,
+                )
+            raise ProviderAPIError(
+                f"Ollama API error ({response.status_code}): {error_body[:500]}",
+                status_code=response.status_code,
+            )
+
+        body = response.json()
+        generation_time = (time.time() - start_time) * 1000
+
+        content = (body.get("message") or {}).get("content", "")
+        input_tokens = int(body.get("prompt_eval_count", 0) or 0)
+        output_tokens = int(body.get("eval_count", 0) or 0)
+        usage = UsageStats(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            provider_metadata={
+                "model": config.model_name,
+                "done_reason": body.get("done_reason", "stop"),
+                "host": self.host,
+            },
+        )
+
+        return GeneratedAnswer(
+            content=content,
+            model_info=config.to_model_info(),
+            usage=usage,
+            generation_time_ms=round(generation_time, 2),
+            finish_reason=str(body.get("done_reason", "stop")),
+            raw_response=body,
+        )
+
+    def validate_credentials(self) -> bool:
+        # No credentials for a local daemon. Actual reachability is reported
+        # as OllamaNotRunningError at call time (parallels how the cloud
+        # adapters treat a missing key vs. a runtime failure).
+        return True
+
+
 # ============================================================================
 # Provider Registry
 # ============================================================================
@@ -546,8 +679,14 @@ class ProviderRegistry:
     """
     Registry of available LLM providers.
 
-    Maps provider names to adapter instances.
-    New providers can be registered at runtime.
+    Maps provider names to adapter instances. New providers can be
+    registered at runtime.
+
+    As of Phase 1 Step 1.1 the only registered default is ``ollama`` — the
+    Personal AI Companion runs entirely local. ``GeminiAdapter`` /
+    ``OpenAIAdapter`` / ``DeepSeekAdapter`` remain defined in this module as
+    unregistered classes (reserved for v1.1) and can still be added back via
+    ``register()``.
     """
 
     def __init__(self):
@@ -555,10 +694,8 @@ class ProviderRegistry:
         self._register_defaults()
 
     def _register_defaults(self):
-        """Register built-in providers."""
-        self.register("gemini", GeminiAdapter())
-        self.register("openai", OpenAIAdapter())
-        self.register("deepseek", DeepSeekAdapter())
+        """Register built-in providers (local-only)."""
+        self.register("ollama", OllamaAdapter())
 
     def register(self, name: str, adapter: ProviderAdapter):
         """Register a provider adapter."""
@@ -719,11 +856,11 @@ class LLMClient:
 
 def simple_generate(
     prompt: str,
-    model_name: str = "deepseek-chat",
+    model_name: str | None = None,
     temperature: float = 0.3,
     max_output_tokens: int = 2048,
     timeout_seconds: int = 30,
-    provider: str = "deepseek",
+    provider: str = "ollama",
     registry: ProviderRegistry | None = None,
 ) -> str:
     """
@@ -741,14 +878,18 @@ def simple_generate(
     Raises ProviderRateLimitError/ProviderAPIError/ProviderCredentialError/
     ProviderTimeoutError on failure — same as any ProviderAdapter.
 
-    `provider`/`registry` (Phase 0 Step 0.2 bug fix): resolves the adapter
-    through ProviderRegistry instead of hardcoding DeepSeekAdapter(), for
-    consistency with LLMClient.__init__'s own pattern
-    (`self.registry.get(config.provider)`). `provider` defaults to
-    "deepseek" so existing behavior is unchanged for every current call
-    site; pass `registry=` to inject a specific registry (e.g. in tests).
+    `provider`/`registry`: resolves the adapter through ProviderRegistry
+    instead of hardcoding an adapter, matching LLMClient.__init__'s own
+    pattern (`self.registry.get(config.provider)`). As of Phase 1 Step 1.1
+    `provider` defaults to "ollama" (the only registered default) and
+    `model_name` defaults to `$OLLAMA_DEFAULT_MODEL` (falling back to
+    "llama3.1:8b"). Pass `registry=` to inject a specific registry (e.g. in
+    tests).
     """
     from src.generation.config import ModelConfig, Prompt
+
+    if model_name is None:
+        model_name = os.getenv("OLLAMA_DEFAULT_MODEL", "llama3.1:8b")
 
     adapter = (registry or ProviderRegistry()).get(provider)
     config = ModelConfig(

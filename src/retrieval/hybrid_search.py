@@ -23,8 +23,8 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
-from src.ingestion.vector_store import VectorStore
 from src.retrieval.config import HybridWeights
+from src.retrieval.legacy_vector_store import VectorStore
 
 load_dotenv()
 

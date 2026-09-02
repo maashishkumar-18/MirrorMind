@@ -1,0 +1,19 @@
+# Session chunker configuration (Phase 1 Step 1.2).
+#
+# Loaded by src/ingestion/chunker.py::SessionChunkerConfig.from_yaml().
+# Every value is overridable via the matching RAGPIPE_CHUNK_* env var
+# (see _ENV_OVERRIDES in that module).
+
+# Sliding sub-chunk window, in MESSAGES (docs/schema_review.md §3).
+window_size: 10          # RAGPIPE_CHUNK_WINDOW_SIZE
+stride: 5                 # RAGPIPE_CHUNK_STRIDE
+
+# Sessions with MORE than this many messages also get sub-chunks; at or
+# below it, the primary chunk is the only chunk.
+sub_chunk_threshold: 20   # RAGPIPE_SUBCHUNK_THRESHOLD
+
+# Token bounds, derived from all-MiniLM-L6-v2's real 256-token max sequence
+# length (the model truncates longer inputs — the primary chunk, being the
+# whole session, routinely exceeds this by design and is embedded truncated).
+max_chunk_tokens: 256     # RAGPIPE_MAX_CHUNK_TOKENS
+min_chunk_tokens: 32      # RAGPIPE_MIN_CHUNK_TOKENS

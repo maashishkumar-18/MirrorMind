@@ -1,18 +1,22 @@
 """
-Step 6: Vector Embedding
-Converts enriched chunks into vector embeddings using configurable providers.
-Supports Google, OpenAI, and extensible for other providers.
+Vector embedding for the session ingestion pipeline.
+
+Converts enriched chunks into embedding vectors via the local
+``all-MiniLM-L6-v2`` provider (Phase 1 Step 1.2 — the cloud Google/OpenAI
+providers were removed with the document-RAG pipeline). Handles batching and
+a bounded generic retry; no rate-limit / quota / cost logic (local in-process
+inference needs none).
 """
 
 import asyncio
 import logging
-import os
 import time
 from abc import ABC, abstractmethod
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
 from dotenv import load_dotenv
 
 from src.ingestion.enricher import ChunkEnricher, EnrichedChunk
@@ -38,42 +42,15 @@ class ModelConfig:
     supports_custom_dimensions: bool = False
 
 
-# Model configurations
+# Model configurations. Local-only as of Phase 1 Step 1.2 — the cloud
+# embedding providers (Google/OpenAI) were deleted with the document-RAG
+# pipeline. `max_tokens` is all-MiniLM-L6-v2's real max sequence length; it is
+# informational only (the model truncates longer inputs — the primary session
+# chunk routinely exceeds it by design).
 MODEL_CONFIGS = {
-    # Google models
-    "gemini-embedding-001": ModelConfig(
-        max_tokens=2048,
-        default_dimensions=768,
-        provider="google",
-        pricing_per_1m_tokens=0.0,  # Free during preview
-        supports_custom_dimensions=True,
-    ),
-    # OpenAI models
-    "text-embedding-3-small": ModelConfig(
-        max_tokens=8191,
-        default_dimensions=1536,
-        provider="openai",
-        pricing_per_1m_tokens=0.02,
-        supports_custom_dimensions=True,
-    ),
-    "text-embedding-3-large": ModelConfig(
-        max_tokens=8191,
-        default_dimensions=3072,
-        provider="openai",
-        pricing_per_1m_tokens=0.13,
-        supports_custom_dimensions=True,
-    ),
-    "text-embedding-ada-002": ModelConfig(
-        max_tokens=8191,
-        default_dimensions=1536,
-        provider="openai",
-        pricing_per_1m_tokens=0.0001,
-        supports_custom_dimensions=False,
-    ),
-    # Placeholder for future models
-    "bge-large-en-v1.5": ModelConfig(
-        max_tokens=512,
-        default_dimensions=1024,
+    "local": ModelConfig(
+        max_tokens=256,
+        default_dimensions=384,
         provider="local",
         pricing_per_1m_tokens=0.0,
         supports_custom_dimensions=False,
@@ -99,7 +76,7 @@ class EmbeddingProvider(ABC):
         self._actual_dimensions = dimensions or self.config.default_dimensions
 
     @abstractmethod
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]] | np.ndarray:
         """
         Embed a batch of texts.
 
@@ -107,7 +84,10 @@ class EmbeddingProvider(ABC):
             texts: List of text strings to embed
 
         Returns:
-            List of embedding vectors
+            Embedding vectors — a list[list[float]] for the cloud providers,
+            or an np.ndarray of shape (len(texts), dim) for
+            LocalEmbeddingProvider (Phase 1 Step 1.1). Callers must use
+            ``len(...)`` / indexing, never bare truthiness.
         """
         pass
 
@@ -129,281 +109,22 @@ class EmbeddingProvider(ABC):
 
 
 # ============================================================================
-# Google Provider Implementation
-# ============================================================================
-
-
-class GoogleProvider(EmbeddingProvider):
-    """Google GenAI embedding provider."""
-
-    def __init__(self, model: str, dimensions: int | None = None, api_key: str | None = None):
-        super().__init__(model, dimensions)
-
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        if not self.api_key:
-            raise ValueError("GOOGLE_API_KEY is required for Google provider.")
-
-        from google import genai
-        from google.genai import types
-
-        self.client = genai.Client(api_key=self.api_key)
-        self.types = types
-
-        # Rate limiting state
-        self._request_timestamps = deque()
-        self._token_usage = deque()
-        self._total_tokens = 0
-        self._total_requests = 0
-        self._errors = 0
-
-        # Rate limits from config
-        self.requests_per_minute = 60
-        self.tokens_per_minute = 300000
-
-    @property
-    def provider_name(self) -> str:
-        return "google"
-
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Embed texts using Google's API."""
-        # Rate limiting check
-        self._wait_if_needed(texts)
-
-        config = None
-        if self.dimensions is not None:
-            config = self.types.EmbedContentConfig(output_dimensionality=self.dimensions)
-
-        response = self.client.models.embed_content(model=self.model, contents=texts, config=config)
-
-        # Update usage tracking
-        self._total_requests += 1
-        if hasattr(response, "usage_metadata"):
-            tokens_used = response.usage_metadata.total_token_count
-            self._total_tokens += tokens_used
-            current_time = time.time()
-            self._request_timestamps.append((current_time, 1))  # 1 request
-            self._token_usage.append((current_time, tokens_used))
-
-        # Extract embeddings
-        embeddings = []
-        for i, embedding_data in enumerate(response.embeddings):
-            if i == 0:  # First embedding sets the dimension
-                self._actual_dimensions = len(embedding_data.values)
-            embeddings.append(embedding_data.values)
-
-        return embeddings
-
-    def _wait_if_needed(self, texts: list[str]) -> None:
-        """Dynamic rate limiting with rolling 60-second window."""
-        current_time = time.time()
-        window_seconds = 60
-
-        # Clean old entries
-        self._clean_old_entries(current_time, window_seconds)
-
-        # Calculate tokens in current batch
-        # Note: We don't know exact tokens, but can estimate
-        # For simplicity, we'll use a rough estimate
-        # In production, use proper token counting
-        batch_tokens = sum(len(text) / 4 for text in texts)  # Rough estimate
-
-        # Check request rate
-        requests_in_window = len(self._request_timestamps)
-        if requests_in_window >= self.requests_per_minute:
-            oldest = self._request_timestamps[0][0]
-            wait_time = window_seconds - (current_time - oldest) + 0.1
-            if wait_time > 0:
-                logger.debug(
-                    f"Rate limit: waiting {wait_time:.1f}s (requests: {requests_in_window}/{self.requests_per_minute})"
-                )
-                time.sleep(wait_time)
-                # Re-clean after wait
-                self._clean_old_entries(time.time(), window_seconds)
-
-        # Check token rate
-        tokens_in_window = sum(count for _, count in self._token_usage)
-        if tokens_in_window + batch_tokens > self.tokens_per_minute:
-            if self._token_usage:
-                oldest = self._token_usage[0][0]
-                wait_time = window_seconds - (current_time - oldest) + 0.1
-                if wait_time > 0:
-                    logger.debug(
-                        f"Rate limit: waiting {wait_time:.1f}s (tokens: {tokens_in_window}/{self.tokens_per_minute})"
-                    )
-                    time.sleep(wait_time)
-                    # Re-clean after wait
-                    self._clean_old_entries(time.time(), window_seconds)
-
-    def _clean_old_entries(self, current_time: float, window_seconds: int) -> None:
-        """Remove entries older than the window."""
-        cutoff = current_time - window_seconds
-
-        while self._request_timestamps and self._request_timestamps[0][0] < cutoff:
-            self._request_timestamps.popleft()
-
-        while self._token_usage and self._token_usage[0][0] < cutoff:
-            self._token_usage.popleft()
-
-    def get_usage(self) -> dict[str, Any]:
-        """Get usage statistics."""
-        return {
-            "provider": self.provider_name,
-            "model": self.model,
-            "total_tokens": self._total_tokens,
-            "total_requests": self._total_requests,
-            "errors": self._errors,
-            "dimensions": self._actual_dimensions,
-        }
-
-    def reset_usage(self) -> None:
-        """Reset usage statistics."""
-        self._request_timestamps.clear()
-        self._token_usage.clear()
-        self._total_tokens = 0
-        self._total_requests = 0
-        self._errors = 0
-
-
-# ============================================================================
-# OpenAI Provider Implementation
-# ============================================================================
-
-
-class OpenAIProvider(EmbeddingProvider):
-    """OpenAI embedding provider."""
-
-    def __init__(self, model: str, dimensions: int | None = None, api_key: str | None = None):
-        super().__init__(model, dimensions)
-
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY is required for OpenAI provider.")
-
-        from openai import OpenAI
-
-        self.client = OpenAI(api_key=self.api_key)
-
-        # Rate limiting state
-        self._request_timestamps = deque()
-        self._token_usage = deque()
-        self._total_tokens = 0
-        self._total_requests = 0
-        self._errors = 0
-
-        # Rate limits for OpenAI
-        self.requests_per_minute = 60  # Depends on tier
-        self.tokens_per_minute = 350000  # Depends on tier
-
-    @property
-    def provider_name(self) -> str:
-        return "openai"
-
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Embed texts using OpenAI's API."""
-        # Rate limiting check
-        self._wait_if_needed(texts)
-
-        response = self.client.embeddings.create(
-            model=self.model,
-            input=texts,
-            dimensions=self.dimensions if self.dimensions else self.config.default_dimensions,
-        )
-
-        # Update usage tracking
-        self._total_requests += 1
-        current_time = time.time()
-        self._request_timestamps.append((current_time, 1))
-
-        if hasattr(response, "usage"):
-            tokens_used = response.usage.total_tokens
-            self._total_tokens += tokens_used
-            self._token_usage.append((current_time, tokens_used))
-
-        # Extract embeddings
-        embeddings = [data.embedding for data in response.data]
-        if embeddings:
-            self._actual_dimensions = len(embeddings[0])
-
-        return embeddings
-
-    def _wait_if_needed(self, texts: list[str]) -> None:
-        """Dynamic rate limiting with rolling 60-second window."""
-        current_time = time.time()
-        window_seconds = 60
-
-        # Clean old entries
-        self._clean_old_entries(current_time, window_seconds)
-
-        # Estimate tokens in batch (rough approximation)
-        batch_tokens = sum(len(text) / 4 for text in texts)
-
-        # Check request rate
-        requests_in_window = len(self._request_timestamps)
-        if requests_in_window >= self.requests_per_minute:
-            oldest = self._request_timestamps[0][0]
-            wait_time = window_seconds - (current_time - oldest) + 0.1
-            if wait_time > 0:
-                logger.debug(
-                    f"Rate limit: waiting {wait_time:.1f}s (requests: {requests_in_window}/{self.requests_per_minute})"
-                )
-                time.sleep(wait_time)
-                self._clean_old_entries(time.time(), window_seconds)
-
-        # Check token rate
-        tokens_in_window = sum(count for _, count in self._token_usage)
-        if tokens_in_window + batch_tokens > self.tokens_per_minute:
-            if self._token_usage:
-                oldest = self._token_usage[0][0]
-                wait_time = window_seconds - (current_time - oldest) + 0.1
-                if wait_time > 0:
-                    logger.debug(
-                        f"Rate limit: waiting {wait_time:.1f}s (tokens: {tokens_in_window}/{self.tokens_per_minute})"
-                    )
-                    time.sleep(wait_time)
-                    self._clean_old_entries(time.time(), window_seconds)
-
-    def _clean_old_entries(self, current_time: float, window_seconds: int) -> None:
-        """Remove entries older than the window."""
-        cutoff = current_time - window_seconds
-
-        while self._request_timestamps and self._request_timestamps[0][0] < cutoff:
-            self._request_timestamps.popleft()
-
-        while self._token_usage and self._token_usage[0][0] < cutoff:
-            self._token_usage.popleft()
-
-    def get_usage(self) -> dict[str, Any]:
-        """Get usage statistics."""
-        return {
-            "provider": self.provider_name,
-            "model": self.model,
-            "total_tokens": self._total_tokens,
-            "total_requests": self._total_requests,
-            "errors": self._errors,
-            "dimensions": self._actual_dimensions,
-        }
-
-    def reset_usage(self) -> None:
-        """Reset usage statistics."""
-        self._request_timestamps.clear()
-        self._token_usage.clear()
-        self._total_tokens = 0
-        self._total_requests = 0
-        self._errors = 0
-
-
-# ============================================================================
 # Provider Factory
 # ============================================================================
 
 
 class ProviderFactory:
-    """Factory for creating embedding providers."""
+    """Factory for creating embedding providers. Local-only (Phase 1 Step 1.2)."""
 
-    _providers = {
-        "google": GoogleProvider,
-        "openai": OpenAIProvider,
-    }
+    @classmethod
+    def _provider_class(cls, provider: str) -> type[EmbeddingProvider] | None:
+        if provider == "local":
+            # Lazy import: local_embedder imports EmbeddingProvider from this
+            # module, so a top-level import here would be circular.
+            from src.ingestion.local_embedder import LocalEmbeddingProvider
+
+            return LocalEmbeddingProvider
+        return None
 
     @classmethod
     def create(
@@ -413,7 +134,7 @@ class ProviderFactory:
         Create a provider instance for the given model.
 
         Args:
-            model: Model name (e.g., "text-embedding-004")
+            model: Model name (e.g., "local", "text-embedding-3-small")
             dimensions: Desired output dimensions (optional)
             api_key: API key for the provider (optional)
 
@@ -424,7 +145,7 @@ class ProviderFactory:
         if not config:
             raise ValueError(f"Unsupported model: {model}")
 
-        provider_class = cls._providers.get(config.provider)
+        provider_class = cls._provider_class(config.provider)
         if not provider_class:
             raise ValueError(f"Unsupported provider: {config.provider}")
 
@@ -499,7 +220,7 @@ class EmbeddingGenerator:
 
     def __init__(
         self,
-        model: str = "gemini-embedding-001",
+        model: str = "local",
         dimensions: int | None = None,
         batch_size: int = 20,
         max_retries: int = 3,
@@ -572,15 +293,16 @@ class EmbeddingGenerator:
 
         start_time = time.time()
 
-        # Validate all chunks before sending to API
+        # All chunks are embedded; over-limit ones are truncated by the model,
+        # not skipped (see _validate_chunks).
         valid_chunks, oversized = self._validate_chunks(chunks)
 
         if oversized:
-            logger.warning(
-                f"{len(oversized)} chunk(s) exceed token limit ({self.config.max_tokens}) and will be skipped"
+            logger.debug(
+                "%d chunk(s) exceed the model's %d-token window and will be embedded truncated",
+                len(oversized),
+                self.config.max_tokens,
             )
-            for chunk_id, tokens in oversized[:3]:
-                logger.debug(f"Oversized chunk {chunk_id}: {tokens} tokens")
 
         # Generate embeddings in batches
         all_embedded_chunks = []
@@ -596,9 +318,6 @@ class EmbeddingGenerator:
 
             all_embedded_chunks.extend(embedded)
             failed.extend(failed_in_batch)
-
-        # Add oversized chunks to failed list
-        failed.extend([chunk_id for chunk_id, _ in oversized])
 
         processing_time = time.time() - start_time
 
@@ -661,26 +380,18 @@ class EmbeddingGenerator:
             try:
                 embeddings = self.provider.embed_batch([query])
 
-                if embeddings:
+                # `embeddings` may be a list[list[float]] (cloud providers) or
+                # an np.ndarray of shape (1, dim) (LocalEmbeddingProvider) —
+                # use len(), not truthiness, which is ambiguous for arrays.
+                if embeddings is not None and len(embeddings) > 0:
                     return embeddings[0]
 
                 return None
 
             except Exception as e:
-                error = str(e).lower()
-                retryable = any(
-                    x in error
-                    for x in (
-                        "429",
-                        "rate",
-                        "quota",
-                        "resource_exhausted",
-                        "timeout",
-                        "deadline_exceeded",
-                    )
-                )
-
-                if attempt < self.max_retries - 1 and retryable:
+                # Local in-process inference: no rate-limit / quota classes to
+                # match on — a bounded generic retry covers transient hiccups.
+                if attempt < self.max_retries - 1:
                     wait_time = self.retry_delay * (2**attempt)
                     logger.warning(
                         f"Query embedding retry {attempt + 1}/{self.max_retries} "
@@ -724,20 +435,7 @@ class EmbeddingGenerator:
                 return results
 
             except Exception as e:
-                error = str(e).lower()
-                retryable = any(
-                    x in error
-                    for x in (
-                        "429",
-                        "rate",
-                        "quota",
-                        "resource_exhausted",
-                        "timeout",
-                        "deadline_exceeded",
-                    )
-                )
-
-                if attempt < self.max_retries - 1 and retryable:
+                if attempt < self.max_retries - 1:
                     wait_time = self.retry_delay * (2**attempt)
                     logger.warning(
                         f"Batch query embedding retry {attempt + 1}/{self.max_retries} "
@@ -801,21 +499,13 @@ class EmbeddingGenerator:
                 return embedded_chunks, []
 
             except Exception as e:
-                error_str = str(e).lower()
-                is_rate_limit = any(
-                    x in error_str for x in ["429", "rate", "quota", "resource_exhausted"]
-                )
-                is_timeout = any(x in error_str for x in ["timeout", "deadline_exceeded"])
-
                 if attempt < self.max_retries - 1:
-                    if is_rate_limit or is_timeout:
-                        wait_time = self.retry_delay * (2**attempt)
-                        logger.warning(f"Rate limit/timeout. Retrying in {wait_time:.1f}s...")
-                        time.sleep(wait_time)
-                    else:
-                        # Non-retryable error or other issue
-                        logger.error(f"Non-retryable error: {e}")
-                        break
+                    wait_time = self.retry_delay * (2**attempt)
+                    logger.warning(
+                        f"Batch {batch_index} embedding retry "
+                        f"{attempt + 1}/{self.max_retries} in {wait_time:.1f}s..."
+                    )
+                    time.sleep(wait_time)
                 else:
                     logger.error(f"Failed after {self.max_retries} attempts: {e}")
                     return [], chunk_ids
@@ -830,22 +520,15 @@ class EmbeddingGenerator:
         self, chunks: list[EnrichedChunk]
     ) -> tuple[list[EnrichedChunk], list[tuple[str, int]]]:
         """
-        Validate chunks before embedding. Returns (valid_chunks, oversized_list).
-
-        Uses precomputed token_count from EnrichedChunk to avoid redundant tokenization.
-        Oversized chunks are those exceeding the model's token limit.
+        Split chunks into (to_embed, over_model_limit) — the second list is
+        for diagnostics only, NOT rejection. A local model silently truncates
+        an over-length input to its max sequence length; there is no API limit
+        or per-token cost to guard against, and the primary session chunk (the
+        whole conversation) routinely exceeds the limit by design.
         """
         max_tokens = self.config.max_tokens
-        valid = []
-        oversized = []
-
-        for chunk in chunks:
-            if chunk.token_count > max_tokens:
-                oversized.append((chunk.chunk_id, chunk.token_count))
-            else:
-                valid.append(chunk)
-
-        return valid, oversized
+        over_limit = [(c.chunk_id, c.token_count) for c in chunks if c.token_count > max_tokens]
+        return list(chunks), over_limit
 
     # ------------------------------------------------------------------
     # Diagnostics
@@ -873,13 +556,6 @@ class EmbeddingGenerator:
             ),
             "provider_usage": result.provider_usage,
         }
-
-    def estimate_cost(self, total_tokens: int) -> float:
-        """
-        Estimate cost for embedding using provider pricing.
-        """
-        price_per_1m = self.config.pricing_per_1m_tokens
-        return (total_tokens / 1_000_000) * price_per_1m
 
     def switch_model(self, new_model: str, dimensions: int | None = None) -> None:
         """
@@ -914,92 +590,3 @@ class EmbeddingGenerator:
                 logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
             )
             logger.addHandler(handler)
-
-
-# ============================================================================
-# Step 6 Validation
-# ============================================================================
-
-if __name__ == "__main__":
-    import os
-    from pathlib import Path
-
-    from src.ingestion.chunker import SemanticChunker
-    from src.ingestion.cleaner import TextCleaner
-    from src.ingestion.enricher import ChunkEnricher
-    from src.ingestion.metadata_extractor import MetadataExtractor
-    from src.ingestion.parser import DocumentParser
-
-    # Configure logging for testing
-    logging.basicConfig(level=logging.INFO)
-
-    # Full pipeline
-    parser = DocumentParser()
-    cleaner = TextCleaner()
-    extractor = MetadataExtractor()
-    chunker = SemanticChunker()
-    enricher = ChunkEnricher()
-
-    # Test with Google
-    embedder = EmbeddingGenerator(
-        model="gemini-embedding-001",
-        dimensions=None,  # Use default
-        batch_size=20,
-        enable_logging=True,
-    )
-
-    # Bundled sample corpus file — swap in your own files to test other formats.
-    SAMPLE_FILE = str(Path(__file__).resolve().parents[2] / "sample_data" / "sample_lecture.pptx")
-    test_files = [SAMPLE_FILE]
-
-    for file_path in test_files:
-        if os.path.exists(file_path):
-            logger.info(f"Processing: {file_path}")
-
-            # Steps 1-5
-            parsed = parser.parse(file_path)
-            cleaned = cleaner.clean(parsed)
-            metadata = extractor.extract_with_retry(cleaned)
-            chunks = chunker.chunk(cleaned, metadata)
-            enriched = enricher.enrich(chunks)
-
-            logger.info(
-                f"Pre-embedding: {len(enriched)} chunks, {sum(c.token_count for c in enriched)} total tokens"
-            )
-
-            # Step 6
-            result = embedder.embed_chunks(enriched)
-
-            # Summary
-            summary = embedder.get_embedding_summary(result)
-            cost = embedder.estimate_cost(result.total_tokens)
-
-            logger.info("Embedding Results:")
-            logger.info(f"  Model: {summary['model']}")
-            logger.info(f"  Provider: {summary['provider']}")
-            logger.info(f"  Dimensions: {summary['dimensions']}")
-            logger.info(f"  Successful: {summary['successful']}/{summary['total_chunks']}")
-            logger.info(f"  Failed: {summary['failed']}")
-            logger.info(f"  Total tokens: {summary['total_tokens']}")
-            logger.info(f"  Processing time: {summary['processing_time_seconds']}s")
-            logger.info(f"  Tokens/sec: {summary['tokens_per_second']}")
-            logger.info(f"  Est. cost: ${cost:.6f}")
-            logger.info(f"  Provider usage: {summary['provider_usage']}")
-
-            # Show sample embedding
-            if result.chunks:
-                sample = result.chunks[0]
-                logger.info("Sample Embedded Chunk:")
-                logger.info(f"  Chunk ID: {sample.chunk_id}")
-                logger.info(f"  Content preview: {sample.content[:100]}...")
-                logger.info(f"  Vector dimensions: {len(sample.embedding)}")
-                logger.info(f"  First 5 values: {sample.embedding[:5]}")
-
-            # Test switching to OpenAI
-            if os.getenv("OPENAI_API_KEY"):
-                logger.info("\nTesting OpenAI provider...")
-                embedder.switch_model("text-embedding-3-small", dimensions=768)
-                result_openai = embedder.embed_chunks(enriched[:5])
-                logger.info(f"OpenAI result: {len(result_openai.chunks)} chunks embedded")
-        else:
-            logger.warning(f"Test file not found: {file_path}")
