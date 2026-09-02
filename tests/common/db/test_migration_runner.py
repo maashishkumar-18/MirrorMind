@@ -51,6 +51,94 @@ class TestRun:
         assert len(rows[0][2]) == 64  # sha256 hex digest length
 
 
+class TestAtomicity:
+    """
+    Regression coverage for a real bug found during a Phase 0 audit:
+    sqlite3.Connection.executescript() was already known to be non-atomic
+    (see _split_sql_statements' docstring) and was replaced with
+    individual conn.execute() calls inside `with conn:` -- but that fix
+    was itself incomplete. Python's sqlite3 module, in its default
+    "legacy" isolation-level mode, only opens an implicit transaction
+    before a DML statement (INSERT/UPDATE/DELETE); DDL statements (which
+    is everything a schema migration actually contains) autocommit
+    individually regardless of `with conn:`. run() now uses an explicit
+    BEGIN/COMMIT/ROLLBACK on a connection opened with
+    isolation_level=None, which does make DDL genuinely transactional.
+    These tests construct a migration that partially succeeds before
+    failing, and assert NOTHING from it survives -- the exact failure
+    mode `with conn:` alone did not actually prevent.
+    """
+
+    def test_partially_failing_migration_leaves_no_trace_of_earlier_statements(
+        self, isolated_runner
+    ):
+        isolated_runner.run()  # 0001 applied cleanly
+
+        (isolated_runner.migrations_dir / "0002_broken.sql").write_text(
+            "CREATE TABLE should_not_survive (id INTEGER PRIMARY KEY);\n"
+            "CREATE TABLE BROKEN SYNTAX HERE (((;\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(sqlite3.OperationalError):
+            isolated_runner.run()
+
+        conn = sqlite3.connect(isolated_runner.db_path)
+        tables = {
+            r[0]
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        applied_versions = {
+            r[0] for r in conn.execute("SELECT version FROM schema_migrations").fetchall()
+        }
+        conn.close()
+
+        assert "should_not_survive" not in tables
+        assert "0002" not in applied_versions
+
+    def test_status_still_shows_the_failed_migration_as_unapplied(self, isolated_runner):
+        isolated_runner.run()
+        (isolated_runner.migrations_dir / "0002_broken.sql").write_text(
+            "CREATE TABLE t (id INTEGER PRIMARY KEY);\nCREATE TABLE BROKEN (((;\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(sqlite3.OperationalError):
+            isolated_runner.run()
+
+        status = isolated_runner.status()
+        by_version = {s["version"]: s for s in status}
+        assert by_version["0002"]["applied"] is False
+
+    def test_fixing_the_migration_file_and_retrying_succeeds_cleanly(self, isolated_runner):
+        """After a failed attempt (no partial state left behind), fixing
+        the migration file and re-running must succeed exactly as if the
+        broken attempt never happened -- not fail on 'table already
+        exists' from a phantom partial application."""
+        isolated_runner.run()
+        migration_file = isolated_runner.migrations_dir / "0002_broken.sql"
+        migration_file.write_text(
+            "CREATE TABLE fixable (id INTEGER PRIMARY KEY);\nCREATE TABLE BROKEN (((;\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(sqlite3.OperationalError):
+            isolated_runner.run()
+
+        # Fix it and retry.
+        migration_file.write_text(
+            "CREATE TABLE fixable (id INTEGER PRIMARY KEY);\n", encoding="utf-8"
+        )
+        applied = isolated_runner.run()
+        assert applied == ["0002"]
+
+        conn = sqlite3.connect(isolated_runner.db_path)
+        tables = {
+            r[0]
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        conn.close()
+        assert "fixable" in tables
+
+
 class TestSnapshot:
     def test_snapshot_output_passes_integrity_check(self, runner):
         runner.run()

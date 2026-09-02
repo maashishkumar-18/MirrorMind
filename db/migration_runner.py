@@ -33,9 +33,11 @@ def _split_sql_statements(sql: str) -> list[str]:
     was tried first and confirmed (empirically, not just by reading docs) to
     NOT provide atomicity: a later statement's failure does not roll back
     earlier statements in the same script, even with explicit BEGIN/COMMIT
-    written into the script text. Individual conn.execute() calls inside a
-    `with conn:` block DO roll back correctly (also confirmed empirically),
-    so migrations are applied statement-by-statement instead.
+    written into the script text. Migrations are applied statement-by-
+    statement instead, under an explicit BEGIN/COMMIT/ROLLBACK managed by
+    MigrationRunner.run() (see that method's docstring for why individual
+    conn.execute() calls inside plain `with conn:` are ALSO not sufficient
+    on their own for DDL-only scripts like this one).
 
     This splitter only needs to handle what this repo's own migration files
     actually contain: statements terminated by `;`, plus CREATE TRIGGER ...
@@ -204,21 +206,48 @@ class MigrationRunner:
         snapshot taken, no connection writes).
 
         Each migration applies statement-by-statement (see
-        _split_sql_statements) inside a single `with conn:` transaction,
-        followed by its schema_migrations bookkeeping insert in the SAME
-        transaction -- success and bookkeeping commit atomically together,
-        so a crash or a failing statement mid-migration leaves
-        schema_migrations correctly reflecting "not applied" and no
-        partial DDL committed, and a re-run retries cleanly.
+        _split_sql_statements) inside an EXPLICIT `BEGIN`/`COMMIT`
+        transaction (connection opened with `isolation_level=None`, i.e.
+        Python's sqlite3 module manages no implicit transaction of its
+        own), followed by its schema_migrations bookkeeping insert in the
+        SAME transaction, with an explicit `ROLLBACK` on any failure --
+        success and bookkeeping commit atomically together, so a failing
+        statement mid-migration leaves schema_migrations correctly
+        reflecting "not applied" and no partial DDL committed, and a
+        re-run retries cleanly.
 
-        Deliberately does NOT use sqlite3.Connection.executescript() for
-        this: empirically confirmed (not just per its documented
-        semantics) to commit earlier statements in a script even when a
-        later statement in the SAME executescript() call fails and even
-        when the script text itself contains explicit BEGIN/COMMIT --
-        Python's sqlite3 module does not give executescript() atomicity.
-        Individual conn.execute() calls inside `with conn:` do roll back
-        correctly and are used instead.
+        This explicit BEGIN/COMMIT/ROLLBACK is required, not optional
+        styling. Two more convenient-looking alternatives were tried and
+        both empirically confirmed broken for this use case, not just
+        assumed broken from documentation:
+
+        1. `sqlite3.Connection.executescript()` does not provide
+           atomicity at all -- an earlier statement in the same script
+           commits even when a later statement in the SAME call fails,
+           even with explicit BEGIN/COMMIT written into the script text.
+
+        2. Individual `conn.execute()` calls inside a `with conn:` block
+           (the connection's DEFAULT, "legacy" isolation-level behavior)
+           looked correct in initial testing, but that testing only
+           exercised DML (INSERT/UPDATE/DELETE) after the DDL. Python's
+           sqlite3 module in its default legacy mode only opens an
+           implicit transaction before a DML statement -- DDL statements
+           (CREATE TABLE/INDEX/TRIGGER, which is everything a schema
+           migration actually contains) are NOT covered by that implicit
+           transaction and autocommit individually regardless of
+           `with conn:`. Confirmed by reproduction: two CREATE TABLE
+           statements inside `with conn:`, the second one failing (e.g.
+           a duplicate name or a syntax error) -- the FIRST table
+           survives on disk after the exception. `with conn:` alone is
+           therefore not sufficient for a pure-DDL migration file; only
+           an explicit BEGIN issued before the first statement (with
+           isolation_level=None so the driver doesn't also try to manage
+           transactions on top of that) makes DDL genuinely transactional
+           at the SQLite engine level, which does support transactional
+           DDL when explicitly told to. See
+           tests/common/db/test_migration_runner.py::TestAtomicity for
+           the regression test proving this specific failure mode is
+           fixed.
         """
         migrations = self.discover_migrations()
         conn = sqlite3.connect(self.db_path)
@@ -230,11 +259,12 @@ class MigrationRunner:
 
             conn.close()  # release before snapshot() opens its own connections
             self.snapshot()
-            conn = sqlite3.connect(self.db_path)
+            conn = sqlite3.connect(self.db_path, isolation_level=None)
 
             newly_applied = []
             for migration in pending:
-                with conn:
+                conn.execute("BEGIN")
+                try:
                     for statement in migration.statements:
                         conn.execute(statement)
                     conn.execute(
@@ -247,6 +277,10 @@ class MigrationRunner:
                             datetime.now(UTC).isoformat(),
                         ),
                     )
+                    conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
                 newly_applied.append(migration.version)
 
             return newly_applied

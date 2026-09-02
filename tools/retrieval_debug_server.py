@@ -110,6 +110,7 @@ def query(req: QueryRequest) -> dict[str, Any]:
             "course_name": c.course_name,
             "chapter_title": c.chapter_title,
             "topic": c.topic,
+            # BUG: references non-existent attributes. Will be resolved by RetrievedChunk schema migration in Phase 1 Step 1.3. Do not add a workaround here.
             "page_start": c.page_start,
             "page_end": c.page_end,
             "chunk_type": c.chunk_type,

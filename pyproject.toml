@@ -76,8 +76,10 @@ exclude = [
 ]
 
 # Pre-existing type errors in the legacy document-RAG codebase, grandfathered as of
-# Phase 0 Step 0.1's baseline formatting pass (62 errors across these 13 modules,
-# found by running mypy for the first time against previously-unchecked code) — same
+# Phase 0 Step 0.1's baseline formatting pass (55 errors across these 11 modules,
+# found by running mypy for the first time against previously-unchecked code —
+# re-verified during a later audit pass; update this count if the module list below
+# ever changes) — same
 # "don't turn a mechanical setup step into an unscoped remediation project" rationale
 # as the ruff per-file-ignores below. orchestrator.py and llm_client.py (Phase 0 Step
 # 0.2's two bug-fix targets) are deliberately NOT in this list — both are fully mypy-

@@ -33,7 +33,15 @@ class IPCEnvelope(BaseModel):
     event/error framing within a given version.
     """
 
-    version: int = CURRENT_IPC_VERSION
+    # strict=True: Pydantic v2's default "lax" mode silently coerces a
+    # numeric-looking string ("1") to int -- found during a Phase 0 audit
+    # via the cross-language rejection test, which showed zod's plain
+    # z.number() correctly rejects the same input Pydantic was quietly
+    # accepting. version is the version-check middleware's discriminator;
+    # this schema's whole design point is failing loudly on mismatch, so
+    # the two schemas must agree on what counts as a valid version, not
+    # just on what a syntactically-correct one round-trips as.
+    version: int = Field(default=CURRENT_IPC_VERSION, strict=True)
     message_type: IPCMessageType
     request_id: str
     timestamp: str  # ISO 8601

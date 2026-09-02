@@ -64,6 +64,24 @@ def test_rejects_a_missing_request_id():
         IPCEnvelope.model_validate(raw)
 
 
+def test_rejects_a_numeric_string_version_strict_type_matches_zod():
+    """version uses Field(strict=True) specifically because Pydantic v2's
+    default lax mode silently coerces "1" -> 1, while zod's plain
+    z.number() rejects a string outright -- found via the cross-language
+    rejection test in test_ipc_envelope_roundtrip.py. Pinned here too so
+    it's caught even in a Node-less local run."""
+    with pytest.raises(ValidationError):
+        IPCEnvelope.model_validate({**VALID_ENVELOPE, "version": "1"})
+
+
+def test_rejects_a_bool_version_strict_int_excludes_bool():
+    """bool is a subclass of int in Python -- strict=True must still
+    reject it (Pydantic's strict-int mode excludes bool by design, but
+    this pins that behavior rather than assuming it)."""
+    with pytest.raises(ValidationError):
+        IPCEnvelope.model_validate({**VALID_ENVELOPE, "version": True})
+
+
 def test_model_dump_json_mode_serializes_enum_to_plain_string():
     envelope = IPCEnvelope.model_validate(VALID_ENVELOPE)
     dumped = envelope.model_dump(mode="json")

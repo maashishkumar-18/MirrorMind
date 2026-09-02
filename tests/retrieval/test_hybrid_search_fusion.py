@@ -240,6 +240,37 @@ class TestDeduplicate:
         assert len(result) == 1
         assert result[0].score == pytest.approx(0.1)
 
+    def test_non_score_dedup_strategy_keeps_first_seen_regardless_of_later_score(self):
+        """When dedup_strategy != "score", the `if self.config.dedup_strategy
+        == "score":` swap branch never fires -- a later, higher-scored
+        candidate sharing the same parent_chunk_id is silently dropped in
+        favor of whichever one was seen first. Found untested during a
+        Phase 0 audit (only dedup_strategy="score" was exercised); this
+        pins the real, distinct behavior of every other value."""
+        hs = _make_hs(dedup_strategy="first_seen")
+        first = SearchCandidate(
+            chunk_id="p1_a",
+            content="c",
+            raw_content="r",
+            score=0.1,
+            source="semantic",
+            original_rank=0,
+            metadata={"parent_chunk_id": "parent-1"},
+        )
+        second = SearchCandidate(
+            chunk_id="p1_b",
+            content="c",
+            raw_content="r",
+            score=99.0,  # much higher score, but must NOT win under a non-"score" strategy
+            source="semantic",
+            original_rank=1,
+            metadata={"parent_chunk_id": "parent-1"},
+        )
+        result = hs._deduplicate([first, second])
+        assert len(result) == 1
+        assert result[0].chunk_id == "p1_a"
+        assert result[0].score == pytest.approx(0.1)
+
 
 class TestNormalizeScores:
     @pytest.mark.parametrize("case", _load("normalize_fixtures.json"))
@@ -305,3 +336,27 @@ class TestNormalizeScores:
         ]
         result = hs._normalize_scores(candidates)
         assert result is candidates
+
+    def test_unrecognized_normalize_method_leaves_scores_completely_unnormalized(self):
+        """Neither the "minmax" nor the "zscore" branch fires for any other
+        string value -- the function silently returns candidates with
+        their ORIGINAL, un-normalized scores (not scaled into [0, 1] at
+        all). Found untested during a Phase 0 audit (only the two
+        recognized methods were exercised); a config typo or a new,
+        not-yet-implemented method name would silently produce raw,
+        un-normalized scores downstream with no error."""
+        hs = _make_hs(normalize_method="not_a_real_method")
+        candidates = [
+            SearchCandidate(
+                chunk_id=cid,
+                content="c",
+                raw_content="r",
+                score=score,
+                source="semantic",
+                original_rank=i,
+            )
+            for i, (cid, score) in enumerate([("a", 10.0), ("b", 5.0), ("c", 0.0)])
+        ]
+        result = hs._normalize_scores(candidates)
+        scores = {c.chunk_id: c.score for c in result}
+        assert scores == {"a": 10.0, "b": 5.0, "c": 0.0}  # unchanged from the raw input
