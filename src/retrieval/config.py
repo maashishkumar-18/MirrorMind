@@ -1,32 +1,15 @@
 """
 Shared configuration types for the retrieval layer.
 
-Trimmed to the session companion's needs in Phase 1 Step 1.3a — the
+Trimmed to the session companion's needs across Phase 1 Step 1.3 — the
 document-era ``PipelineConfig`` / ``RequestType`` / ``AssembledContext`` /
-``RetrievalResult`` / ``ConfidenceLevel`` and the ``RetrievedChunk`` re-export
-went with the study-assistant orchestrator. ``ContextTemplate`` is
-transitional (still consumed by ``context_builder.py`` until Step 1.3c
-rewrites it for session-citation assembly).
+``RetrievalResult`` / ``ConfidenceLevel`` went with the study-assistant
+orchestrator (1.3a), and ``ContextTemplate`` went with the template-driven
+``ContextBuilder`` (1.3c). ``HybridWeights`` is all that remains — the
+semantic/keyword/metadata blend for ``HybridSearch``.
 """
 
 from dataclasses import dataclass
-from enum import Enum
-
-
-class ContextTemplate(str, Enum):
-    """
-    Predefined context assembly templates. Transitional — the document-era
-    variants below are still referenced by the (not-yet-rewritten)
-    ``context_builder.py``; Step 1.3c collapses this to session assembly.
-    """
-
-    LEARNING = "learning"
-    REVISION = "revision"
-    QA = "qa"
-    PLANNER = "planner"
-    QUIZ = "quiz"
-    COMPARISON = "comparison"
-    RAW = "raw"
 
 
 @dataclass

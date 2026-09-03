@@ -1,0 +1,13 @@
+# Retrieval Router Configuration (Phase 1 Step 1.3c)
+
+routing:
+  top_k: 5          # chunks returned per route (post-rerank on the semantic path)
+                    # override: RAGPIPE_ROUTER_TOP_K
+
+# Timing budgets — measured against the LOCAL stack (all-MiniLM embed +
+# brute-force numpy cosine + local cross-encoder), replacing the deleted
+# orchestrator.yaml's 15000ms cloud-API timeout. The authoritative
+# reference-hardware benchmark at 10k chunks is Phase 2 Step 2.5.
+timing:
+  vector_search_target_ms: 200
+  end_to_end_target_ms: 3500

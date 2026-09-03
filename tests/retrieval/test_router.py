@@ -29,6 +29,7 @@ from src.common.types import (
     SessionRetrievedChunk,
 )
 from src.ingestion.pipeline import SessionIngestionPipeline
+from src.retrieval.context_builder import ContextBuilder
 from src.retrieval.reranker import Reranker
 from src.retrieval.router import RetrievalRouter
 from src.retrieval.structured_search import StructuredTableSearch
@@ -150,3 +151,35 @@ def test_hybrid_route_merges_both_kinds(router):
 def test_retrieve_needed_false_short_circuits(router):
     out = router.route(_ao(RetrievalRoute.SEMANTIC, "hi", retrieve=False), "hi")
     assert out == []
+
+
+def test_hybrid_normalizes_so_a_lone_structured_hit_ranks_top(router):
+    # "pack the tent for the trip" is the exact r1 reminder title -> a strong
+    # structured hit. Raw structured score (1/(1+bm25)) is small vs. semantic
+    # rerank scores; after _merge's per-list min-max + structured tie-break it
+    # should reach 1.0 and lead the merged list (Step 1.3c fix).
+    out = router.route(_ao(RetrievalRoute.HYBRID, "pack the tent for the trip"), "q")
+    assert out
+    assert out[0].chunk_type == "structured_record"
+    assert out[0].score == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    "route,query",
+    [
+        (RetrievalRoute.SEMANTIC, "what should we pack for the trip"),
+        (RetrievalRoute.STRUCTURED, "dentist"),
+        (RetrievalRoute.HYBRID, "pack the tent for the trip"),
+    ],
+)
+def test_end_to_end_route_then_context_assembly(router, route, query):
+    """The roadmap's end-to-end retrieval test: route -> ContextBuilder."""
+    chunks = router.route(_ao(route, query), "q")
+    assert chunks
+    assembled = ContextBuilder().build(chunks)
+    assert assembled.formatted_context
+    assert assembled.chunks_used >= 1
+    assert "· approx." in assembled.formatted_context  # a session/record citation
+    lowered = assembled.formatted_context.lower()
+    for word in ("course", "chapter", "slide", "page "):
+        assert word not in lowered
