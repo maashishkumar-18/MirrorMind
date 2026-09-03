@@ -75,10 +75,11 @@ from src.generation.config import (
     RetrievalMetadata,
 )
 
-# TODO(Phase 1 Step 1.3b/1.4): this load-generator still drives the deleted
+# TODO(Phase 1 Step 1.4): this load-generator still drives the deleted
 # document-era retrieval stack (RetrievalOrchestrator, PIPELINE_REGISTRY,
-# src.retrieval.pipelines — all removed in Step 1.3a). It is rewritten against
-# the RetrievalRouter once that lands; until then this module does not import/run.
+# src.retrieval.pipelines — all removed in Step 1.3a). The RetrievalRouter it
+# should target landed in Step 1.3b (src.retrieval.router); rewriting this
+# module against it is Step 1.4 work. Until then this module does not import/run.
 from src.retrieval.config import HybridWeights
 from src.retrieval.pipelines import LEARNING_PIPELINE
 

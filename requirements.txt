@@ -41,10 +41,8 @@ google-genai==2.16.0
 # now that it is a first-order dependency.
 requests==2.34.2
 
-# Vector Database
-pinecone-client==4.1.2
-
-# Retrieval
+# Retrieval — local vector store is src/common/sqlite_vector_store.py (brute-force
+# numpy cosine); Pinecone was removed in Phase 1 Step 1.3b.
 rank_bm25==0.2.2
 
 # Reranking

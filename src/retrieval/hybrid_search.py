@@ -1,16 +1,26 @@
 """
-Hybrid Search Engine
-Combines semantic (dense vector), keyword (sparse BM25), and metadata search
-into a unified candidate pool for reranking.
+Hybrid Search Engine (Phase 1 Step 1.3b — local, session-shaped).
 
-ARCHITECTURE NOTE:
-- Semantic: Dense vector retrieval via Pinecone embeddings
-- Keyword: Sparse retrieval using BM25 (production) or semantic fallback (development)
-- Metadata: Filter-based retrieval using Pinecone metadata
+Combines dense (vector) retrieval over the local ``SQLiteVectorStore`` with
+sparse BM25 keyword retrieval and a light metadata-boost pass into a single
+candidate pool for the reranker.
 
-Configuration-driven — all weights, thresholds, and strategies
-loaded from config/retrieval/hybrid_search.yaml with environment
-variable overrides.
+- Semantic: cosine similarity over the in-memory numpy embedding array,
+  via ``VectorStoreInterface.query()`` — no Pinecone, no namespaces.
+- Keyword: BM25 (``rank_bm25``) over the *dense candidate pool* returned by
+  the semantic pass. A global BM25 corpus over every chunk is a v1.1
+  follow-up; at personal scale the dense pool (top ``semantic_k``) is a
+  sufficient keyword-rescoring surface.
+- Metadata: re-query with each configured session field appended to the
+  query text, down-weighted by ``metadata_match_threshold``.
+
+The score-fusion / dedup / normalization helpers (``_merge_candidates``,
+``_weighted_merge``, ``_reciprocal_rank_fusion``, ``_deduplicate``,
+``_normalize_scores``) are characterization-pinned
+(tests/retrieval/test_hybrid_search_fusion.py) and kept byte-identical.
+
+All weights/thresholds load from config/retrieval/hybrid_search.yaml with
+environment variable overrides.
 """
 
 import json
@@ -20,11 +30,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 from dotenv import load_dotenv
 
+from src.common.types import SessionRetrievedChunk
+from src.common.vector_store import VectorStoreInterface
 from src.retrieval.config import HybridWeights
-from src.retrieval.legacy_vector_store import VectorStore
 
 load_dotenv()
 
@@ -50,11 +62,6 @@ class HybridSearchConfig:
     metadata_enabled: bool = True
     metadata_fields: list[str] = field(default_factory=list)
     metadata_match_threshold: float = 0.3
-
-    # Keyword search settings
-    keyword_backend: str = "bm25"  # "bm25", "elasticsearch", or "semantic_fallback"
-    keyword_use_sparse: bool = True
-    bm25_index_path: str | None = None
 
     @classmethod
     def from_yaml(cls, path: str | None = None) -> "HybridSearchConfig":
@@ -96,9 +103,6 @@ class HybridSearchConfig:
             metadata_enabled=bool(data.get("metadata", {}).get("enabled", True)),
             metadata_fields=list(data.get("metadata", {}).get("fields", [])),
             metadata_match_threshold=float(data.get("metadata", {}).get("match_threshold", 0.3)),
-            keyword_backend=str(data.get("keyword", {}).get("backend", "bm25")),
-            keyword_use_sparse=bool(data.get("keyword", {}).get("use_sparse", True)),
-            bm25_index_path=data.get("keyword", {}).get("bm25_index_path"),
         )
 
     @classmethod
@@ -113,8 +117,6 @@ class HybridSearchConfig:
             "RAGPIPE_SEMANTIC_WEIGHT": ("weights", "semantic"),
             "RAGPIPE_KEYWORD_WEIGHT": ("weights", "keyword"),
             "RAGPIPE_METADATA_WEIGHT": ("weights", "metadata"),
-            "RAGPIPE_KEYWORD_BACKEND": ("keyword", "backend"),
-            "RAGPIPE_KEYWORD_USE_SPARSE": ("keyword", "use_sparse"),
         }
 
         for env_var, (section, key) in env_mapping.items():
@@ -146,13 +148,8 @@ class HybridSearchConfig:
             "normalize": {"method": "minmax"},
             "metadata": {
                 "enabled": True,
-                "fields": ["topic", "course_name", "chapter_title"],
+                "fields": ["topics", "action_types", "entities", "sentiment", "message_roles"],
                 "match_threshold": 0.3,
-            },
-            "keyword": {
-                "backend": "bm25",  # bm25, elasticsearch, semantic_fallback
-                "use_sparse": True,
-                "bm25_index_path": None,
             },
         }
 
@@ -170,9 +167,27 @@ class SearchCandidate:
     content: str
     raw_content: str
     score: float  # Normalized score [0, 1]
-    source: str  # "semantic", "keyword", or "metadata"
+    source: str  # "semantic", "keyword_bm25", or "metadata"
     original_rank: int  # Rank in its source list
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    # Session-era traceability (Phase 1 Step 1.3b). Optional — the fusion
+    # characterization fixtures build SearchCandidate from dicts with only
+    # the seven fields above, so every field below must have a default.
+    session_id: str = ""
+    chunk_type: str = ""
+    timestamp: str = ""
+    topics: list[str] = field(default_factory=list)
+    action_types: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
+    message_roles: list[str] = field(default_factory=list)
+    sentiment: str = ""
+    parent_chunk_id: str | None = None
+    # The source SessionRetrievedChunk, carried as a NAMED field (not a
+    # metadata dict key) so the pinned fusion helpers — which rewrite
+    # `.metadata` and `.score` — can never drop it. `repr=False` keeps
+    # candidate reprs readable in test failures.
+    _chunk: SessionRetrievedChunk | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -184,7 +199,6 @@ class HybridSearchResult:
     sources_used: list[str]
     processing_time_ms: float
     query: str
-    keyword_backend_used: str = "unknown"
 
 
 # ============================================================================
@@ -304,240 +318,6 @@ class BM25Index:
         return [(i, scores[i]) for i in ranked_indices if scores[i] > 0]
 
 
-class KeywordSearch:
-    """
-    Keyword-based search with BM25 sparse retrieval.
-
-    ARCHITECTURE:
-    Primary: BM25 sparse retrieval for true keyword matching
-    Fallback: Semantic search (when BM25 unavailable)
-
-    PRODUCTION NOTE:
-    - This implementation uses rank_bm25 for demonstration
-    - For production at scale, replace with Elasticsearch or similar
-    - The fallback behavior ensures graceful degradation
-    """
-
-    def __init__(
-        self,
-        vector_store: VectorStore,
-        backend: str = "bm25",
-        use_sparse: bool = True,
-        bm25_index_path: str | None = None,
-        embedder: Any | None = None,
-    ):
-        self.vector_store = vector_store
-        self.backend = backend
-        self.use_sparse = use_sparse
-        self.bm25_index = BM25Index(bm25_index_path)
-        self._bm25_available = False
-        self._embedder = embedder
-
-    def initialize_bm25(self, documents: list[dict[str, Any]] | None = None) -> None:
-        """
-        Initialize the BM25 index.
-
-        Args:
-            documents: Documents to index. If None, attempts to load from disk.
-        """
-        if documents:
-            self.bm25_index.build_index(documents)
-            self._bm25_available = True
-        elif self.bm25_index.index_path:
-            self._bm25_available = self.bm25_index.load_index()
-        else:
-            print(
-                "WARNING: No BM25 index provided. Keyword search will fall back to semantic search."
-            )
-            self._bm25_available = False
-
-    def search(
-        self,
-        query_keywords: str,
-        top_k: int,
-        namespace: str | list[str],
-        filter: dict | None = None,
-        precomputed_vector: list[float] | None = None,
-    ) -> list[SearchCandidate]:
-        """
-        Keyword-based search with BM25 sparse retrieval.
-
-        ⚠️  BEHAVIOR NOTE:
-        If BM25 is unavailable, falls back to semantic search.
-        This is a graceful degradation path, NOT the intended production behavior.
-
-        Args:
-            query_keywords: Keywords for sparse search
-            top_k: Number of results to return
-            namespace: Pinecone namespace
-            filter: Optional metadata filter
-            precomputed_vector: Pre-embedded query vector to reuse for the
-                semantic fallback path, avoiding a redundant embedding call
-
-        Returns:
-            List of SearchCandidate objects
-        """
-        # Primary: BM25 sparse search
-        if self.use_sparse and self._bm25_available:
-            results = self._bm25_search(query_keywords, top_k, namespace, filter)
-            if results:
-                return results
-
-        # Secondary: Try Elasticsearch backend if configured
-        if self.backend == "elasticsearch":
-            results = self._elasticsearch_search(query_keywords, top_k, namespace, filter)
-            if results:
-                return results
-
-        # Fallback: Semantic search (development/placeholder behavior)
-        print(f"WARNING: Keyword search using semantic fallback for query: {query_keywords}")
-        return self._fallback_semantic_search(
-            query_keywords, top_k, namespace, filter, precomputed_vector
-        )
-
-    def _bm25_search(
-        self,
-        query_keywords: str,
-        top_k: int,
-        namespace: str | list[str],
-        filter: dict | None = None,
-    ) -> list[SearchCandidate]:
-        """
-        True BM25 sparse retrieval, scoped to the requested namespace(s) and
-        metadata filter — mirrors Pinecone's per-namespace query semantics so
-        one global BM25 corpus never leaks results across Exams/documents.
-        """
-        try:
-            allowed_namespaces: set | None = None
-            if namespace:
-                allowed_namespaces = set(namespace) if isinstance(namespace, list) else {namespace}
-
-            # When post-filtering we can't rely on the index's own top_k cutoff
-            # (the best-scored docs overall may not be in-namespace), so pull
-            # every non-zero match and truncate ourselves after filtering.
-            needs_post_filter = bool(allowed_namespaces) or bool(filter)
-            results = self.bm25_index.search(
-                query_keywords, top_k=None if needs_post_filter else top_k
-            )
-
-            if not results:
-                return []
-
-            candidates = []
-            for doc_idx, score in results:
-                doc = self.bm25_index.documents[doc_idx]
-                doc_metadata = doc.get("metadata", {})
-
-                if (
-                    allowed_namespaces is not None
-                    and doc_metadata.get("namespace") not in allowed_namespaces
-                ):
-                    continue
-                if filter and not self._matches_filter(doc_metadata, filter):
-                    continue
-
-                candidates.append(
-                    SearchCandidate(
-                        chunk_id=doc["id"],
-                        content=doc.get("content", ""),
-                        raw_content=doc.get("raw_content", doc.get("content", "")),
-                        score=float(score),
-                        source="keyword_bm25",
-                        original_rank=doc_idx + 1,
-                        metadata=doc_metadata,
-                    )
-                )
-                if len(candidates) >= top_k:
-                    break
-
-            return candidates
-
-        except Exception as e:
-            print(f"BM25 search failed: {e}")
-            return []
-
-    @staticmethod
-    def _matches_filter(metadata: dict[str, Any], filter: dict[str, Any]) -> bool:
-        """
-        Evaluate a Pinecone-style metadata filter against a BM25 document's
-        metadata. Supports the operators actually produced by
-        `MetadataFilterBuilder` ($eq, $ne, $in, $nin); a bare value is
-        treated as shorthand for $eq.
-        """
-        for field, condition in filter.items():
-            actual = metadata.get(field)
-            if isinstance(condition, dict):
-                for op, expected in condition.items():
-                    if op == "$eq" and actual != expected:
-                        return False
-                    elif op == "$ne" and actual == expected:
-                        return False
-                    elif op == "$in" and actual not in expected:
-                        return False
-                    elif op == "$nin" and actual in expected:
-                        return False
-            else:
-                if actual != condition:
-                    return False
-        return True
-
-    def _elasticsearch_search(
-        self, query_keywords: str, top_k: int, namespace: str, filter: dict | None = None
-    ) -> list[SearchCandidate]:
-        """
-        Elasticsearch-backed keyword search.
-
-        TODO: Implement when Elasticsearch integration is added.
-        """
-        # Placeholder for Elasticsearch integration
-        print("Elasticsearch backend not yet implemented")
-        return []
-
-    def _fallback_semantic_search(
-        self,
-        query_keywords: str,
-        top_k: int,
-        namespace: str,
-        filter: dict | None = None,
-        precomputed_vector: list[float] | None = None,
-    ) -> list[SearchCandidate]:
-        """
-        Fallback to semantic search when BM25 is unavailable.
-
-        ⚠️  DEVELOPMENT ONLY: This is not true keyword search.
-        """
-        embedded = precomputed_vector
-        if embedded is None:
-            if self._embedder is None:
-                from src.ingestion.embedder import EmbeddingGenerator
-
-                self._embedder = EmbeddingGenerator()
-            embedded = self._embedder.embed_query(query_keywords)
-
-        if not embedded:
-            return []
-
-        results = self.vector_store.query(
-            vector=embedded, top_k=top_k, namespace=namespace, filter=filter
-        )
-
-        candidates = []
-        for i, result in enumerate(results):
-            candidates.append(
-                SearchCandidate(
-                    chunk_id=result["id"],
-                    content=result.get("metadata", {}).get("content", ""),
-                    raw_content=result.get("metadata", {}).get("raw_content", ""),
-                    score=result["score"],
-                    source="keyword_fallback",  # Differentiates from true keyword search
-                    original_rank=i + 1,
-                    metadata=result.get("metadata", {}),
-                )
-            )
-
-        return candidates
-
-
 # ============================================================================
 # Hybrid Search Engine
 # ============================================================================
@@ -545,139 +325,83 @@ class KeywordSearch:
 
 class HybridSearch:
     """
-    Production-ready hybrid search combining semantic, keyword, and metadata search.
+    Local hybrid search combining semantic, keyword, and metadata retrieval
+    over the session ``VectorStoreInterface``.
 
-    ARCHITECTURE OVERVIEW:
-    ┌─────────────────┐  ┌──────────────────┐  ┌─────────────────┐
-    │   Semantic      │  │    Keyword       │  │    Metadata     │
-    │   (Dense)       │  │    (Sparse)      │  │    (Filter)     │
-    ├─────────────────┤  ├──────────────────┤  ├─────────────────┤
-    │ Pinecone Embed  │  │ BM25/Elasticsearch│  │ Pinecone Meta   │
-    │ Vector Search   │  │ Sparse Retrieval │  │ Filter + Boost  │
-    └─────────────────┘  └──────────────────┘  └─────────────────┘
-           │                      │                      │
-           └──────────────────────┼──────────────────────┘
-                                  ▼
-                      ┌─────────────────────┐
-                      │   Weighted Merge    │
-                      │   + Deduplication   │
-                      └─────────────────────┘
-                                  │
-                                  ▼
-                      ┌─────────────────────┐
-                      │   Unified Results   │
-                      └─────────────────────┘
-
-    All configuration loaded from YAML with environment variable overrides.
+    Depends only on the ``VectorStoreInterface`` ABC — the concrete
+    ``SQLiteVectorStore`` is injected at the application composition root.
     """
 
     def __init__(
         self,
-        vector_store: VectorStore,
+        vector_store: VectorStoreInterface,
         config: HybridSearchConfig | None = None,
         config_path: str | None = None,
-        initialize_bm25: bool = True,
+        *,
+        embedder: Any | None = None,
     ):
         """
-        Initialize hybrid search engine.
-
         Args:
-            vector_store: VectorStore instance for Pinecone queries
-            config: HybridSearchConfig object (overrides config file)
-            config_path: Path to YAML config (overrides env var and default)
-            initialize_bm25: Whether to initialize BM25 index on startup
+            vector_store: the session vector store (VectorStoreInterface).
+            config: HybridSearchConfig object (overrides the config file).
+            config_path: Path to a YAML config (overrides env var + default).
+            embedder: an EmbeddingGenerator (defaults to a local one).
         """
         self.vector_store = vector_store
-
-        # Load configuration
         self.config = config or HybridSearchConfig.from_yaml(config_path)
 
-        # Single shared embedder reused across semantic/keyword-fallback/metadata
-        # search so a query is embedded once per API call instead of once per source.
-        from src.ingestion.embedder import EmbeddingGenerator
+        if embedder is None:
+            from src.ingestion.embedder import EmbeddingGenerator
 
-        self._embedder = EmbeddingGenerator()
+            embedder = EmbeddingGenerator(enable_logging=False)
+        self._embedder = embedder
 
-        # Initialize keyword search with BM25
-        self.keyword_search = KeywordSearch(
-            vector_store=vector_store,
-            backend=self.config.keyword_backend,
-            use_sparse=self.config.keyword_use_sparse,
-            bm25_index_path=self.config.bm25_index_path,
-            embedder=self._embedder,
-        )
-
-        # Track which backend is actually being used
-        self._keyword_backend_used = "uninitialized"
-
-    def initialize_indices(self, documents: list[dict[str, Any]] | None = None) -> None:
-        """
-        Initialize all search indices.
-
-        Args:
-            documents: Documents for BM25 indexing. If None, attempts to load from disk.
-        """
-        self.keyword_search.initialize_bm25(documents)
-        self._keyword_backend_used = (
-            "bm25" if self.keyword_search._bm25_available else "semantic_fallback"
-        )
-
-        if self._keyword_backend_used == "semantic_fallback":
-            print("⚠️  WARNING: Keyword search using semantic fallback!")
-            print("   For production, ensure BM25 index is properly initialized.")
+    # ========================================================================
+    # Public API
+    # ========================================================================
 
     def search(
         self,
         query: str,
         keywords: str,
-        namespace: str | list[str] = "default",
-        metadata_filters: dict[str, Any] | None = None,
+        *,
+        filters: dict[str, Any] | None = None,
         pipeline_weights: HybridWeights | None = None,
     ) -> HybridSearchResult:
         """
         Execute hybrid search across all configured sources.
 
         Args:
-            query: Full expanded query for semantic search
-            keywords: Keyword-only variant for sparse search
-            namespace: Pinecone namespace
-            metadata_filters: Pinecone metadata filter dict
-            pipeline_weights: Optional per-pipeline weight override
+            query: Full query for semantic search.
+            keywords: Keyword-only variant for sparse (BM25) search.
+            filters: Optional store filter dict (e.g. ``{"session_id": ...}``);
+                passed straight through to ``VectorStoreInterface.query``.
+            pipeline_weights: Optional per-call weight override.
 
         Returns:
-            HybridSearchResult with deduplicated, scored candidates
+            HybridSearchResult with deduplicated, scored candidates.
         """
         start_time = time.time()
         weights = pipeline_weights or self.config.weights
 
         candidates: list[SearchCandidate] = []
-        sources_used = []
+        sources_used: list[str] = []
 
-        # ------------------------------------------------------------------
-        # 0. Batch-embed every query variant needed below in ONE API call.
-        # Previously each of semantic / keyword-fallback / per-metadata-field
-        # search embedded independently (up to 5 sequential round trips per
-        # query, ~800-900ms each), which alone could exceed the retrieval
-        # timeout. Embedding once and reusing the vectors collapses that to
-        # a single round trip.
-        # ------------------------------------------------------------------
         needs_semantic = weights.semantic > 0
-        needs_keyword_fallback = (
-            weights.keyword > 0
-            and bool(keywords)
-            and not (self.keyword_search.use_sparse and self.keyword_search._bm25_available)
-            and self.keyword_search.backend != "elasticsearch"
+        needs_keyword = weights.keyword > 0 and bool(keywords)
+        needs_metadata = (
+            weights.metadata > 0 and self.config.metadata_enabled and self.config.metadata_fields
         )
-        needs_metadata = weights.metadata > 0 and self.config.metadata_enabled
         metadata_field_queries = (
-            [f"{query} {field}" for field in self.config.metadata_fields] if needs_metadata else []
+            [f"{query} {meta_field}" for meta_field in self.config.metadata_fields]
+            if needs_metadata
+            else []
         )
 
+        # Batch-embed every query variant in one call.
         embed_texts: list[str] = []
         if needs_semantic:
             embed_texts.append(query)
-        if needs_keyword_fallback:
-            embed_texts.append(keywords)
         embed_texts.extend(metadata_field_queries)
 
         vectors = self._embedder.embed_queries(embed_texts) if embed_texts else []
@@ -685,83 +409,41 @@ class HybridSearch:
         offset = 0
         semantic_vector = None
         if needs_semantic:
-            semantic_vector = vectors[offset]
-            offset += 1
-        keyword_vector = None
-        if needs_keyword_fallback:
-            keyword_vector = vectors[offset]
+            semantic_vector = vectors[offset] if offset < len(vectors) else None
             offset += 1
         metadata_vectors = vectors[offset : offset + len(metadata_field_queries)]
 
-        # ------------------------------------------------------------------
-        # 1. Semantic Search (Pinecone Dense)
-        # ------------------------------------------------------------------
+        # 1. Semantic (dense) search
+        semantic_candidates: list[SearchCandidate] = []
         if needs_semantic:
-            semantic_results = self._semantic_search(
-                query=query,
-                top_k=self.config.semantic_k,
-                namespace=namespace,
-                filter_dict=metadata_filters,
-                precomputed_vector=semantic_vector,
+            semantic_candidates = self._semantic_search(
+                query, self.config.semantic_k, filters, semantic_vector
             )
-            candidates.extend(semantic_results)
-            sources_used.append("semantic")
+            candidates.extend(semantic_candidates)
+            if semantic_candidates:
+                sources_used.append("semantic")
 
-        # ------------------------------------------------------------------
-        # 2. Keyword Search (BM25 Sparse)
-        # ------------------------------------------------------------------
-        if weights.keyword > 0 and keywords:
-            keyword_results = self.keyword_search.search(
-                query_keywords=keywords,
-                top_k=self.config.keyword_k,
-                namespace=namespace,
-                filter=metadata_filters,
-                precomputed_vector=keyword_vector,
+        # 2. Keyword (BM25) search over the dense candidate pool
+        if needs_keyword:
+            keyword_results = self._keyword_search(
+                keywords, self.config.keyword_k, semantic_candidates
             )
-            # Normalize keyword scores to [0, 1] range
-            keyword_results = self._normalize_scores(keyword_results)
             candidates.extend(keyword_results)
-
-            # Track backend used
             if keyword_results:
-                source_name = keyword_results[0].source
-                if source_name == "keyword_bm25":
-                    sources_used.append("keyword_bm25")
-                elif source_name == "keyword_fallback":
-                    sources_used.append("keyword_fallback")
-                    print(
-                        "⚠️  Using semantic fallback for keyword search - results may overlap with semantic branch"
-                    )
-                else:
-                    sources_used.append("keyword")
+                sources_used.append("keyword_bm25")
 
-        # ------------------------------------------------------------------
-        # 3. Metadata Search
-        # ------------------------------------------------------------------
+        # 3. Metadata-boost search
         if needs_metadata:
             metadata_results = self._metadata_search(
-                query=query,
-                top_k=self.config.semantic_k // 2,
-                namespace=namespace,
-                base_filter=metadata_filters,
-                precomputed_vectors=metadata_vectors,
+                query, self.config.semantic_k // 2, filters, metadata_vectors
             )
             candidates.extend(metadata_results)
-            sources_used.append("metadata")
+            if metadata_results:
+                sources_used.append("metadata")
 
-        # ------------------------------------------------------------------
-        # 4. Merge & Weight Scores
-        # ------------------------------------------------------------------
+        # 4. Merge → 5. Deduplicate → 6. Limit
         merged = self._merge_candidates(candidates, weights)
-
-        # ------------------------------------------------------------------
-        # 5. Deduplicate
-        # ------------------------------------------------------------------
         deduped = self._deduplicate(merged)
-
-        # ------------------------------------------------------------------
-        # 6. Limit to max candidates
-        # ------------------------------------------------------------------
         final = deduped[: self.config.max_total_candidates]
 
         processing_time = (time.time() - start_time) * 1000
@@ -772,7 +454,6 @@ class HybridSearch:
             sources_used=sources_used,
             processing_time_ms=round(processing_time, 2),
             query=query,
-            keyword_backend_used=self._keyword_backend_used,
         )
 
     # ========================================================================
@@ -783,78 +464,126 @@ class HybridSearch:
         self,
         query: str,
         top_k: int,
-        namespace: str,
-        filter_dict: dict | None = None,
-        precomputed_vector: list[float] | None = None,
+        filters: dict[str, Any] | None = None,
+        precomputed_vector: Any | None = None,
     ) -> list[SearchCandidate]:
-        """Execute semantic search via Pinecone dense retrieval."""
-        embedded = precomputed_vector
-        if embedded is None:
-            embedded = self._embedder.embed_query(query)
-
-        if not embedded:
+        """Dense retrieval via ``VectorStoreInterface.query``."""
+        vec = precomputed_vector
+        if vec is None:
+            vec = self._embedder.embed_query(query)
+        if vec is None:
+            return []
+        vec = np.asarray(vec, dtype=np.float32)
+        # ndarray truthiness is ambiguous — check .size, never `if not vec`.
+        if vec.size == 0:
             return []
 
-        # Query Pinecone
-        results = self.vector_store.query(
-            vector=embedded, top_k=top_k, namespace=namespace, filter=filter_dict
-        )
+        hits = self.vector_store.query(vec, top_k=top_k, filters=filters or None)
+        return [
+            self._candidate_from_chunk(h, source="semantic", rank=i) for i, h in enumerate(hits, 1)
+        ]
 
-        candidates = []
-        for i, result in enumerate(results):
-            candidates.append(
-                SearchCandidate(
-                    chunk_id=result["id"],
-                    content=result.get("metadata", {}).get("content", query),
-                    raw_content=result.get("metadata", {}).get("raw_content", query),
-                    score=result["score"],
-                    source="semantic",
-                    original_rank=i + 1,
-                    metadata=result.get("metadata", {}),
-                )
+    def _keyword_search(
+        self,
+        keywords: str,
+        top_k: int,
+        semantic_candidates: list[SearchCandidate],
+    ) -> list[SearchCandidate]:
+        """
+        BM25 sparse retrieval over the dense candidate pool.
+
+        Re-scores the chunks the semantic pass already surfaced — a chunk
+        the embedding missed entirely is out of reach here; raising
+        ``semantic_k`` widens the keyword-search surface. A global BM25
+        corpus over every chunk is a v1.1 follow-up.
+        """
+        pool = [c for c in semantic_candidates if c._chunk is not None]
+        if not keywords or not pool:
+            return []
+
+        documents = [
+            {"id": c._chunk.chunk_id, "content": c._chunk.raw_content or c._chunk.content}
+            for c in pool
+        ]
+        index = BM25Index()
+        index.build_index(documents)
+        hits = index.search(keywords, top_k=top_k)
+        if not hits:
+            return []
+
+        by_id = {c._chunk.chunk_id: c._chunk for c in pool}
+        results = [
+            self._candidate_from_chunk(
+                by_id[documents[doc_idx]["id"]],
+                source="keyword_bm25",
+                rank=rank,
+                score=float(score),
             )
-
-        return candidates
+            for rank, (doc_idx, score) in enumerate(hits, 1)
+        ]
+        return self._normalize_scores(results)
 
     def _metadata_search(
         self,
         query: str,
         top_k: int,
-        namespace: str,
-        base_filter: dict | None = None,
-        precomputed_vectors: list[list[float] | None] | None = None,
+        filters: dict[str, Any] | None = None,
+        precomputed_vectors: list[Any] | None = None,
     ) -> list[SearchCandidate]:
         """
-        Search with metadata field matching.
-        Builds additional filters based on configured metadata fields.
+        Light metadata boost: re-query with each configured session field
+        appended to the query, down-weighted by ``metadata_match_threshold``.
         """
-        candidates = []
-        vectors = precomputed_vectors or [None] * len(self.config.metadata_fields)
+        fields = self.config.metadata_fields
+        if not fields:
+            return []
 
-        for field, vector in zip(self.config.metadata_fields, vectors, strict=False):
-            # Use semantic search with metadata field as additional context
-            filter_dict = dict(base_filter) if base_filter else {}
-            # Don't filter too aggressively — just boost by including field in query
-            field_query = f"{query} {field}"
+        candidates: list[SearchCandidate] = []
+        vectors = precomputed_vectors or [None] * len(fields)
+        per_field_k = max(5, top_k // max(1, len(fields)))
 
+        for meta_field, vec in zip(fields, vectors, strict=False):
             field_results = self._semantic_search(
-                query=field_query,
-                top_k=max(5, top_k // len(self.config.metadata_fields)),
-                namespace=namespace,
-                filter_dict=filter_dict if filter_dict else None,
-                precomputed_vector=vector,
+                f"{query} {meta_field}", per_field_k, filters, vec
             )
-
             for c in field_results:
                 c.source = "metadata"
                 c.score *= self.config.metadata_match_threshold
-
             candidates.extend(field_results)
 
         return candidates
 
+    @staticmethod
+    def _candidate_from_chunk(
+        chunk: SessionRetrievedChunk,
+        *,
+        source: str,
+        rank: int,
+        score: float | None = None,
+    ) -> SearchCandidate:
+        """Adapt a store ``SessionRetrievedChunk`` into a ``SearchCandidate``."""
+        return SearchCandidate(
+            chunk_id=chunk.chunk_id,
+            content=chunk.content,
+            raw_content=chunk.raw_content,
+            score=float(chunk.score if score is None else score),
+            source=source,
+            original_rank=rank,
+            metadata={**chunk.metadata, "parent_chunk_id": chunk.parent_chunk_id},
+            session_id=chunk.session_id,
+            chunk_type=chunk.chunk_type,
+            timestamp=chunk.timestamp,
+            topics=list(chunk.topics),
+            action_types=list(chunk.action_types),
+            entities=list(chunk.entities),
+            message_roles=list(chunk.message_roles),
+            sentiment=chunk.sentiment,
+            parent_chunk_id=chunk.parent_chunk_id,
+            _chunk=chunk,
+        )
+
     # ========================================================================
-    # Merging & Scoring
+    # Merging & Scoring  (characterization-pinned — keep byte-identical)
     # ========================================================================
 
     def _merge_candidates(
@@ -919,7 +648,7 @@ class HybridSearch:
         return candidates
 
     # ========================================================================
-    # Deduplication
+    # Deduplication  (characterization-pinned — keep byte-identical)
     # ========================================================================
 
     def _deduplicate(self, candidates: list[SearchCandidate]) -> list[SearchCandidate]:
@@ -966,7 +695,7 @@ class HybridSearch:
         return unique
 
     # ========================================================================
-    # Score Normalization
+    # Score Normalization  (characterization-pinned — keep byte-identical)
     # ========================================================================
 
     def _normalize_scores(self, candidates: list[SearchCandidate]) -> list[SearchCandidate]:
@@ -994,97 +723,3 @@ class HybridSearch:
                     c.score = max(0.0, min(1.0, (c.score - mean) / (2 * std) + 0.5))
 
         return candidates
-
-    # ========================================================================
-    # Diagnostics
-    # ========================================================================
-
-    def get_retrieval_status(self) -> dict[str, Any]:
-        """Get status of all retrieval backends."""
-        return {
-            "semantic": {"status": "available", "backend": "pinecone"},
-            "keyword": {
-                "status": "available" if self.keyword_search._bm25_available else "fallback",
-                "backend": self.keyword_search.backend,
-                "uses_sparse": self.keyword_search.use_sparse,
-                "bm25_available": self.keyword_search._bm25_available,
-            },
-            "metadata": {"status": "available", "fields": self.config.metadata_fields},
-            "keyword_backend_used": self._keyword_backend_used,
-        }
-
-
-# ============================================================================
-# Validation
-# ============================================================================
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("Hybrid Search - Validation")
-    print("=" * 60)
-
-    # Load configuration
-    config = HybridSearchConfig.from_yaml()
-    print("\n📋 Configuration loaded:")
-    print(
-        f"   Weights: semantic={config.weights.semantic}, keyword={config.weights.keyword}, metadata={config.weights.metadata}"
-    )
-    print(
-        f"   Candidates: semantic_k={config.semantic_k}, keyword_k={config.keyword_k}, max={config.max_total_candidates}"
-    )
-    print(f"   Merge: {config.merge_strategy}")
-    print(f"   Dedup: threshold={config.dedup_threshold}, strategy={config.dedup_strategy}")
-    print(f"   Metadata fields: {config.metadata_fields}")
-    print(f"   Keyword backend: {config.keyword_backend}")
-    print(f"   Keyword use_sparse: {config.keyword_use_sparse}")
-
-    # Validate environment variable overrides
-    print("\n🔧 Environment variable overrides available:")
-    for var in [
-        "RAGPIPE_SEMANTIC_K",
-        "RAGPIPE_KEYWORD_K",
-        "RAGPIPE_MAX_CANDIDATES",
-        "RAGPIPE_DEDUP_THRESHOLD",
-        "RAGPIPE_MERGE_STRATEGY",
-        "RAGPIPE_SEMANTIC_WEIGHT",
-        "RAGPIPE_KEYWORD_WEIGHT",
-        "RAGPIPE_METADATA_WEIGHT",
-        "RAGPIPE_KEYWORD_BACKEND",
-        "RAGPIPE_KEYWORD_USE_SPARSE",
-    ]:
-        value = os.getenv(var)
-        if value:
-            print(f"   {var} = {value} ✅")
-        else:
-            print(f"   {var} = (not set, using config file default)")
-
-    # Check for BM25 dependency
-    try:
-        import rank_bm25
-
-        print("\n✅ rank_bm25 installed - BM25 indexing available")
-    except ImportError:
-        print("\n⚠️  rank_bm25 not installed - install with: pip install rank_bm25")
-        print("   Keyword search will fall back to semantic search.")
-
-    print("\n📊 Hybrid Search Architecture:")
-    print("   ┌─────────────────┐  ┌──────────────────┐  ┌─────────────────┐")
-    print("   │   Semantic      │  │    Keyword       │  │    Metadata     │")
-    print("   │   (Dense)       │  │    (Sparse)      │  │    (Filter)     │")
-    print("   ├─────────────────┤  ├──────────────────┤  ├─────────────────┤")
-    print(f"   │ Pinecone Embed  │  │ BM25/{config.keyword_backend} │  │ Pinecone Meta   │")
-    print("   │ Vector Search   │  │ Sparse Retrieval │  │ Filter + Boost  │")
-    print("   └─────────────────┘  └──────────────────┘  └─────────────────┘")
-    print("           │                      │                      │")
-    print("           └──────────────────────┼──────────────────────┘")
-    print("                                  ▼")
-    print("                      ┌─────────────────────┐")
-    print("                      │   Weighted Merge    │")
-    print("                      │   + Deduplication   │")
-    print("                      └─────────────────────┘")
-
-    print("\n✅ Hybrid Search ready (requires VectorStore + Pinecone for full test)")
-    print("   Full integration test available after orchestrator is built.")
-
-    print("\n⚠️  IMPORTANT: Ensure BM25 index is initialized for production keyword search.")
-    print("   Without BM25, keyword search falls back to semantic embeddings.")

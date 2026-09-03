@@ -299,10 +299,41 @@ class RerankedChunk:
     rank: int  # Final rank (1-based)
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Session-era traceability (Phase 1 Step 1.3b). Carried through from the
+    # candidate's metadata so the Retrieval Router can rebuild a
+    # SessionRetrievedChunk without a second store lookup. All optional —
+    # candidates that don't supply them (e.g. the characterization fixtures)
+    # just get the defaults.
+    session_id: str = ""
+    chunk_type: str = ""
+    timestamp: str = ""
+    topics: list[str] = field(default_factory=list)
+    action_types: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
+    message_roles: list[str] = field(default_factory=list)
+    sentiment: str = ""
+    parent_chunk_id: str | None = None
+
     @property
     def combined_score(self) -> float:
         """Weighted combination of original and rerank scores."""
         return 0.3 * self.original_score + 0.7 * self.rerank_score
+
+
+def _session_fields(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Extract the optional session-era passthrough fields from a candidate dict."""
+    meta = candidate.get("metadata", {}) or {}
+    return {
+        "session_id": meta.get("session_id", ""),
+        "chunk_type": meta.get("chunk_type", ""),
+        "timestamp": meta.get("timestamp", ""),
+        "topics": list(meta.get("topics", []) or []),
+        "action_types": list(meta.get("action_types", []) or []),
+        "entities": list(meta.get("entities", []) or []),
+        "message_roles": list(meta.get("message_roles", []) or []),
+        "sentiment": meta.get("sentiment", ""),
+        "parent_chunk_id": meta.get("parent_chunk_id"),
+    }
 
 
 @dataclass
@@ -444,6 +475,7 @@ class CrossEncoderReranker:
                     rerank_score=float(score),
                     rank=rank,
                     metadata=candidate.get("metadata", {}),
+                    **_session_fields(candidate),
                 )
             )
 
@@ -657,6 +689,7 @@ IMPORTANT: The response must be a valid JSON array with no trailing commas."""
                     rerank_score=float(score),
                     rank=rank,
                     metadata=candidate.get("metadata", {}),
+                    **_session_fields(candidate),
                 )
             )
 
@@ -930,6 +963,7 @@ class Reranker:
                     rerank_score=score,
                     rank=rank,
                     metadata=candidate.get("metadata", {}),
+                    **_session_fields(candidate),
                 )
             )
 

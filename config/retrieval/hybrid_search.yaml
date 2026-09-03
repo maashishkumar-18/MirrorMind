@@ -1,5 +1,6 @@
-# Hybrid Search Configuration
-# Combines semantic, keyword, and metadata search results
+# Hybrid Search Configuration (Phase 1 Step 1.3b — local, session-shaped)
+# Combines dense retrieval over the local SQLiteVectorStore, BM25 keyword
+# search over the dense candidate pool, and a metadata-boost pass.
 
 # Search strategy weights (must sum to 1.0)
 weights:
@@ -9,8 +10,8 @@ weights:
 
 # Candidate retrieval
 candidates:
-  semantic_k: 40       # Top-K from Pinecone semantic search
-  keyword_k: 20        # Top-K from keyword/BM25 search
+  semantic_k: 40       # Top-K from the vector store (also the BM25 corpus size)
+  keyword_k: 20        # Top-K from BM25 keyword search
   max_total: 60        # Max candidates before deduplication
 
 # Deduplication
@@ -29,18 +30,19 @@ normalize:
   min_score: 0.0
   max_score: 1.0
 
-# Metadata search
+# Metadata boost search
+# Each field is appended to the query text for an extra down-weighted
+# semantic pass. Every field here must be a real column on session_chunks
+# (db/migrations/0001_initial_schema.sql) AND a field on
+# SessionRetrievedChunk (src/common/sqlite_vector_store.py::_to_retrieved_chunk
+# populates all of them) — the "key_topics silent mismatch" bug was a field
+# configured here that never reached storage.
 metadata:
   enabled: true
-  fields:              # Metadata fields to search against
-    - "topic"
-    - "course_name"
-    - "chapter_title"
-    - "key_topics"
-  match_threshold: 0.3 # Minimum score for metadata matches
-
-# Keyword (sparse) search backend
-keyword:
-  backend: "bm25"               # "bm25", "elasticsearch", or "semantic_fallback"
-  use_sparse: true
-  bm25_index_path: "data/bm25_index/index"  # persisted corpus + index, rebuilt after each ingestion
+  fields:
+    - "topics"
+    - "action_types"
+    - "entities"
+    - "sentiment"
+    - "message_roles"
+  match_threshold: 0.3 # Multiplier applied to metadata-pass candidate scores

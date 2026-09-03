@@ -49,7 +49,9 @@ ignore = ["E501"]
 "src/common/llm_client.py" = ["B904"]                # raise-without-from in except blocks
 "src/generation/prompt_builder.py" = ["F601", "F841"]
 "src/retrieval/context_builder.py" = ["F841"]
-"src/retrieval/hybrid_search.py" = ["B904", "F401", "F402"]
+# B904: the raise-without-from is inside BM25Index.build_index, which Phase 0
+# characterization tests pin byte-identical (tests/retrieval/test_bm25_index.py).
+"src/retrieval/hybrid_search.py" = ["B904"]
 "src/retrieval/reranker.py" = ["B904", "F401", "F841"]
 
 [tool.mypy]
@@ -75,12 +77,13 @@ exclude = []
 #
 # Phase 1 Step 1.2 cleared `src.ingestion.chunker`, `.cleaner`, `.metadata_extractor`.
 # Phase 1 Step 1.3a deleted `src.retrieval.query_rewriter`, `.query_expander`,
-# `.metadata_filter` (document-era orchestration cluster). `.legacy_vector_store` and
-# `.hybrid_search` are deleted/rewritten in Step 1.3b.
+# `.metadata_filter` (document-era orchestration cluster). Step 1.3b deleted
+# `src.retrieval.legacy_vector_store` (Pinecone) and rewrote `.hybrid_search` onto
+# the local store — `.hybrid_search` stays listed until 1.3c revisits the retrieval
+# layer's typing wholesale (its metadata-boost path threads Any-typed vectors).
 [[tool.mypy.overrides]]
 module = [
     "src.ingestion.embedder",
-    "src.retrieval.legacy_vector_store",
     "src.generation.config",
     "src.retrieval.hybrid_search",
     "src.retrieval.reranker",

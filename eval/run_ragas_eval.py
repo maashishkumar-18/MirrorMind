@@ -75,8 +75,9 @@ from src.generation.config import (
 # TODO(Phase 1 Step 1.4): this eval harness still targets the deleted
 # document-era pipeline (parser.py removed + SemanticChunker -> SessionChunker
 # in Step 1.2; RetrievalOrchestrator + src.retrieval.pipelines removed in Step
-# 1.3a). bootstrap_pipeline() and REFUSAL_PATTERNS are rewritten for session-based
-# KB seeding + the RetrievalRouter in Step 1.4; until then this module does not
+# 1.3a; src.retrieval.legacy_vector_store / Pinecone removed in Step 1.3b).
+# bootstrap_pipeline() and REFUSAL_PATTERNS are rewritten for session-based KB
+# seeding + the RetrievalRouter in Step 1.4; until then this module does not
 # import/run.
 from src.generation.orchestrator import GenerationOrchestrator
 from src.ingestion.chunker import SemanticChunker
