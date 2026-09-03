@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS pipeline_calls (
 
     input_tokens INTEGER,
     output_tokens INTEGER,
-    cost_usd REAL,
+    compute_ms REAL,                  -- local-inference latency proxy (replaced cost_usd, Phase 1 Step 1.4)
 
     prompt_version TEXT,
     model_name TEXT,
@@ -76,7 +76,7 @@ _NUMERIC_COLUMNS = {
     "citations_count",
     "input_tokens",
     "output_tokens",
-    "cost_usd",
+    "compute_ms",
     "faithfulness_score",
 }
 
@@ -112,7 +112,7 @@ class PipelineCallMetrics:
 
     input_tokens: int = 0
     output_tokens: int = 0
-    cost_usd: float = 0.0
+    compute_ms: float = 0.0  # local-inference latency proxy (replaced cost_usd)
 
     prompt_version: str | None = None
     model_name: str | None = None
@@ -151,6 +151,22 @@ class MetricsStore:
     def _init_db(self) -> None:
         with self._lock, self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._migrate_cost_usd_to_compute_ms(conn)
+
+    @staticmethod
+    def _migrate_cost_usd_to_compute_ms(conn: sqlite3.Connection) -> None:
+        """
+        Idempotent in-process schema update (Phase 1 Step 1.4) — NOT a
+        session-DB migration (this is a separate unencrypted metrics file with
+        no migration runner). A fresh DB already has ``compute_ms`` from
+        ``_SCHEMA`` and no ``cost_usd``; an older DB has ``cost_usd`` and needs
+        the column added, then the stale one dropped where SQLite supports it.
+        """
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(pipeline_calls)").fetchall()}
+        if "compute_ms" not in cols:
+            conn.execute("ALTER TABLE pipeline_calls ADD COLUMN compute_ms REAL")
+        if "cost_usd" in cols and sqlite3.sqlite_version_info >= (3, 35, 0):
+            conn.execute("ALTER TABLE pipeline_calls DROP COLUMN cost_usd")
 
     def record(self, metrics: PipelineCallMetrics) -> None:
         row = asdict(metrics)

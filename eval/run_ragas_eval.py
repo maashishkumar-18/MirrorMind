@@ -72,13 +72,16 @@ from src.generation.config import (
     RetrievalMetadata,
 )
 
-# TODO(Phase 1 Step 1.4): this eval harness still targets the deleted
+# TODO(Phase 1 Step 1.4b): this eval harness still targets the deleted
 # document-era pipeline (parser.py removed + SemanticChunker -> SessionChunker
 # in Step 1.2; RetrievalOrchestrator + src.retrieval.pipelines removed in Step
-# 1.3a; src.retrieval.legacy_vector_store / Pinecone removed in Step 1.3b).
-# bootstrap_pipeline() and REFUSAL_PATTERNS are rewritten for session-based KB
-# seeding + the RetrievalRouter in Step 1.4; until then this module does not
-# import/run.
+# 1.3a; src.retrieval.legacy_vector_store / Pinecone removed in Step 1.3b;
+# document-era generation types deleted + generation rewritten in Step 1.4a).
+# Step 1.4a updated REFUSAL_PATTERNS to the new session refusal phrase (the one
+# same-commit coupling the roadmap requires). bootstrap_pipeline(), the
+# Pipeline dataclass, score_unanswerable_item, and golden_qa_set.json are
+# rewritten session-shaped in Step 1.4b (which also authors gates.json); until
+# then this module does not import/run.
 from src.generation.orchestrator import GenerationOrchestrator
 from src.ingestion.chunker import SemanticChunker
 from src.ingestion.cleaner import TextCleaner
@@ -94,29 +97,31 @@ from src.retrieval.query_rewriter import ConversationState
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("ragas_eval")
 
-SAMPLE_FILE = str(REPO_ROOT / "sample_data" / "sample_lecture.pptx")
+# SAMPLE_FILE (sample_data/sample_lecture.pptx) was removed in Step 1.4a. The
+# session-based bootstrap_pipeline() rewrite that replaces it is Step 1.4b.
+SAMPLE_FILE = ""
 GOLDEN_SET_PATH = REPO_ROOT / "eval" / "golden_qa_set.json"
 RESULTS_DIR = REPO_ROOT / "eval" / "results"
 
 # ============================================================================
 # Refusal detection for unanswerable items
 #
-# config/generation/prompts/context_aware.yaml's system prompt explicitly
-# instructs the LLM to emit this exact phrase when the context is
-# insufficient (rule #2). Checking for it is not a heuristic invented for
-# this script — it's the structured signal the pipeline already produces
-# on purpose. Combined with the retrieval-layer's own confidence.action
-# (src/retrieval/confidence.py) and OrchestratorResult.is_ready_for_generation.
+# config/generation/prompts/{context_aware,simple_explanation}.yaml instruct
+# the LLM to emit this exact phrase when the retrieved memory is insufficient.
+# Checking for it is the structured refusal signal the pipeline produces on
+# purpose — not a heuristic invented here. MUST stay in lock-step with the
+# templates' phrase (roadmap Step 1.4: "never separated").
 # ============================================================================
 
-# The instructed phrase is "...does not cover this topic in sufficient
-# detail", but the LLM sometimes (correctly, more naturally) substitutes the
-# actual topic name for "this topic" — e.g. "does not cover Just-In-Time
-# (JIT) inventory management in sufficient detail" — which breaks an exact
-# substring match. Match the two anchor fragments allowing arbitrary text
-# (the substituted topic name) in between, within a reasonable span so it
-# doesn't false-positive on two unrelated occurrences far apart.
-REFUSAL_PATTERNS = (re.compile(r"does not cover .{0,120}?in sufficient detail", re.IGNORECASE),)
+# New (Step 1.4a) session refusal phrase: "I don't have anything about that in
+# our past conversations or your notes." The LLM may lightly vary the tail
+# ("...in our past chats or your notes"), so anchor on the stable opening.
+REFUSAL_PATTERNS = (
+    re.compile(
+        r"don'?t have anything about (that|this).{0,80}?(past (conversations|chats)|your notes)",
+        re.IGNORECASE,
+    ),
+)
 
 # confidence.py's ConfidenceScorer._determine_action / orchestrator.py's
 # fallback/clarify/timeout/error builders — any of these mean the retrieval
@@ -158,9 +163,10 @@ def score_unanswerable_item(
 
 
 # ============================================================================
-# DeepSeek cost estimate — see src/common/pricing.py for the constants and
-# rationale (moved there so observability/tracing.py can reuse it without
-# pulling in this module's heavy transitive deps).
+# TODO(Phase 1 Step 1.4b): src.common.pricing was deleted in Step 1.4a (local
+# Ollama inference has no per-token $ cost). The cost bookkeeping below is
+# replaced by a compute_ms latency proxy when this harness is rewritten
+# session-shaped in Step 1.4b. This import is dead until then.
 # ============================================================================
 
 from src.common.pricing import estimate_deepseek_cost  # noqa: E402

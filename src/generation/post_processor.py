@@ -1,40 +1,43 @@
 """
-Post Processor
-Extracts citations, validates grounding, cleans artifacts,
-and formats the final answer from generated text.
+Post Processor (Phase 1 Step 1.4 — session companion).
+
+Cleans generated answer text, extracts session-temporal citations, validates
+grounding against the retrieved session context, and assembles the final
+``GenerationResponse``.
 
 Architecture:
-    GeneratedAnswer + RetrievedChunks → PostProcessor.process() → GenerationResponse
+    GeneratedAnswer + SessionRetrievedChunks → PostProcessor.process() → GenerationResponse
 
-Features:
-- Citation extraction from generated text
-- Grounding validation (keyword overlap)
-- Artifact removal (markdown cleanup)
-- Answer formatting
-- Citation-to-source mapping
-
-Configuration-driven — settings from config/generation/post_processing.yaml.
-No hardcoded patterns.
+``AnswerCleaner`` is kept byte-identical — pinned by
+tests/generation/test_post_processor_answer_cleaner.py. Configuration comes
+from config/generation/post_processing.yaml.
 """
 
 import logging
 import re
+from typing import Any
 
+from src.common.types import SessionRetrievedChunk
 from src.generation.config import (
     AnswerFormat,
     Citation,
     CitationFormatter,
-    CitationLocationType,
     CitationStyle,
     GeneratedAnswer,
     GenerationMode,
     GenerationResponse,
     PostProcessingConfig,
     RetrievalMetadata,
-    RetrievedChunk,
 )
 
 logger = logging.getLogger(__name__)
+
+# Matches "[Session <id> · approx. <ts>]" and "[<table> record · approx. <ts>]"
+_CITATION_RE = re.compile(
+    r"\[(?:Session\s+(?P<session_id>[^\]|·]+?)|(?P<table>[^\]|·]+?)\s+record)"
+    r"\s*·\s*approx\.\s*(?P<timestamp>[^\]]+?)\]",
+    re.IGNORECASE,
+)
 
 
 # ============================================================================
@@ -43,198 +46,134 @@ logger = logging.getLogger(__name__)
 
 
 class CitationExtractor:
-    """
-    Extracts citations from generated text.
+    """Extracts session-temporal citation markers from generated text."""
 
-    Recognizes patterns like:
-    - [Course | Chapter | Slide 5]
-    - [Course | Chapter | Pages 5-7]
-    - [Source: ...]
-    """
-
-    def __init__(self, pattern: str | None = None):
+    def extract(self, text: str) -> list[Citation]:
         """
-        Initialize citation extractor.
-
-        Args:
-            pattern: Regex pattern for citation detection.
-                     Defaults to bracket-based citation format.
+        Find every ``[Session … · approx. …]`` / ``[<table> record · approx. …]``
+        marker and return an ordered list of ``Citation`` objects (chunk_id
+        empty until matched to a source chunk by :class:`PostProcessor`).
         """
-        self.pattern = pattern or r"\[([^\]]+)\]"
-        self._compiled = re.compile(self.pattern)
-
-    def extract(self, text: str) -> list[tuple[str, int, int]]:
-        """
-        Extract citations from text.
-
-        Args:
-            text: Generated answer text
-
-        Returns:
-            List of (citation_string, start_position, end_position) tuples
-        """
-        citations = []
-        for match in self._compiled.finditer(text):
-            citation_str = match.group(1)
-            # Filter out non-citation brackets (e.g., markdown links)
-            if self._is_citation(citation_str):
-                citations.append((citation_str, match.start(), match.end()))
+        citations: list[Citation] = []
+        for i, m in enumerate(_CITATION_RE.finditer(text), start=1):
+            session_id = (m.group("session_id") or "").strip()
+            citations.append(
+                Citation(
+                    index=i,
+                    chunk_id="",
+                    session_id=session_id,
+                    approximate_timestamp=m.group("timestamp").strip(),
+                    position_start=m.start(),
+                    position_end=m.end(),
+                )
+            )
         return citations
-
-    def _is_citation(self, text: str) -> bool:
-        """
-        Check if a bracketed string is likely a citation.
-
-        Citations typically contain pipes (|) separating fields
-        or reference to page/slide numbers.
-        """
-        # Contains pipe separators (Course | Chapter | Slide X)
-        if "|" in text:
-            return True
-
-        # Contains page/slide reference
-        if re.search(r"(slide|page|slides|pages)\s*\d+", text, re.IGNORECASE):
-            return True
-
-        return False
-
-    def parse_citation(self, citation_str: str) -> Citation | None:
-        """
-        Parse a citation string into a Citation object.
-
-        Args:
-            citation_str: Raw citation string (e.g., "SCM | Inventory | Slide 5")
-
-        Returns:
-            Citation object or None if parsing fails
-        """
-        parts = [p.strip() for p in citation_str.split("|")]
-
-        if len(parts) < 3:
-            return None
-
-        course_name = parts[0] if len(parts) > 0 else ""
-        chapter_title = parts[1] if len(parts) > 1 else ""
-        location_str = parts[2] if len(parts) > 2 else ""
-
-        # Parse location
-        location_type = CitationLocationType.UNKNOWN
-        location_start = 0
-        location_end = 0
-
-        location_lower = location_str.lower()
-
-        # Slide patterns
-        slide_match = re.search(r"slides?\s*(\d+)(?:\s*[-–]\s*(\d+))?", location_lower)
-        if slide_match:
-            location_type = CitationLocationType.SLIDE
-            location_start = int(slide_match.group(1))
-            location_end = int(slide_match.group(2)) if slide_match.group(2) else location_start
-
-        # Page patterns
-        page_match = re.search(r"pages?\s*(\d+)(?:\s*[-–]\s*(\d+))?", location_lower)
-        if page_match:
-            location_type = CitationLocationType.PAGE
-            location_start = int(page_match.group(1))
-            location_end = int(page_match.group(2)) if page_match.group(2) else location_start
-
-        # Section patterns
-        section_match = re.search(r"sections?\s*(\d+)", location_lower)
-        if section_match:
-            location_type = CitationLocationType.SECTION
-            location_start = int(section_match.group(1))
-
-        return Citation(
-            index=0,  # Will be assigned after extraction
-            chunk_id="",  # Will be matched later
-            course_name=course_name,
-            chapter_title=chapter_title,
-            location_type=location_type,
-            location_start=location_start,
-            location_end=location_end,
-        )
 
 
 # ============================================================================
 # Grounding Validator
 # ============================================================================
 
+_LLM_GROUNDING_PROMPT = """You check whether an answer is supported by the given context.
+
+Context:
+{context}
+
+Answer:
+{answer}
+
+Is every factual claim in the Answer supported by the Context? Reply with ONE
+JSON object and nothing else:
+{{"grounded": true|false, "confidence": 0.0-1.0}}
+"""
+
 
 class GroundingValidator:
     """
-    Validates that generated answers are grounded in the retrieved context.
-
-    Uses keyword overlap to check if answer claims are supported by
-    the source chunks.
+    Validates that a generated answer is grounded in the retrieved session
+    context. ``keyword_overlap`` (default) is a cheap lexical check;
+    ``llm_check`` adds one Ollama call and falls back to keyword overlap on
+    any failure.
     """
 
-    def __init__(self, method: str = "keyword_overlap", min_overlap: float = 0.3):
-        """
-        Initialize grounding validator.
-
-        Args:
-            method: Validation method ("keyword_overlap", "llm_check", "both")
-            min_overlap: Minimum keyword overlap ratio for grounding
-        """
+    def __init__(
+        self,
+        method: str = "keyword_overlap",
+        min_overlap: float = 0.3,
+        *,
+        model: str | None = None,
+        registry: Any = None,
+    ):
         self.method = method
         self.min_overlap = min_overlap
+        self._model = model
+        self._registry = registry
 
-    def validate(self, answer: str, chunks: list[RetrievedChunk]) -> tuple[bool, float]:
-        """
-        Validate grounding of answer against retrieved chunks.
-
-        Args:
-            answer: Generated answer text
-            chunks: Source chunks used for generation
-
-        Returns:
-            Tuple of (is_grounded, confidence)
-        """
+    def validate(self, answer: str, chunks: list[SessionRetrievedChunk]) -> tuple[bool, float]:
+        """Return ``(is_grounded, confidence)``."""
         if not chunks or not answer:
             return False, 0.0
 
-        if self.method == "keyword_overlap":
-            return self._keyword_overlap_check(answer, chunks)
-        elif self.method == "both":
-            kw_grounded, kw_conf = self._keyword_overlap_check(answer, chunks)
-            return kw_grounded, kw_conf
-        else:
-            # "llm_check" — placeholder for future implementation
-            return self._keyword_overlap_check(answer, chunks)
+        if self.method in ("llm_check", "both"):
+            llm_result = self._llm_check(answer, chunks)
+            if llm_result is not None:
+                if self.method == "both":
+                    kw_grounded, kw_conf = self._keyword_overlap_check(answer, chunks)
+                    llm_grounded, llm_conf = llm_result
+                    return (kw_grounded and llm_grounded), min(kw_conf, llm_conf)
+                return llm_result
+            # llm_check failed → fall through to keyword overlap
+        return self._keyword_overlap_check(answer, chunks)
+
+    def _llm_check(
+        self, answer: str, chunks: list[SessionRetrievedChunk]
+    ) -> tuple[bool, float] | None:
+        """One Ollama call; ``None`` on any failure (caller falls back)."""
+        import json
+
+        from src.common.llm_client import simple_generate
+
+        context = "\n\n".join(c.content for c in chunks)[:6000]
+        prompt = _LLM_GROUNDING_PROMPT.format(context=context, answer=answer[:4000])
+        try:
+            raw = simple_generate(prompt, self._model, registry=self._registry).strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                match = re.search(r"\{.*\}", raw, re.DOTALL)
+                if not match:
+                    return None
+                data = json.loads(match.group())
+            grounded = bool(data.get("grounded", False))
+            confidence = max(0.0, min(1.0, float(data.get("confidence", 0.0))))
+            return grounded, confidence
+        except Exception as e:  # noqa: BLE001 — any failure → keyword fallback
+            logger.warning("llm_check grounding failed (%s); falling back to keyword overlap", e)
+            return None
 
     def _keyword_overlap_check(
-        self, answer: str, chunks: list[RetrievedChunk]
+        self, answer: str, chunks: list[SessionRetrievedChunk]
     ) -> tuple[bool, float]:
-        """
-        Check grounding using keyword overlap.
-
-        Extracts meaningful keywords from the answer and checks
-        what fraction appear in the source chunks.
-        """
-        # Combine all chunk content
         source_text = " ".join(chunk.content.lower() for chunk in chunks)
-
-        # Extract keywords from answer (exclude common words)
         answer_words = self._extract_keywords(answer.lower())
 
         if not answer_words:
             return False, 0.0
 
-        # Count matches
         matched = sum(1 for word in answer_words if word in source_text)
         overlap_ratio = matched / len(answer_words)
 
         is_grounded = overlap_ratio >= self.min_overlap
         confidence = min(1.0, overlap_ratio / max(self.min_overlap, 0.1))
-
         return is_grounded, confidence
 
-    def _extract_keywords(self, text: str) -> set[str]:
-        """
-        Extract meaningful keywords from text.
-
-        Excludes common stopwords and short words.
-        """
+    @staticmethod
+    def _extract_keywords(text: str) -> set[str]:
         stopwords = {
             "the",
             "a",
@@ -305,13 +244,12 @@ class GroundingValidator:
             "some",
             "most",
         }
-
         words = re.findall(r"\b[a-z]{3,}\b", text)
         return {w for w in words if w not in stopwords}
 
 
 # ============================================================================
-# Answer Cleaner
+# Answer Cleaner  (characterization-pinned — keep byte-identical)
 # ============================================================================
 
 
@@ -328,28 +266,12 @@ class AnswerCleaner:
         normalize_whitespace: bool = True,
         max_length: int | None = None,
     ):
-        """
-        Initialize answer cleaner.
-
-        Args:
-            remove_artifacts: Remove [HIDE], <THINK> and similar tags
-            normalize_whitespace: Normalize whitespace
-            max_length: Maximum answer length (truncates if exceeded)
-        """
         self.remove_artifacts = remove_artifacts
         self.normalize_whitespace = normalize_whitespace
         self.max_length = max_length
 
     def clean(self, text: str) -> str:
-        """
-        Clean generated answer text.
-
-        Args:
-            text: Raw generated text
-
-        Returns:
-            Cleaned text
-        """
+        """Clean generated answer text."""
         if not text:
             return ""
 
@@ -413,19 +335,18 @@ class AnswerCleaner:
 
 class PostProcessor:
     """
-    Processes generated answers into final GenerationResponse objects.
+    Processes generated answers into final ``GenerationResponse`` objects.
 
-    Composes CitationExtractor, GroundingValidator, and AnswerCleaner
-    to produce clean, validated, citation-mapped output.
+    Composes ``CitationExtractor``, ``GroundingValidator``, and
+    ``AnswerCleaner``.
     """
 
-    def __init__(self, config: PostProcessingConfig | None = None):
-        """
-        Initialize post processor.
-
-        Args:
-            config: PostProcessingConfig (loads from YAML if None)
-        """
+    def __init__(
+        self,
+        config: PostProcessingConfig | None = None,
+        *,
+        grounding_registry: Any = None,
+    ):
         if config is None:
             config = PostProcessingConfig(
                 extract_citations=True,
@@ -434,7 +355,6 @@ class PostProcessor:
                 grounding_check_method="keyword_overlap",
                 remove_artifacts=True,
                 normalize_whitespace=True,
-                format_as_markdown=True,
             )
 
         self.config = config
@@ -443,6 +363,7 @@ class PostProcessor:
         self.grounding_validator = GroundingValidator(
             method=config.grounding_check_method,
             min_overlap=config.min_keyword_overlap,
+            registry=grounding_registry,
         )
         self.answer_cleaner = AnswerCleaner(
             remove_artifacts=config.remove_artifacts,
@@ -454,7 +375,7 @@ class PostProcessor:
     def process(
         self,
         generated: GeneratedAnswer,
-        chunks: list[RetrievedChunk],
+        chunks: list[SessionRetrievedChunk],
         retrieval_metadata: RetrievalMetadata,
         mode: GenerationMode,
         request_id: str,
@@ -462,59 +383,32 @@ class PostProcessor:
         warnings: list[str] | None = None,
         sources_used: list[str] | None = None,
     ) -> GenerationResponse:
-        """
-        Process generated answer into final response.
-
-        Args:
-            generated: Raw GeneratedAnswer from LLM
-            chunks: Source chunks used for generation
-            retrieval_metadata: Metadata from retrieval
-            mode: Generation mode used
-            request_id: Request identifier
-            generation_id: Generation identifier
-            warnings: Optional pre-existing warnings
-            sources_used: Optional retrieval sources used
-
-        Returns:
-            GenerationResponse ready for API response
-        """
+        """Process a generated answer into the final response."""
         all_warnings = list(warnings) if warnings else []
 
         # Step 1: Clean the answer
         cleaned_answer = self.answer_cleaner.clean(generated.content)
 
-        # Step 2: Extract citations
-        citations = []
+        # Step 2: Extract + match citations
+        citations: list[Citation] = []
         if self.config.extract_citations:
-            raw_citations = self.citation_extractor.extract(cleaned_answer)
-
-            for i, (citation_str, start, end) in enumerate(raw_citations):
-                parsed = self.citation_extractor.parse_citation(citation_str)
-                if parsed:
-                    parsed.index = i + 1
-                    parsed.position_start = start
-                    parsed.position_end = end
-
-                    # Try to match citation to a source chunk
-                    matched_chunk = self._match_citation_to_chunk(parsed, chunks)
-                    if matched_chunk:
-                        parsed.chunk_id = matched_chunk.chunk_id
-
-                    citations.append(parsed)
-
+            citations = self.citation_extractor.extract(cleaned_answer)
+            for c in citations:
+                matched = self._match_citation_to_chunk(c, chunks)
+                if matched:
+                    c.chunk_id = matched.chunk_id
+                    if not c.approximate_timestamp:
+                        c.approximate_timestamp = matched.timestamp
             if not citations:
                 all_warnings.append("No citations found in generated answer")
 
         # Step 3: Validate grounding
         is_grounded = False
         grounding_confidence = 0.0
-
         if self.config.validate_grounding:
             is_grounded, grounding_confidence = self.grounding_validator.validate(
-                answer=cleaned_answer,
-                chunks=chunks,
+                answer=cleaned_answer, chunks=chunks
             )
-
             if not is_grounded:
                 all_warnings.append(
                     f"Answer may not be fully grounded in context "
@@ -535,161 +429,21 @@ class PostProcessor:
             model_info=generated.model_info,
             usage=generated.usage,
             generation_time_ms=generated.generation_time_ms,
-            total_time_ms=0,  # Will be set by orchestrator
+            total_time_ms=0,  # Set by orchestrator
             request_id=request_id,
             generation_id=generation_id,
             warnings=all_warnings,
             sources_used=sources_used or [],
         )
 
+    @staticmethod
     def _match_citation_to_chunk(
-        self, citation: Citation, chunks: list[RetrievedChunk]
-    ) -> RetrievedChunk | None:
-        """
-        Match a parsed citation to a source chunk.
-
-        Matches by course name, chapter, and page/slide range.
-        """
+        citation: Citation, chunks: list[SessionRetrievedChunk]
+    ) -> SessionRetrievedChunk | None:
+        """Match a parsed citation to a source chunk by session id."""
+        if not citation.session_id or citation.session_id.lower() == "unknown":
+            return None
         for chunk in chunks:
-            if (
-                chunk.course_name.lower() == citation.course_name.lower()
-                and chunk.chapter_title.lower() == citation.chapter_title.lower()
-                and citation.location_start >= chunk.location_start
-                and citation.location_end <= chunk.location_end
-            ):
+            if chunk.session_id and chunk.session_id.lower() == citation.session_id.lower():
                 return chunk
-
-        # Relaxed match: course + chapter only
-        for chunk in chunks:
-            if (
-                chunk.course_name.lower() == citation.course_name.lower()
-                and chunk.chapter_title.lower() == citation.chapter_title.lower()
-            ):
-                return chunk
-
         return None
-
-
-# ============================================================================
-# Validation
-# ============================================================================
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("Post Processor - Validation")
-    print("=" * 60)
-
-    from src.generation.config import (
-        CitationLocationType,
-        ConfidenceLevel,
-        GeneratedAnswer,
-        GenerationMode,
-        ModelInfo,
-        RetrievalMetadata,
-        RetrievedChunk,
-        UsageStats,
-    )
-
-    # Sample generated answer with citations
-    sample_answer = """
-## Definition
-
-[Supply Chain Management Strategy | Inventory Management | Slide 5]
-Inventory refers to the stock of goods, materials, and supplies that a business holds for the purpose of resale, production, or use in providing services.
-
-## Types of Inventory
-
-[Supply Chain Management Strategy | Inventory Management | Slide 6]
-The main types of inventory include:
-
-- **Raw Materials**: Basic materials used in production
-- **Work-in-Progress (WIP)**: Partially completed products
-- **Finished Goods**: Completed products ready for sale
-- **MRO Supplies**: Maintenance, repair, and operations supplies
-
-## Example
-
-[Supply Chain Management Strategy | Inventory Management | Slide 7]
-For example, a car manufacturer holds raw materials (steel, rubber), WIP (partially assembled vehicles), and finished goods (completed cars ready for sale).
-"""
-
-    # Sample source chunks
-    sample_chunks = [
-        RetrievedChunk(
-            chunk_id="doc1_0001",
-            content="Inventory refers to the stock of goods, materials, and supplies that a business holds.",
-            score=0.92,
-            course_name="Supply Chain Management Strategy",
-            chapter_title="Inventory Management",
-            location_type=CitationLocationType.SLIDE,
-            location_start=5,
-            location_end=5,
-            metadata={"chunk_type": "definition"},
-        ),
-        RetrievedChunk(
-            chunk_id="doc1_0002",
-            content="Types of inventory: raw materials, work-in-progress, finished goods, MRO supplies.",
-            score=0.88,
-            course_name="Supply Chain Management Strategy",
-            chapter_title="Inventory Management",
-            location_type=CitationLocationType.SLIDE,
-            location_start=6,
-            location_end=6,
-            metadata={"chunk_type": "explanation"},
-        ),
-        RetrievedChunk(
-            chunk_id="doc1_0003",
-            content="Car manufacturer example: raw materials (steel), WIP (partial vehicles), finished goods (completed cars).",
-            score=0.82,
-            course_name="Supply Chain Management Strategy",
-            chapter_title="Inventory Management",
-            location_type=CitationLocationType.SLIDE,
-            location_start=7,
-            location_end=7,
-            metadata={"chunk_type": "example"},
-        ),
-    ]
-
-    # Process the answer
-    processor = PostProcessor()
-
-    generated = GeneratedAnswer(
-        content=sample_answer,
-        model_info=ModelInfo(provider="deepseek", model_name="deepseek-chat"),
-        usage=UsageStats(input_tokens=200, output_tokens=150, total_tokens=350),
-        generation_time_ms=1200.0,
-        finish_reason="stop",
-    )
-
-    retrieval_metadata = RetrievalMetadata(
-        confidence_score=0.87,
-        confidence_level=ConfidenceLevel.HIGH,
-        retrieval_time_ms=150.0,
-        total_chunks_retrieved=3,
-        namespace="supply_chain_test",
-    )
-
-    response = processor.process(
-        generated=generated,
-        chunks=sample_chunks,
-        retrieval_metadata=retrieval_metadata,
-        mode=GenerationMode.CONTEXT_AWARE,
-        request_id="test-001",
-        generation_id="gen-001",
-    )
-
-    print("\n📊 Processing Results:")
-    print(f"   Cleaned answer length: {len(response.answer)} chars")
-    print(f"   Citations extracted: {len(response.citations)}")
-    print(f"   Is grounded: {response.is_grounded}")
-    print(f"   Grounding confidence: {response.grounding_confidence:.2f}")
-    print(f"   Warnings: {response.warnings}")
-
-    print("\n📋 Extracted Citations:")
-    for citation in response.citations:
-        formatted = processor.citation_formatter.format_citation(citation)
-        print(f"   [{citation.index}] {formatted}")
-        print(f"       Chunk ID: {citation.chunk_id or 'unmatched'}")
-        print(f"       Position: {citation.position_start}-{citation.position_end}")
-
-    print("\n✅ Post Processor ready for integration")

@@ -1,8 +1,10 @@
-# Post-Processing Configuration
+# Post-Processing Configuration (Phase 1 Step 1.4)
 extract_citations: true
 citation_style: "inline"
 validate_grounding: true
-grounding_check_method: "keyword_overlap"   # "keyword_overlap", "llm_check", "both"
+# "keyword_overlap" (cheap, default), "llm_check" (one extra Ollama call, falls
+# back to keyword_overlap on failure), or "both".
+grounding_check_method: "keyword_overlap"
 remove_artifacts: true                       # Remove [HIDE], <THINK> tags
 normalize_whitespace: true
 max_answer_length: null                      # No truncation by default

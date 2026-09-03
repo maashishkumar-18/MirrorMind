@@ -1,18 +1,14 @@
 """
-Generation Orchestrator
-Single entry point for the generation layer.
+Generation Orchestrator (Phase 1 Step 1.4 — session companion).
 
-Composes:
+Single entry point for the generation layer. Composes:
+
     PromptBuilder → LLMClient → PostProcessor → GenerationResponse
 
-Owns:
-- Request lifecycle (ID generation, timing, error handling)
-- Configuration loading
-- Mode-specific prompt assembly strategy selection
-- Citation formatting
-
-Architecture:
-    GenerationRequest → GenerationOrchestrator.generate() → GenerationResponse
+Owns request lifecycle (ID generation, timing, error handling), configuration
+loading, and mode-config resolution. Context assembly is delegated to
+``ContextBuilder`` inside ``PromptBuilder`` — the orchestrator no longer picks
+an assembly strategy.
 
 Usage:
     orchestrator = GenerationOrchestrator()
@@ -28,98 +24,28 @@ from dotenv import load_dotenv
 
 from observability.tracing import safe_dict, traced_span
 from src.common.llm_client import LLMClient
-from src.common.pricing import estimate_deepseek_cost
 from src.generation.config import (
     AnswerFormat,
     GenerationConfig,
-    GenerationMode,
     GenerationRequest,
     GenerationResponse,
     ModelConfig,
 )
 from src.generation.post_processor import PostProcessor
-from src.generation.prompt_builder import (
-    ContextAssembler,
-    MinimalContextAssembly,
-    PromptBuilder,
-    StandardContextAssembly,
-)
+from src.generation.prompt_builder import PromptBuilder
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# Strategy Selector
-# ============================================================================
-
-
-class AssemblyStrategySelector:
-    """
-    Selects the appropriate ContextAssemblyStrategy based on GenerationMode.
-
-    Maps generation modes to assembly strategies:
-    - CONTEXT_AWARE → StandardContextAssembly (section-grouped)
-    - SIMPLE_EXPLANATION → StandardContextAssembly (section-grouped)
-
-    Future modes (revision, qa, quiz) can be mapped to other strategies.
-    """
-
-    def __init__(self):
-        self._strategies = {
-            GenerationMode.CONTEXT_AWARE: StandardContextAssembly(),
-            GenerationMode.SIMPLE_EXPLANATION: StandardContextAssembly(),
-            GenerationMode.TOPIC_EXTRACTION: MinimalContextAssembly(),
-            GenerationMode.QUIZ_GENERATION: MinimalContextAssembly(),
-        }
-
-    def select(self, mode: GenerationMode):
-        """
-        Select the assembly strategy for a generation mode.
-
-        Args:
-            mode: Generation mode
-
-        Returns:
-            ContextAssemblyStrategy instance
-        """
-        strategy = self._strategies.get(mode)
-        if strategy is None:
-            logger.warning(
-                f"No assembly strategy configured for mode '{mode.value}'. "
-                f"Using StandardContextAssembly."
-            )
-            return StandardContextAssembly()
-        return strategy
-
-    def register(self, mode: GenerationMode, strategy):
-        """Register a custom strategy for a mode."""
-        self._strategies[mode] = strategy
-
-
-# ============================================================================
-# Generation Orchestrator
-# ============================================================================
-
-
 class GenerationOrchestrator:
     """
     Single entry point for the generation layer.
 
-    Composes PromptBuilder, LLMClient, and PostProcessor into
-    a single generate() call.
-
-    Owns:
-    - Request lifecycle
-    - ID generation
-    - Timing
-    - Error handling
-    - Configuration
-
-    Usage:
-        orchestrator = GenerationOrchestrator()
-        response = orchestrator.generate(request)
+    Composes PromptBuilder, LLMClient, and PostProcessor into a single
+    generate() call. Owns request lifecycle, ID generation, timing, error
+    handling, and configuration.
     """
 
     def __init__(
@@ -130,27 +56,8 @@ class GenerationOrchestrator:
         llm_client: LLMClient | None = None,
         post_processor: PostProcessor | None = None,
     ):
-        """
-        Initialize the generation orchestrator.
-
-        Args:
-            config: GenerationConfig (loads from YAML if None)
-            config_dir: Path to generation config directory
-            prompt_builder: PromptBuilder instance (auto-created if None)
-            llm_client: LLMClient instance (auto-created if None)
-            post_processor: PostProcessor instance (auto-created if None)
-        """
-        # Load configuration
         self.config = config or GenerationConfig.from_yaml(config_dir)
-
-        # Initialize strategy selector
-        self.strategy_selector = AssemblyStrategySelector()
-
-        # Create context assembler with strategy selection
-        context_assembler = ContextAssembler(strategy=StandardContextAssembly())
-
-        # Initialize components (injection or auto-creation)
-        self.prompt_builder = prompt_builder or PromptBuilder(assembler=context_assembler)
+        self.prompt_builder = prompt_builder or PromptBuilder()
         self.llm_client = llm_client or LLMClient()
         self.post_processor = post_processor or PostProcessor(config=self.config.post_processing)
 
@@ -159,20 +66,10 @@ class GenerationOrchestrator:
         Generate an answer from retrieved context.
 
         This is the single public method for the generation layer.
-
-        Args:
-            request: GenerationRequest with query, chunks, and mode
-
-        Returns:
-            GenerationResponse with answer, citations, and metadata
         """
-        # Wraps the whole method in one span so prompt_builder/llm_generate/
-        # post_processor (below) nest under a single trace instead of each
-        # starting its own — sibling spans with no shared parent context
-        # don't share a trace id (see src/retrieval/orchestrator.py
-        # retrieve()'s equivalent wrap for the empirical check). Matters for
-        # callers that invoke generate() standalone, without an enclosing
-        # observability.tracing.traced_pipeline_call.
+        # One span wrapping the whole method so prompt_builder/llm_generate/
+        # post_processor nest under a single trace instead of each starting
+        # its own (sibling spans with no shared parent don't share a trace id).
         with traced_span(
             "generate",
             input=safe_dict(
@@ -200,14 +97,13 @@ class GenerationOrchestrator:
             return response
 
     def _generate_impl(self, request: GenerationRequest) -> GenerationResponse:
-        """generate()'s body, extracted so the tracing span in generate()
-        wraps every phase without duplicating span setup at each of this
-        method's several early-return error paths."""
+        """generate()'s body, extracted so the tracing span wraps every phase
+        without duplicating span setup at each early-return error path."""
         total_start = time.time()
         generation_id = str(uuid.uuid4())[:8]
         warnings: list[str] = []
 
-        # ── Step 1: Get mode and model configuration ─────────────────
+        # ── Step 1: Resolve mode and model configuration ────────────
         try:
             mode_config = self.config.get_mode_config(request.mode)
             model_config = self.config.get_model_config(mode_config.model_key)
@@ -221,11 +117,7 @@ class GenerationOrchestrator:
                 total_start=total_start,
             )
 
-        # ── Step 2: Select and apply assembly strategy ───────────────
-        strategy = self.strategy_selector.select(request.mode)
-        self.prompt_builder.set_assembly_strategy(strategy)
-
-        # ── Step 3: Build prompt ────────────────────────────────────
+        # ── Step 2: Build prompt ────────────────────────────────────
         prompt_start = time.time()
         with traced_span(
             "prompt_builder",
@@ -246,7 +138,7 @@ class GenerationOrchestrator:
             prompt_span.update(output=safe_dict(prompt))
         prompt_time = (time.time() - prompt_start) * 1000
 
-        # ── Step 4: Generate answer ──────────────────────────────────
+        # ── Step 3: Generate answer ─────────────────────────────────
         gen_start = time.time()
         with traced_span(
             "llm_generate",
@@ -274,13 +166,6 @@ class GenerationOrchestrator:
                     total_start=total_start,
                 )
 
-            cost_details = None
-            if model_config.provider == "deepseek":
-                cost_details = {
-                    "total": estimate_deepseek_cost(
-                        generated.usage.input_tokens, generated.usage.output_tokens
-                    )
-                }
             gen_span.update(
                 output=safe_dict(generated.content),
                 usage_details={
@@ -288,7 +173,6 @@ class GenerationOrchestrator:
                     "output": generated.usage.output_tokens,
                     "total": generated.usage.total_tokens,
                 },
-                cost_details=cost_details,
             )
             if generated.finish_reason == "error":
                 gen_span.update(level="ERROR", status_message=generated.error_type)
@@ -306,7 +190,7 @@ class GenerationOrchestrator:
                 generated=generated,
             )
 
-        # ── Step 5: Post-process ─────────────────────────────────────
+        # ── Step 4: Post-process ────────────────────────────────────
         pp_start = time.time()
         with traced_span(
             "post_processor",
@@ -321,7 +205,7 @@ class GenerationOrchestrator:
                     request_id=request.request_id,
                     generation_id=generation_id,
                     warnings=warnings,
-                    sources_used=[],  # Will be populated by retrieval orchestrator
+                    sources_used=[],
                 )
             except Exception as e:
                 logger.error(f"Post-processing failed: {e}")
@@ -346,7 +230,7 @@ class GenerationOrchestrator:
             )
         pp_time = (time.time() - pp_start) * 1000
 
-        # ── Step 6: Set timing ───────────────────────────────────────
+        # ── Step 5: Set timing / versions ───────────────────────────
         total_time = (time.time() - total_start) * 1000
 
         response.generation_time_ms = generated.generation_time_ms
@@ -354,7 +238,6 @@ class GenerationOrchestrator:
         response.prompt_version = prompt.template_version
         response.config_version = self.config.config_version
 
-        # ── Step 7: Log diagnostics ─────────────────────────────────
         logger.info(
             f"Generation complete: mode={request.mode.value}, "
             f"model={model_config.model_name}, "
@@ -379,9 +262,8 @@ class GenerationOrchestrator:
         """
         Build a GenerationResponse for error cases.
 
-        Returns a valid response object with empty answer and error details.
         model_config may be None if the error occurred before mode/model
-        configuration could be resolved (e.g. unknown mode or model key).
+        configuration could be resolved.
         """
         from src.generation.config import ModelInfo, UsageStats
 
@@ -412,126 +294,3 @@ class GenerationOrchestrator:
             retry_after_seconds=generated.retry_after_seconds if generated else None,
             is_daily_quota=generated.is_daily_quota if generated else False,
         )
-
-
-# ============================================================================
-# Validation
-# ============================================================================
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("Generation Orchestrator - Validation")
-    print("=" * 60)
-
-    # Load configuration
-    config = GenerationConfig.from_yaml()
-
-    print("\n📋 Configuration:")
-    print(f"   Default mode: {config.default_mode.value}")
-    print(f"   Default model: {config.default_model_key}")
-    print(f"   Available models: {list(config.models.keys())}")
-    print(f"   Available modes: {list(config.modes.keys())}")
-    print(
-        f"   Post-processing: citations={config.post_processing.extract_citations}, "
-        f"grounding={config.post_processing.validate_grounding}"
-    )
-
-    # Initialize orchestrator
-    orchestrator = GenerationOrchestrator(config=config)
-
-    print("\n🔧 Orchestrator initialized:")
-    print("   Components: PromptBuilder → LLMClient → PostProcessor")
-    print(f"   Strategy selector: {list(orchestrator.strategy_selector._strategies.keys())}")
-
-    # Build a sample request
-    from src.generation.config import (
-        CitationLocationType,
-        ConfidenceLevel,
-        GenerationRequest,
-        RetrievalMetadata,
-        RetrievedChunk,
-    )
-
-    sample_chunks = [
-        RetrievedChunk(
-            chunk_id="doc1_0001",
-            content="Inventory refers to the stock of goods, materials, and supplies that a business holds for the purpose of resale, production, or use in providing services.",
-            score=0.92,
-            course_name="Supply Chain Management Strategy",
-            chapter_title="Inventory Management",
-            location_type=CitationLocationType.SLIDE,
-            location_start=5,
-            location_end=5,
-            metadata={"chunk_type": "definition", "topic": "Inventory"},
-        ),
-        RetrievedChunk(
-            chunk_id="doc1_0002",
-            content="The main types of inventory include: raw materials, work-in-progress (WIP), finished goods, and MRO supplies.",
-            score=0.88,
-            course_name="Supply Chain Management Strategy",
-            chapter_title="Inventory Management",
-            location_type=CitationLocationType.SLIDE,
-            location_start=6,
-            location_end=6,
-            metadata={"chunk_type": "explanation", "topic": "Inventory Types"},
-        ),
-        RetrievedChunk(
-            chunk_id="doc1_0003",
-            content="For example, a car manufacturer holds raw materials (steel, rubber), WIP (partially assembled vehicles), and finished goods (completed cars ready for sale).",
-            score=0.82,
-            course_name="Supply Chain Management Strategy",
-            chapter_title="Inventory Management",
-            location_type=CitationLocationType.SLIDE,
-            location_start=7,
-            location_end=7,
-            metadata={"chunk_type": "example", "topic": "Inventory Example"},
-        ),
-    ]
-
-    request = GenerationRequest(
-        request_id="test-orch-001",
-        query="What is inventory and what are its types?",
-        mode=GenerationMode.CONTEXT_AWARE,
-        chunks=sample_chunks,
-        retrieval_metadata=RetrievalMetadata(
-            confidence_score=0.87,
-            confidence_level=ConfidenceLevel.HIGH,
-            retrieval_time_ms=150.0,
-            total_chunks_retrieved=3,
-            namespace="supply_chain_test",
-        ),
-    )
-
-    # Check if DeepSeek credentials are available
-    deepseek_config = config.models.get("deepseek_chat")
-    from src.common.llm_client import ProviderRegistry
-
-    if deepseek_config and ProviderRegistry().get("deepseek").validate_credentials():
-        print(f"\n{'─' * 50}")
-        print("Running full generation pipeline...")
-
-        response = orchestrator.generate(request)
-
-        print("\n📊 Generation Results:")
-        print(f"   Mode: {response.mode.value}")
-        print(f"   Model: {response.model_info.provider}/{response.model_info.model_name}")
-        print(f"   Tokens: {response.usage.input_tokens} in / {response.usage.output_tokens} out")
-        print(
-            f"   Time: generation={response.generation_time_ms:.0f}ms, total={response.total_time_ms:.0f}ms"
-        )
-        print(f"   Citations: {len(response.citations)}")
-        print(
-            f"   Grounded: {response.is_grounded} (confidence: {response.grounding_confidence:.2f})"
-        )
-        print(f"   Warnings: {response.warnings}")
-
-        if response.answer:
-            print("\n📝 Answer Preview:")
-            print(response.answer[:500])
-        else:
-            print("\n❌ No answer generated — check warnings above")
-    else:
-        print("\n⚠️  DeepSeek credentials not found — skipping live generation test")
-        print("   Set DEEPSEEK_API_KEY environment variable to run full test")
-
-    print("\n✅ Generation Orchestrator ready for integration")

@@ -54,7 +54,7 @@ class TestInitDb:
             "refused",
             "input_tokens",
             "output_tokens",
-            "cost_usd",
+            "compute_ms",
             "prompt_version",
             "model_name",
             "retrieval_pipeline_name",
@@ -80,6 +80,30 @@ class TestInitDb:
         db_path = str(tmp_path / "metrics.db")
         MetricsStore(db_path=db_path)
         MetricsStore(db_path=db_path)  # must not raise on a second open
+
+    def test_cost_usd_to_compute_ms_migration(self, tmp_path):
+        """Phase 1 Step 1.4: an existing DB with the old `cost_usd` column
+        gains `compute_ms` and (on SQLite >= 3.35) loses `cost_usd` when
+        MetricsStore opens it -- idempotent, no data-migration runner."""
+        from observability.metrics_store import _SCHEMA
+
+        db_path = str(tmp_path / "old.db")
+        conn = sqlite3.connect(db_path)
+        conn.executescript(_SCHEMA.replace("compute_ms REAL", "cost_usd REAL"))
+        conn.commit()
+        conn.close()
+
+        store = MetricsStore(db_path=db_path)  # runs the in-process migration
+        conn = sqlite3.connect(store.db_path)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(pipeline_calls)").fetchall()}
+        conn.close()
+        assert "compute_ms" in cols
+        if sqlite3.sqlite_version_info >= (3, 35, 0):
+            assert "cost_usd" not in cols
+
+        # and it still records
+        store.record(PipelineCallMetrics(request_id="r", env="ci", compute_ms=12.5))
+        assert store.query_recent()[0]["compute_ms"] == pytest.approx(12.5)
 
 
 class TestRecordAndQuery:

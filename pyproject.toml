@@ -47,7 +47,6 @@ ignore = ["E501"]
 "eval/run_ragas_eval.py" = ["E402"]                  # same
 "scripts/simulate_traffic.py" = ["E402"]             # same
 "src/common/llm_client.py" = ["B904"]                # raise-without-from in except blocks
-"src/generation/prompt_builder.py" = ["F601", "F841"]
 "src/retrieval/context_builder.py" = ["F841"]
 # B904: the raise-without-from is inside BM25Index.build_index, which Phase 0
 # characterization tests pin byte-identical (tests/retrieval/test_bm25_index.py).
@@ -77,14 +76,12 @@ exclude = []
 #
 # Phase 1 Step 1.2 cleared `src.ingestion.chunker`, `.cleaner`, `.metadata_extractor`.
 # Phase 1 Step 1.3a deleted `src.retrieval.query_rewriter`, `.query_expander`,
-# `.metadata_filter` (document-era orchestration cluster). Step 1.3b deleted
-# `src.retrieval.legacy_vector_store` (Pinecone) and rewrote `.hybrid_search` onto
-# the local store — `.hybrid_search` stays listed until 1.3c revisits the retrieval
-# layer's typing wholesale (its metadata-boost path threads Any-typed vectors).
+# `.metadata_filter`. Step 1.3b deleted `src.retrieval.legacy_vector_store` (Pinecone).
+# Step 1.4a rewrote the generation layer session-shaped and cleared
+# `src.generation.config` from this list.
 [[tool.mypy.overrides]]
 module = [
     "src.ingestion.embedder",
-    "src.generation.config",
     "src.retrieval.hybrid_search",
     "src.retrieval.reranker",
 ]

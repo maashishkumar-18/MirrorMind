@@ -75,11 +75,12 @@ from src.generation.config import (
     RetrievalMetadata,
 )
 
-# TODO(Phase 1 Step 1.4): this load-generator still drives the deleted
-# document-era retrieval stack (RetrievalOrchestrator, PIPELINE_REGISTRY,
-# src.retrieval.pipelines — all removed in Step 1.3a). The RetrievalRouter it
-# should target landed in Step 1.3b (src.retrieval.router); rewriting this
-# module against it is Step 1.4 work. Until then this module does not import/run.
+# TODO(Phase 1 Step 1.4b): this load-generator still drives the deleted
+# document-era retrieval stack (RetrievalOrchestrator, PIPELINE_REGISTRY —
+# removed in Step 1.3a) and imports src.common.pricing (deleted in Step 1.4a).
+# It is rewritten against RetrievalRouter + GenerationOrchestrator, with the
+# cost_usd bookkeeping replaced by a compute_ms proxy, in Step 1.4b. Until
+# then this module does not import/run.
 from src.retrieval.config import HybridWeights
 from src.retrieval.pipelines import LEARNING_PIPELINE
 

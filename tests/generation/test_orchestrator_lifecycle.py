@@ -1,19 +1,25 @@
 """
 Characterization tests for GenerationOrchestrator's request lifecycle
-(src/generation/orchestrator.py:106-414).
+(src/generation/orchestrator.py).
 
 All three collaborators (LLMClient, PromptBuilder, PostProcessor) are
 injected as mocks via the constructor's own injection points -- the real
 seam this class already provides, not a monkeypatch. `config` is also
 injected explicitly (a hand-built GenerationConfig, no real YAML I/O).
 traced_span() is confirmed a genuine no-op without LANGFUSE_PUBLIC_KEY/
-LANGFUSE_SECRET_KEY (observability/tracing.py:155-166,175-199) -- the
-_NullSpan returned there accepts any .update() call, so no stubbing is
-needed beyond tests/conftest.py's guard against those two vars leaking in.
+LANGFUSE_SECRET_KEY -- the _NullSpan returned there accepts any .update()
+call, so no stubbing is needed beyond tests/conftest.py's guard.
 
-Each of _generate_impl's five failure branches returns a fully-formed
+Each of _generate_impl's failure branches returns a fully-formed
 GenerationResponse via _build_error_response rather than raising -- this
 suite exercises every branch, not just the happy path.
+
+Phase 1 Step 1.4 (user-approved retarget): ModeConfig lost
+`include_source_prefix`/`prompt_version_constraint`; the default provider is
+Ollama; `AssemblyStrategySelector` and `PromptBuilder.set_assembly_strategy`
+are gone (context assembly moved into ContextBuilder), so the
+assembly-strategy test was deleted -- `conversation_history` wiring is now
+pinned by tests/generation/test_prompt_builder_session.py instead.
 """
 
 from unittest.mock import MagicMock
@@ -56,11 +62,10 @@ def _make_config():
         answer_format=AnswerFormat.PLAIN_TEXT,
         citation_style=CitationStyle.INLINE,
         include_context_header=True,
-        include_source_prefix=True,
         max_context_tokens=4000,
         system_instructions="test",
     )
-    model_config = ModelConfig(provider="deepseek", model_name="deepseek-chat")
+    model_config = ModelConfig(provider="ollama", model_name="llama3.1:8b")
     return GenerationConfig(
         default_model_key="test_model",
         models={"test_model": model_config},
@@ -80,7 +85,7 @@ def _make_request(mode=GenerationMode.CONTEXT_AWARE):
             confidence_level=ConfidenceLevel.HIGH,
             retrieval_time_ms=10.0,
             total_chunks_retrieved=0,
-            namespace="default",
+            session_id="default",
         ),
     )
 
@@ -88,7 +93,7 @@ def _make_request(mode=GenerationMode.CONTEXT_AWARE):
 def _make_generated_answer(content="the answer", finish_reason="stop"):
     return GeneratedAnswer(
         content=content,
-        model_info=ModelInfo(provider="deepseek", model_name="deepseek-chat"),
+        model_info=ModelInfo(provider="ollama", model_name="llama3.1:8b"),
         usage=UsageStats(input_tokens=10, output_tokens=5, total_tokens=15),
         generation_time_ms=42.0,
         finish_reason=finish_reason,
@@ -130,7 +135,7 @@ class TestHappyPath:
             is_grounded=True,
             grounding_confidence=0.9,
             retrieval_metadata=_make_request().retrieval_metadata,
-            model_info=ModelInfo(provider="deepseek", model_name="deepseek-chat"),
+            model_info=ModelInfo(provider="ollama", model_name="llama3.1:8b"),
             usage=generated.usage,
             generation_time_ms=0,
             total_time_ms=0,
@@ -152,20 +157,6 @@ class TestHappyPath:
         assert response.total_time_ms >= 0
         assert response.prompt_version == "1.0.0"
         assert response.config_version == orchestrator.config.config_version
-
-    def test_assembly_strategy_is_selected_and_applied_before_building(self):
-        prompt_builder = MagicMock()
-        prompt_builder.build.return_value = MagicMock(
-            system_prompt="s", user_prompt="u", template_id="x", template_version="1.0.0"
-        )
-        llm_client = MagicMock()
-        llm_client.generate.return_value = _make_generated_answer()
-        post_processor = MagicMock()
-
-        orchestrator = _make_orchestrator(llm_client, prompt_builder, post_processor)
-        orchestrator.generate(_make_request())
-
-        prompt_builder.set_assembly_strategy.assert_called_once()
 
     def test_post_processor_receives_the_generated_answer_and_request_fields(self):
         prompt_builder = MagicMock()
@@ -225,7 +216,7 @@ class TestPromptBuildingFailure:
         assert any("Prompt building failed" in w for w in response.warnings)
         # model_info IS populated here -- mode/model config resolved successfully
         # before the prompt-building step failed.
-        assert response.model_info.provider == "deepseek"
+        assert response.model_info.provider == "ollama"
         llm_client.generate.assert_not_called()
 
 

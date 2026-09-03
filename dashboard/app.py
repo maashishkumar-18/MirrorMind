@@ -11,6 +11,11 @@ happened in this one request?".
 
 Run:
     streamlit run dashboard/app.py
+
+TODO(Phase 1 Step 1.4b): the metrics store's `cost_usd` column became
+`compute_ms` in Step 1.4a (local Ollama inference has no per-token $ cost).
+The `df["cost_usd"]` reads below need to move to `compute_ms` when the eval
+harness / simulator that feed this dashboard are rewritten session-shaped.
 """
 
 import json

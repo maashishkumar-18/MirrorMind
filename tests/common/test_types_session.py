@@ -12,8 +12,6 @@ import dataclasses
 import pytest
 
 from src.common.types import (
-    CitationLocationType,
-    RetrievedChunk,
     SessionCitationFormat,
     SessionRetrievedChunk,
 )
@@ -102,27 +100,6 @@ class TestSessionRetrievedChunk:
             assert chunk.chunk_type == chunk_type
 
 
-class TestOldRetrievedChunkUntouched:
-    """The existing RetrievedChunk/CitationLocationType must remain exactly
-    as they were -- Step 0.4 introduces new types alongside them, it does
-    not modify or replace them yet (that's Phase 1 Step 1.4)."""
-
-    def test_retrieved_chunk_still_constructs_with_document_era_fields(self):
-        chunk = RetrievedChunk(
-            chunk_id="c1",
-            content="text",
-            score=0.9,
-            course_name="CS101",
-            location_type=CitationLocationType.SLIDE,
-        )
-        assert chunk.course_name == "CS101"
-        assert chunk.location_type == CitationLocationType.SLIDE
-
-    def test_citation_location_type_still_has_all_document_era_variants(self):
-        assert {e.value for e in CitationLocationType} == {
-            "page",
-            "slide",
-            "section",
-            "chapter",
-            "unknown",
-        }
+# TestOldRetrievedChunkUntouched was deleted in Phase 1 Step 1.4a: the
+# document-era RetrievedChunk / CitationLocationType it pinned no longer exist
+# (generation migrated to SessionRetrievedChunk / SessionCitationFormat).

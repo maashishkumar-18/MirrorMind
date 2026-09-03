@@ -5,6 +5,10 @@ All dataclasses, enums, and configuration types for the generation pipeline.
 No implementation logic — pure data contracts.
 No UUID generation inside contracts.
 No business logic in dataclasses.
+
+Phase 1 Step 1.4: session-shaped. Chunks are ``SessionRetrievedChunk``;
+citations are session id + approximate timestamp (project_logic.md §12);
+no document / page / slide / course / chapter concepts anywhere.
 """
 
 import os
@@ -16,7 +20,10 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
-from src.common.types import CitationLocationType, RetrievedChunk  # noqa: F401 — re-exported
+from src.common.types import (
+    SessionCitationFormat,
+    SessionRetrievedChunk,
+)  # noqa: F401 — re-exported
 
 load_dotenv()
 
@@ -29,10 +36,8 @@ load_dotenv()
 class GenerationMode(str, Enum):
     """Supported generation modes."""
 
-    CONTEXT_AWARE = "context_aware"  # Precise, citation-backed
+    CONTEXT_AWARE = "context_aware"  # Precise, memory-grounded
     SIMPLE_EXPLANATION = "simple_explanation"  # Analogies, simple language
-    TOPIC_EXTRACTION = "topic_extraction"  # Strict-JSON topic/concept extraction
-    QUIZ_GENERATION = "quiz_generation"  # Strict-JSON multiple-choice quiz generation
 
 
 class AnswerFormat(str, Enum):
@@ -46,9 +51,7 @@ class AnswerFormat(str, Enum):
 class CitationStyle(str, Enum):
     """How citations appear in the answer."""
 
-    INLINE = "inline"  # [Course | Chapter | Slide 5]
-    FOOTNOTE = "footnote"  # Superscript numbers with footer
-    APPENDED = "appended"  # All citations at the end
+    INLINE = "inline"  # [Session <id> · approx. <timestamp>]
     NONE = "none"
 
 
@@ -87,10 +90,10 @@ class RetrievalMetadata:
     confidence_level: ConfidenceLevel
     retrieval_time_ms: float
     total_chunks_retrieved: int
-    namespace: str
+    session_id: str = ""  # scoping session, "" for cross-session retrieval
     top_k: int = 5
     threshold: float | None = None
-    retrieval_method: str | None = None  # e.g., "semantic", "hybrid"
+    retrieval_method: str | None = None  # "semantic" | "structured" | "hybrid"
 
     # Additional provider-specific metadata
     extra: dict[str, Any] = field(default_factory=dict)
@@ -106,23 +109,21 @@ class GenerationRequest:
     """
 
     request_id: str  # Unique identifier (owned by orchestrator)
-    query: str  # Original user question
-    mode: GenerationMode  # Context-aware or simple explanation
+    query: str  # Original user message
+    mode: GenerationMode
 
-    # Retrieved context (raw chunks, not assembled)
-    chunks: list[RetrievedChunk]  # Raw chunks from retrieval
-    retrieval_metadata: RetrievalMetadata  # Metadata about retrieval
+    # Retrieved context — raw session chunks from RetrievalRouter.route().
+    chunks: list[SessionRetrievedChunk]
+    retrieval_metadata: RetrievalMetadata
 
-    # Optional: conversation context for multi-turn
+    # Recent history of the current session, injected as a first-class prompt
+    # section (oldest first, role-labelled). project_logic.md §6.
     conversation_history: list[ChatTurn] | None = None
 
     # Optional free-form answer-shaping instructions (e.g.
     # {"length": "Target length: 250-350 words...", "style": "Structure the
     # answer as numbered steps."}). Each value is appended verbatim as a
-    # line under an "## ANSWER REQUIREMENTS" section in the prompt — the
-    # generation layer has no opinion on what keys mean or how a caller
-    # derives them (marks-per-question, reading level, output length, etc.
-    # are all just callers populating this dict differently).
+    # line under an "## ANSWER REQUIREMENTS" section in the prompt.
     answer_hints: dict[str, str] | None = None
 
 
@@ -150,9 +151,9 @@ class ModelInfo:
     Provider-agnostic representation.
     """
 
-    provider: str  # "deepseek", "gemini", "openai", "anthropic", "local"
-    model_name: str  # "deepseek-chat", "gemini-2.5-flash", "gpt-4o", etc.
-    api_version: str | None = None  # "v1", "v1beta", etc.
+    provider: str  # "ollama" (v1); cloud providers are v1.1
+    model_name: str  # e.g. "llama3.1:8b"
+    api_version: str | None = None
 
     # Additional provider-specific details
     extra: dict[str, Any] = field(default_factory=dict)
@@ -173,9 +174,8 @@ class GeneratedAnswer:
     finish_reason: str = "stop"  # "stop", "length", "error", "tool_calls"
 
     # Populated only when finish_reason == "error" — lets callers show a
-    # specific message ("quota exceeded, retry in 20s") instead of a bare
-    # empty answer. error_type is one of "rate_limited", "credential_error",
-    # "timeout", "api_error", or None.
+    # specific message instead of a bare empty answer. error_type is one of
+    # "rate_limited", "credential_error", "timeout", "api_error", or None.
     error_type: str | None = None
     retry_after_seconds: float | None = None
     is_daily_quota: bool = False
@@ -187,24 +187,29 @@ class GeneratedAnswer:
 @dataclass
 class Citation:
     """
-    A single source citation extracted from the generated answer.
+    A single source citation for the generated answer.
 
-    Pure data — formatting is handled by a formatter.
+    Session-temporal (project_logic.md §12) — session id + approximate
+    timestamp are the only location concepts. Pure data; formatting is
+    handled by CitationFormatter.
     """
 
     index: int  # Citation number in the answer
-    chunk_id: str  # Source chunk identifier (maps to RetrievedChunk)
+    chunk_id: str  # Source chunk identifier (SessionRetrievedChunk.chunk_id)
 
-    # Source details (denormalized from RetrievedChunk for the final output)
-    course_name: str
-    chapter_title: str
-    location_type: CitationLocationType
-    location_start: int
-    location_end: int
+    session_id: str = ""
+    approximate_timestamp: str = ""  # ISO 8601, "" if unknown
 
     # Where the citation appears in the answer
     position_start: int = 0  # Character position in answer
     position_end: int = 0
+
+    def to_format(self) -> SessionCitationFormat:
+        """The shared session-citation shape (src/common/types.py)."""
+        return SessionCitationFormat(
+            session_id=self.session_id,
+            approximate_timestamp=self.approximate_timestamp or "unknown",
+        )
 
 
 @dataclass
@@ -247,9 +252,7 @@ class GenerationResponse:
     warnings: list[str] = field(default_factory=list)
     sources_used: list[str] = field(default_factory=list)
 
-    # Populated only on generation failure (see GeneratedAnswer) — lets
-    # API consumers distinguish "the LLM provider is rate-limited, retry
-    # in N seconds" from an ordinary ungrounded/empty answer.
+    # Populated only on generation failure (see GeneratedAnswer).
     error_type: str | None = None
     retry_after_seconds: float | None = None
     is_daily_quota: bool = False
@@ -295,8 +298,8 @@ class Prompt:
 class ModelConfig:
     """Configuration for an LLM model."""
 
-    provider: str  # "deepseek", "gemini", "openai", "anthropic"
-    model_name: str  # "deepseek-chat", "gemini-2.5-flash", "gpt-4o", etc.
+    provider: str  # "ollama" (v1)
+    model_name: str  # e.g. "llama3.1:8b"
     api_version: str | None = None
     temperature: float = 0.3
     max_output_tokens: int = 2048
@@ -328,12 +331,8 @@ class ModeConfig:
     answer_format: AnswerFormat
     citation_style: CitationStyle
     include_context_header: bool
-    include_source_prefix: bool
     max_context_tokens: int
     system_instructions: str  # Brief description for logging
-
-    # Optional prompt version constraint
-    prompt_version_constraint: str | None = None  # e.g., ">=1.0.0,<2.0.0"
 
 
 @dataclass
@@ -364,10 +363,19 @@ class GenerationConfig:
 
     config_version: str = "1.0.0"
     default_mode: GenerationMode = GenerationMode.CONTEXT_AWARE
-    default_model_key: str = "deepseek_chat"
+    default_model_key: str = "ollama_default"
     models: dict[str, ModelConfig] = field(default_factory=dict)
     modes: dict[str, ModeConfig] = field(default_factory=dict)
-    post_processing: PostProcessingConfig = field(default_factory=PostProcessingConfig)
+    post_processing: PostProcessingConfig = field(
+        default_factory=lambda: PostProcessingConfig(
+            extract_citations=True,
+            citation_style=CitationStyle.INLINE,
+            validate_grounding=True,
+            grounding_check_method="keyword_overlap",
+            remove_artifacts=True,
+            normalize_whitespace=True,
+        )
+    )
 
     # Version information for reproducibility
     prompt_version: str | None = None
@@ -383,34 +391,39 @@ class GenerationConfig:
         2. RAGPIPE_GENERATION_CONFIG_DIR env var
         3. config/generation/ (default)
         """
-        config_dir = (
+        base = Path(
             config_dir
             or os.getenv("RAGPIPE_GENERATION_CONFIG_DIR")
             or str(Path(__file__).parent.parent.parent / "config" / "generation")
         )
-        config_dir = Path(config_dir)
 
         # Load generation.yaml
-        gen_path = config_dir / "generation.yaml"
-        gen_data = {}
+        gen_path = base / "generation.yaml"
+        gen_data: dict = {}
         if gen_path.exists():
             with open(gen_path) as f:
                 gen_data = yaml.safe_load(f) or {}
         gen_data = cls._apply_env_overrides(gen_data)
 
         # Load models.yaml
-        models_path = config_dir / "models.yaml"
-        models_data = {}
+        models_path = base / "models.yaml"
+        models_data: dict = {}
         if models_path.exists():
             with open(models_path) as f:
                 models_data = yaml.safe_load(f) or {}
 
-        # Parse models
+        # Parse models. yaml.safe_load does no shell expansion — an Ollama
+        # model with no explicit model_name resolves via $OLLAMA_DEFAULT_MODEL,
+        # matching src/common/llm_client.py::simple_generate.
         models = {}
         for key, model_data in models_data.get("models", {}).items():
+            provider = str(model_data.get("provider", "ollama"))
+            model_name = model_data.get("model_name")
+            if not model_name and provider == "ollama":
+                model_name = os.getenv("OLLAMA_DEFAULT_MODEL", "llama3.1:8b")
             models[key] = ModelConfig(
-                provider=str(model_data.get("provider", "deepseek")),
-                model_name=str(model_data.get("model_name", "deepseek-chat")),
+                provider=provider,
+                model_name=str(model_name or "llama3.1:8b"),
                 api_version=model_data.get("api_version"),
                 temperature=float(model_data.get("temperature", 0.3)),
                 max_output_tokens=int(model_data.get("max_output_tokens", 2048)),
@@ -427,19 +440,17 @@ class GenerationConfig:
             modes[mode_key] = ModeConfig(
                 mode=GenerationMode(mode_data.get("mode", "context_aware")),
                 prompt_id=str(mode_data.get("prompt_id", "context_aware")),
-                model_key=str(mode_data.get("model_key", "deepseek_chat")),
+                model_key=str(mode_data.get("model_key", "ollama_default")),
                 answer_format=AnswerFormat(mode_data.get("answer_format", "markdown")),
                 citation_style=CitationStyle(mode_data.get("citation_style", "inline")),
                 include_context_header=bool(mode_data.get("include_context_header", True)),
-                include_source_prefix=bool(mode_data.get("include_source_prefix", True)),
                 max_context_tokens=int(mode_data.get("max_context_tokens", 3000)),
                 system_instructions=str(mode_data.get("system_instructions", "")),
-                prompt_version_constraint=mode_data.get("prompt_version_constraint"),
             )
 
         # Load post_processing.yaml
-        pp_path = config_dir / "post_processing.yaml"
-        pp_data = {}
+        pp_path = base / "post_processing.yaml"
+        pp_data: dict = {}
         if pp_path.exists():
             with open(pp_path) as f:
                 pp_data = yaml.safe_load(f) or {}
@@ -460,7 +471,7 @@ class GenerationConfig:
         return cls(
             config_version=str(gen_data.get("config_version", "1.0.0")),
             default_mode=GenerationMode(gen_data.get("default_mode", "context_aware")),
-            default_model_key=str(gen_data.get("default_model_key", "deepseek_chat")),
+            default_model_key=str(gen_data.get("default_model_key", "ollama_default")),
             models=models,
             modes=modes,
             post_processing=post_processing,
@@ -503,54 +514,30 @@ class GenerationConfig:
 
 class CitationFormatter:
     """
-    Formats citations from pure data objects.
+    Formats session-temporal citations from pure data objects.
 
-    This is a utility class, not part of the core contracts.
-    Separates formatting logic from data representation.
+    Utility class, not part of the core contracts.
     """
 
     @staticmethod
-    def format_chunk(chunk: RetrievedChunk, style: CitationStyle = CitationStyle.INLINE) -> str:
-        """Format a RetrievedChunk as a citation string."""
-        location_str = CitationFormatter._format_location(
-            chunk.location_type, chunk.location_start, chunk.location_end
-        )
-
-        if style == CitationStyle.INLINE:
-            return f"[{chunk.course_name} | {chunk.chapter_title} | {location_str}]"
-        elif style == CitationStyle.NONE:
+    def format_chunk(
+        chunk: SessionRetrievedChunk, style: CitationStyle = CitationStyle.INLINE
+    ) -> str:
+        """Format a SessionRetrievedChunk as a citation string."""
+        if style == CitationStyle.NONE:
             return ""
-        else:
-            return f"{chunk.course_name}, {chunk.chapter_title}, {location_str}"
+        ts = chunk.timestamp or "unknown"
+        if chunk.chunk_type == "structured_record":
+            table = chunk.metadata.get("table", "record")
+            return f"[{table} record · approx. {ts}]"
+        return f"[Session {chunk.session_id or 'unknown'} · approx. {ts}]"
 
     @staticmethod
     def format_citation(citation: Citation, style: CitationStyle = CitationStyle.INLINE) -> str:
         """Format a Citation object as a citation string."""
-        location_str = CitationFormatter._format_location(
-            citation.location_type, citation.location_start, citation.location_end
-        )
-
-        if style == CitationStyle.INLINE:
-            return f"[{citation.course_name} | {citation.chapter_title} | {location_str}]"
-        elif style == CitationStyle.NONE:
+        if style == CitationStyle.NONE:
             return ""
-        else:
-            return f"{citation.course_name}, {citation.chapter_title}, {location_str}"
-
-    @staticmethod
-    def _format_location(location_type: CitationLocationType, start: int, end: int) -> str:
-        """Format location information."""
-        if location_type == CitationLocationType.PAGE:
-            if end and end != start:
-                return f"Pages {start}-{end}"
-            return f"Page {start}"
-        elif location_type == CitationLocationType.SLIDE:
-            if end and end != start:
-                return f"Slides {start}-{end}"
-            return f"Slide {start}"
-        elif location_type == CitationLocationType.SECTION:
-            return f"Section {start}"
-        elif location_type == CitationLocationType.CHAPTER:
-            return f"Chapter {start}"
-        else:
-            return "Source"
+        return (
+            f"[Session {citation.session_id or 'unknown'} · "
+            f"approx. {citation.approximate_timestamp or 'unknown'}]"
+        )

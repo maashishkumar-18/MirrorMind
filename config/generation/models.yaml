@@ -1,48 +1,14 @@
-# Available LLM Models
+# Available LLM Models (Phase 1 Step 1.4 — local-only)
+# The Personal AI Companion runs entirely on a bundled Ollama sidecar; no API
+# keys, no cloud providers in v1 (cloud adapters return in v1.1).
 models:
-  deepseek_chat:
-    provider: "deepseek"
-    model_name: "deepseek-chat"
+  ollama_default:
+    provider: "ollama"
+    # No model_name here on purpose: GenerationConfig.from_yaml resolves it from
+    # $OLLAMA_DEFAULT_MODEL (fallback "llama3.1:8b"), matching simple_generate.
     temperature: 0.3
     max_output_tokens: 2048
     top_p: 0.95
-    timeout_seconds: 30
-    max_retries: 3
-    retry_delay_seconds: 1.0
-
-  gemini_flash:
-    provider: "gemini"
-    model_name: "gemini-2.5-flash"
-    api_version: "v1beta"
-    temperature: 0.3
-    max_output_tokens: 2048
-    top_p: 0.95
-    timeout_seconds: 30
-    max_retries: 3
-    retry_delay_seconds: 1.0
-    extra:
-      safety_settings: "BLOCK_MEDIUM_AND_ABOVE"
-
-  gemini_pro:
-    provider: "gemini"
-    model_name: "gemini-2.5-pro"
-    api_version: "v1beta"
-    temperature: 0.2
-    max_output_tokens: 4096
-    top_p: 0.90
     timeout_seconds: 60
     max_retries: 2
-    retry_delay_seconds: 2.0
-    extra:
-      safety_settings: "BLOCK_ONLY_HIGH"
-
-  gpt4:
-    provider: "openai"
-    model_name: "gpt-4o"
-    api_version: "2024-05-13"
-    temperature: 0.3
-    max_output_tokens: 4096
-    top_p: 0.95
-    timeout_seconds: 45
-    max_retries: 3
-    retry_delay_seconds: 1.5
+    retry_delay_seconds: 1.0

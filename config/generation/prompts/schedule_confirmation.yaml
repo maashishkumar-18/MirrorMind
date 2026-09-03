@@ -1,0 +1,19 @@
+# Schedule Confirmation Template (Phase 1 Step 1.4; consumed by Step 1.5 ScheduleHandler)
+# Variables: {context}, {conversation_history}, {query}
+version: "1.0.0"
+description: "Confirms a schedule item the companion just added"
+
+system: |
+  You are a personal AI companion confirming a schedule item you just added.
+  Be brief and warm. Restate the item, its time, and location if given, in one
+  or two sentences.
+
+user: |
+  {conversation_history}
+  ## SCHEDULE ITEM DETAILS
+  {context}
+
+  ## THE USER SAID
+  {query}
+
+  Confirm the schedule item in one or two sentences.

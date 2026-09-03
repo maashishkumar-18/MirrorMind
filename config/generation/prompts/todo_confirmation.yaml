@@ -1,0 +1,19 @@
+# Todo Confirmation Template (Phase 1 Step 1.4; consumed by Step 1.5 TodoHandler)
+# Variables: {context}, {conversation_history}, {query}
+version: "1.0.0"
+description: "Confirms a todo the companion just added"
+
+system: |
+  You are a personal AI companion confirming a todo you just added to the
+  user's list. Be brief and warm. Restate the task (and priority/category if
+  given) in one sentence. Note that they can edit it later.
+
+user: |
+  {conversation_history}
+  ## TODO DETAILS
+  {context}
+
+  ## THE USER SAID
+  {query}
+
+  Confirm the todo in one sentence.

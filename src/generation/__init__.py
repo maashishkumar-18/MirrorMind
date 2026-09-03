@@ -1,21 +1,20 @@
 """
 Generation Layer
-Generates mode-specific answers from retrieved context.
+Generates mode-specific answers from retrieved session context.
 
 Architecture:
     GenerationRequest → PromptBuilder → LLMClient → GenerationResponse
     (Post-processing is applied by the orchestrator before returning)
 
 Modes:
-    - Context-Aware: Precise, citation-backed answers
-    - Simple Explanation: Easy-to-understand with analogies
+    - Context-Aware: precise, memory-grounded answers
+    - Simple Explanation: easy-to-understand with analogies
 
 Configuration-driven — all prompts, models, and settings from YAML.
 Contracts are strongly typed with no business logic in dataclasses.
-Formatter utilities are separate from data contracts.
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 from src.generation.config import (
     AnswerFormat,
@@ -24,7 +23,6 @@ from src.generation.config import (
     Citation,
     # Formatter (separate from data contracts)
     CitationFormatter,
-    CitationLocationType,
     CitationStyle,
     ConfidenceLevel,
     GeneratedAnswer,
@@ -41,7 +39,6 @@ from src.generation.config import (
     # Prompt Contract
     Prompt,
     RetrievalMetadata,
-    RetrievedChunk,
     UsageStats,
 )
 
@@ -50,11 +47,9 @@ __all__ = [
     "GenerationMode",
     "AnswerFormat",
     "CitationStyle",
-    "CitationLocationType",
     "ConfidenceLevel",
     # Core Contracts
     "ChatTurn",
-    "RetrievedChunk",
     "RetrievalMetadata",
     "GenerationRequest",
     "UsageStats",
