@@ -11,11 +11,6 @@ happened in this one request?".
 
 Run:
     streamlit run dashboard/app.py
-
-TODO(Phase 1 Step 1.4b): the metrics store's `cost_usd` column became
-`compute_ms` in Step 1.4a (local Ollama inference has no per-token $ cost).
-The `df["cost_usd"]` reads below need to move to `compute_ms` when the eval
-harness / simulator that feed this dashboard are rewritten session-shaped.
 """
 
 import json
@@ -181,7 +176,7 @@ store = MetricsStore()
 probe_rows = store.query_recent(limit=5000)
 if not probe_rows:
     st.info(
-        "No data yet. Run `python -m eval.run_ragas_eval` (env=ci) or "
+        "No data yet. Run `python -m eval.run_eval` (env=ci) or "
         "`python -m scripts.simulate_traffic` (env=simulated_production) to populate this dashboard."
     )
     st.stop()
@@ -224,7 +219,7 @@ if df.empty:
 n = len(df)
 p50 = df["total_time_ms"].quantile(0.5)
 p95 = df["total_time_ms"].quantile(0.95)
-total_cost = df["cost_usd"].sum()
+total_compute_ms = df["compute_ms"].sum()
 refusal_rate = df["refused"].mean() * 100
 hit_rate = df["retrieval_hit"].mean() * 100
 faith_vals = df["faithfulness_score"].dropna()
@@ -233,7 +228,7 @@ avg_faith = faith_vals.mean() if len(faith_vals) else None
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("Requests", n)
 k2.metric("Latency P50 / P95", f"{p50:.0f} / {p95:.0f} ms")
-k3.metric("Total cost", f"${total_cost:.4f}")
+k3.metric("Total compute", f"{total_compute_ms / 1000:.1f} s")
 k4.metric("Refusal rate", f"{refusal_rate:.1f}%")
 k5.metric("Retrieval hit rate", f"{hit_rate:.1f}%")
 k6.metric("Avg faithfulness (sampled)", f"{avg_faith:.2f}" if avg_faith is not None else "n/a")
@@ -337,7 +332,7 @@ if len(faith_df):
     st.plotly_chart(style_fig(fig, theme), use_container_width=True)
 else:
     st.caption(
-        "No sampled faithfulness scores yet — run scripts/simulate_traffic.py or the eval harness without --skip-ragas."
+        "No sampled faithfulness scores yet — run the eval harness (python -m eval.run_eval)."
     )
 
 st.subheader("Citations per answer")
@@ -400,37 +395,39 @@ st.caption(f"Rolling window: {window} requests.")
 st.divider()
 
 # ============================================================================
-# Cost — per-request and cumulative are different scales, so two charts
+# Compute — local Ollama inference has no per-token $ cost (Phase 1 Step 1.4),
+# so the old cost charts now plot compute_ms (retrieval + generation latency
+# proxy). Per-request and cumulative are different scales, so two charts
 # rather than a dual-axis combo (dual-axis charts are never the right call).
 # ============================================================================
 
-st.subheader("Cost")
-cost_col1, cost_col2 = st.columns(2)
-with cost_col1:
+st.subheader("Compute (latency proxy)")
+compute_col1, compute_col2 = st.columns(2)
+with compute_col1:
     fig = go.Figure(
         go.Bar(
             x=df["request_index"],
-            y=df["cost_usd"],
+            y=df["compute_ms"],
             marker_color=seq_blue,
-            hovertemplate="Request %{x}<br>$%{y:.5f}<extra></extra>",
+            hovertemplate="Request %{x}<br>%{y:.0f} ms<extra></extra>",
         )
     )
-    fig.update_layout(yaxis_title="$ per request", xaxis_title="Request #")
+    fig.update_layout(yaxis_title="ms per request", xaxis_title="Request #")
     st.plotly_chart(style_fig(fig, theme), use_container_width=True)
-with cost_col2:
-    df["cumulative_cost"] = df["cost_usd"].cumsum()
+with compute_col2:
+    df["cumulative_compute_ms"] = df["compute_ms"].cumsum()
     fig = go.Figure(
         go.Scatter(
             x=df["request_index"],
-            y=df["cumulative_cost"],
+            y=df["cumulative_compute_ms"],
             mode="lines",
             line=dict(color=seq_blue, width=2),
             fill="tozeroy",
             fillcolor=hex_to_rgba(seq_blue, 0.15),
-            hovertemplate="Request %{x}<br>cumulative $%{y:.4f}<extra></extra>",
+            hovertemplate="Request %{x}<br>cumulative %{y:.0f} ms<extra></extra>",
         )
     )
-    fig.update_layout(yaxis_title="$ cumulative", xaxis_title="Request #")
+    fig.update_layout(yaxis_title="ms cumulative", xaxis_title="Request #")
     st.plotly_chart(style_fig(fig, theme), use_container_width=True)
 
 st.divider()
@@ -450,7 +447,7 @@ display_cols = [
     "is_grounded",
     "citations_count",
     "faithfulness_score",
-    "cost_usd",
+    "compute_ms",
     "langfuse_trace_url",
 ]
 st.dataframe(
@@ -458,7 +455,7 @@ st.dataframe(
     column_config={
         "langfuse_trace_url": st.column_config.LinkColumn("Trace", display_text="View in Langfuse"),
         "timestamp": st.column_config.DatetimeColumn("Time"),
-        "cost_usd": st.column_config.NumberColumn("Cost", format="$%.5f"),
+        "compute_ms": st.column_config.NumberColumn("Compute ms", format="%.0f"),
         "faithfulness_score": st.column_config.NumberColumn("Faithfulness", format="%.2f"),
         "query": st.column_config.TextColumn("Query", width="large"),
     },

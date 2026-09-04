@@ -48,15 +48,11 @@ rank_bm25==0.2.2
 # Reranking
 sentence-transformers==3.0.1
 
-# Evaluation — see eval/run_ragas_eval.py and eval/README.md
-ragas==0.1.10
-# langchain wrapper deps ragas needs: a LangChain-compatible judge LLM
-# (ChatOpenAI pointed at DeepSeek's OpenAI-compatible endpoint) and a
-# LangChain Embeddings wrapper (local sentence-transformers fallback —
-# see eval/README.md "Judge configuration" for why).
-langchain-openai==0.1.8
-langchain-community==0.2.6
-datasets==2.19.1
+# Evaluation — see eval/run_eval.py and eval/README.md. Phase 1 Step 1.4b
+# dropped RAGAS and its LangChain judge stack: the session harness scores
+# faithfulness by reusing src.generation.post_processor.GroundingValidator
+# (one local Ollama call) and answer-correctness with a local token-recall +
+# all-MiniLM cosine blend — no judge-API key, no extra dependencies.
 
 # Debug tool (tools/retrieval_debug_server.py) — optional
 # fastapi==0.111.0 (originally pinned here) pins starlette<0.38, which

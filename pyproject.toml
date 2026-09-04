@@ -44,7 +44,7 @@ ignore = ["E501"]
 # existed at Step 0.1. Clear an entry when its file is next rewritten/touched by
 # a migration step, not by leaving the suppression in place indefinitely.
 "dashboard/app.py" = ["E402"]                        # sys.path/dotenv setup before imports
-"eval/run_ragas_eval.py" = ["E402"]                  # same
+"eval/run_eval.py" = ["E402"]                        # sys.path bootstrap before imports
 "scripts/simulate_traffic.py" = ["E402"]             # same
 "src/common/llm_client.py" = ["B904"]                # raise-without-from in except blocks
 "src/retrieval/context_builder.py" = ["F841"]

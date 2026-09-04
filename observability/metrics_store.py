@@ -11,10 +11,10 @@ directly. Each row also carries the Langfuse trace URL so the dashboard can
 link out to the full waterfall for any individual request.
 
 Domain-agnostic by design: this module doesn't decide what counts as
-"refused" or a "retrieval hit" — callers (eval/run_ragas_eval.py,
-scripts/simulate_traffic.py) compute those from OrchestratorResult /
-GenerationResponse using logic that already lives with the rest of the
-pipeline's refusal-detection code, and just pass the booleans in.
+"refused" or a "retrieval hit" — callers (eval/run_eval.py,
+scripts/simulate_traffic.py) compute those from the pipeline's
+AgenticOutput / GenerationResponse using logic that already lives with the
+rest of the pipeline's refusal-detection code, and just pass the booleans in.
 """
 
 import json

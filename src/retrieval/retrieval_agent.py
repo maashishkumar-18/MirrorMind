@@ -36,6 +36,12 @@ from src.common.types import (
 _ACTION_VALUES = [a.value for a in AgenticActionType]
 _ROUTE_VALUES = [r.value for r in RetrievalRoute]
 _HISTORY_TURNS = 6
+# The agentic call is one structured-JSON completion. ``simple_generate``'s
+# 30s default is fine for a 3B model but a 7B/8B on CPU inference (no GPU
+# acceleration on the reference-class hardware this ships to) routinely needs
+# longer — and a timeout here degrades to the safe CONVERSATION fallback,
+# silently zeroing routing accuracy. 120s absorbs CPU 7B/8B latency.
+_AGENT_TIMEOUT_SECONDS = 120
 
 
 class RetrievalAgent:
@@ -53,12 +59,25 @@ class RetrievalAgent:
         """Classify + route + respond to ``query`` in a single model call."""
         prompt = self._build_prompt(query, conversation_history or [])
         try:
-            raw = simple_generate(prompt, self.model_name, registry=self.registry)
+            raw = simple_generate(
+                prompt,
+                self.model_name,
+                timeout_seconds=_AGENT_TIMEOUT_SECONDS,
+                registry=self.registry,
+            )
         except Exception:  # provider/transport failure — never propagate
             return self._fallback("")
 
         try:
             data = self._parse_json(raw)
+            if not isinstance(data, dict):
+                raise ValueError("agentic output is not a JSON object")
+            if data.get("retrieval_route") not in _ROUTE_VALUES:
+                # Small local models (llama3.2) emit "none"/null here whenever
+                # retrieve_needed is false — where the route is a don't-care
+                # (RetrievalRouter short-circuits). "semantic" is the safe
+                # default; a genuine structured/hybrid need is stated explicitly.
+                data["retrieval_route"] = RetrievalRoute.SEMANTIC.value
             return AgenticOutput.model_validate(data)
         except (ValueError, ValidationError):
             return self._fallback(raw)
@@ -116,7 +135,20 @@ New message:
         except json.JSONDecodeError as e:
             match = re.search(r"\{.*\}", text, re.DOTALL)
             if match:
-                return json.loads(match.group())
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+            # Small local models routinely drop the closing brace after the
+            # final "response" string — balance braces and retry once.
+            start = text.find("{")
+            opened = text.count("{") - text.count("}")
+            if start != -1 and opened > 0:
+                repaired = text[start:].rstrip().rstrip(",") + "}" * opened
+                try:
+                    return json.loads(repaired)
+                except json.JSONDecodeError:
+                    pass
             raise ValueError(f"could not parse agentic output JSON: {raw[:200]}") from e
 
     @staticmethod

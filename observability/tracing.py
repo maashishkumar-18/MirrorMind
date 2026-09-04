@@ -23,7 +23,7 @@ _safe_call_component, src/generation/orchestrator.py generate()):
         span.update(output=safe_dict(result))
 
 Usage — one trace spanning retrieval + generation for a single request
-(see eval/run_ragas_eval.py, scripts/simulate_traffic.py):
+(see eval/run_eval.py, scripts/simulate_traffic.py):
 
     with traced_pipeline_call(request_id=rid, query=q, env="ci") as trace:
         retrieval_result = orchestrator.retrieve(...)
@@ -320,10 +320,10 @@ def score_current_trace(name: str, value: float, comment: str | None = None) -> 
 def score_trace(trace_id: str, name: str, value: float, comment: str | None = None) -> None:
     """
     Attach a score to a trace by ID, after the fact — for scores computed
-    later than the trace itself (e.g. eval/run_ragas_eval.py's RAGAS judge
-    runs as a separate batched phase, once all per-item traces have already
-    closed; score_current_trace() wouldn't have an active span to attach
-    to by then).
+    later than the trace itself (e.g. eval/run_eval.py attaches the
+    faithfulness score in its scoring phase, once all per-item traces have
+    already closed; score_current_trace() wouldn't have an active span to
+    attach to by then).
     """
     client = get_langfuse()
     if client is None or not trace_id:

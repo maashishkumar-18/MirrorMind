@@ -1,0 +1,13 @@
+{
+  "faithfulness": { "min": 0.6 },
+  "agentic_routing": { "min": 0.9 },
+  "refusal_rate": { "baseline": 0.95, "band_pp": 5 },
+  "temporal_accuracy": { "min": 0.45 },
+  "_meta": {
+    "calibrated_at": "2026-09-04T19:15:00Z",
+    "model": "llama3.1:8b",
+    "golden_set_sha256": "66bee3bd19a72e914bb01bdf02e7ffb38d0b2dbfe95b9549abf2b2bc1482275f",
+    "run_report": "eval/results/eval_20260904T132621Z.json (run A), eval/results/eval_20260904T140807Z.json (run B, stochasticity confirm)",
+    "notes": "faithfulness/agentic_routing are roadmap-fixed (production_roadmap.md Step 1.4 + the Phase 4 gate table); they are enforced from Phase 4 onward, not at 1.4b — measured on the calibration subset at 0.61/0.64 (run A/B) for agentic_routing and 0.93/0.87 (run A/B) for faithfulness, so agentic_routing does not clear its own 0.9 floor yet with the current agent prompt + local 8B model. That is a real, tracked finding (see docs/eval_review.md), not a harness bug: routing misses are the model defaulting to the structured route on plainly conversational recall questions. refusal_rate.baseline=0.95 and temporal_accuracy.min=0.45 are calibrated from two real local runs against llama3.1:8b (the app's default model per .env.example; the original plan named llama3.2:latest only because 3.1:8b was not yet pulled -- llama3.2 measured 0.58 routing / 0.29 faithfulness on this set and was rejected as unusable for calibration). refusal_rate was identical (0.95) both runs -- same single non-refusal (q076) both times, a genuine miss (answered from a meeting note instead of noting the requested deadline is unset), not stochasticity. temporal_accuracy measured 0.50 and 0.643 across the two runs (14 of 15 is_temporal-answerable items scored; q024 excluded, no temporal token in its ground truth); 0.45 = min(0.50, 0.643) minus a 5pp margin, the same one-sided 'measured - 5pp' rule the roadmap uses for this gate, so both runs clear it. run_eval.py re-hashes golden_qa_set.json against golden_set_sha256 at startup and refuses to run if the set has drifted. See docs/eval_review.md for the independent second-reviewer sign-off (sign-off with follow-ups) and its temporal-floor analysis."
+  }
+}

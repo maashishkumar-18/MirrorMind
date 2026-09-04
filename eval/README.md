@@ -1,408 +1,148 @@
-# Golden Evaluation QA Set
+# Session Golden Evaluation Set
 
-`golden_qa_set.json` — 101 hand-built QA pairs against the bundled sample
-corpus (`sample_data/sample_lecture.pptx`, a Supply Chain Management
-"Inventory Management" lecture deck, slides 2-18).
+The Personal AI Companion's golden eval (Phase 1 Step 1.4b). Three committed
+files drive it:
 
-## What "verified" means here
+| File | What it is |
+|---|---|
+| `seed_corpus.json` | A hand-authored synthetic memory — 10 multi-turn sessions + 20 structured records (reminders / todos / meeting notes / schedule items) about a small recurring cast. The harness seeds this into a fresh SQLite DB on every run. |
+| `golden_qa_set.json` | 86 evaluation items. Every answerable item's `ground_truth` is a fact that exists **only** in `seed_corpus.json` — nothing is answerable from world knowledge. |
+| `gates.json` | The four CI gate thresholds. Two are roadmap-fixed; two (`refusal_rate.baseline`, `temporal_accuracy.min`) are calibrated from real local runs — see "Calibration" below. |
 
-Every answerable item's `source_quote` is a **verbatim substring** of the
-real, parsed text of the deck — not a paraphrase, not general domain
-knowledge about inventory management, not an LLM's guess at what the slide
-probably says. Nothing in any `ground_truth` exists that isn't traceable to
-its `source_quote`. This was checked programmatically, not just asserted:
+There is **no RAGAS and no judge-API key.** Scoring is entirely local
+(`run_eval.py`).
 
-```bash
-python -m src.ingestion.parser   # or see the verification script below
-```
+## How a run works
 
-Verification script (reproduce the check yourself):
+`python -m eval.run_eval` (`OLLAMA_DEFAULT_MODEL` must be set):
 
-```python
-import sys, json, re
-sys.path.insert(0, ".")
-from src.ingestion.parser import DocumentParser
-from src.ingestion.cleaner import TextCleaner
+1. **Bootstrap** (`bootstrap_pipeline()`) — `MigrationRunner` on a tmp DB,
+   insert every `seed_corpus.json` row, then ingest each session through the
+   real `SessionIngestionPipeline`. `src.ingestion.metadata_extractor.simple_generate`
+   is monkeypatched to the session's canned metadata block, so ingestion is
+   deterministic and needs no Ollama. Embeddings are the real bundled
+   `all-MiniLM-L6-v2`.
+2. **Per item** — `RetrievalAgent.reason(question)` → `AgenticOutput`; if
+   `retrieve_needed` then `RetrievalRouter.route()` → chunks, else no chunks;
+   build a `GenerationRequest` and call `GenerationOrchestrator.generate()`.
+3. **Score** (all local):
 
-parsed = DocumentParser().parse("sample_data/sample_lecture.pptx")
-cleaned = TextCleaner().clean(parsed)
+   | Score | How | Applies to |
+   |---|---|---|
+   | `refusal` | the answer matches `REFUSAL_PATTERNS` (the templates' exact refusal phrase) **or** `response.error_type` is set. Nothing else. | `category == "unanswerable"` |
+   | `faithfulness` | `GroundingValidator(method="llm_check")` confidence — one local Ollama call grading the answer against the retrieved context, keyword-overlap fallback on failure. | answerable items |
+   | `correctness` | `0.5 · ground-truth-token-recall + 0.5 · all-MiniLM cosine(answer, ground_truth)`, clamped to `[0, 1]`. | answerable items (report only, not gated) |
+   | `agentic_routing` | fraction of the applicable expected fields (`retrieve_needed`, `action_type`, and `retrieval_route` only when retrieval is expected) that match the `AgenticOutput`. | every item |
+   | `temporal` | does the answer contain every weekday/month/clock-time/ordinal token from the ground truth? | `is_temporal` answerable items whose ground truth has such a token |
 
-def norm(s):
-    return re.sub(r"\s+", " ", s).strip()
+   `disambiguation_tier` is a report-breakdown dimension only — **never scored.**
+4. **Report** — timestamped `eval/results/eval_<ts>.{json,md}` (gitignored,
+   uploaded as a CI artifact). Aggregates + per-category / per-tier breakdowns
+   + full per-item detail.
 
-slide_text = {}
-for el in cleaned.elements:
-    slide_text.setdefault(el.page_number, []).append(el.content)
-slide_text = {k: norm(" ".join(v)) for k, v in slide_text.items()}
-
-with open("eval/golden_qa_set.json", encoding="utf-8") as f:
-    data = json.load(f)
-
-for item in data["items"]:
-    if not item["answerable"]:
-        continue
-    quotes = item["source_quote"] if isinstance(item["source_quote"], list) else [item["source_quote"]]
-    for q in quotes:
-        assert any(norm(q) in slide_text.get(s, "") for s in item["expected_slides"]), item["id"]
-print("All quotes verified.")
-```
-
-Two things were checked, both passing on the current file:
-1. Every `source_quote` (or, for multi-span answers, every element of the
-   `source_quote` array) is a genuine substring of the deck's real
-   extracted text.
-2. Every quote actually appears on the specific slide(s) listed in
-   `expected_slides` — not just somewhere in the deck.
-
-Unanswerable items (`answerable: false`) were checked by hand against the
-full extracted text of every slide (2-18) to confirm the topic genuinely
-never appears in the corpus. Several are deliberate **hard negatives** —
-questions that sound like a natural follow-up to a real, covered fact but
-whose specific answer is not actually in the deck (e.g. q089 asks for a
-safety-stock formula when the deck only ever discusses safety stock
-conceptually; q099 asks for a cost comparison the deck states both halves
-of but never actually computes). These are the cases most likely to trip
-up a RAG pipeline into hallucinating a plausible-sounding but ungrounded
-answer, which is exactly what the confidence-gating design is supposed to
-catch — see the main README's "What's real here" section.
-
-## Schema
+## `golden_qa_set.json` schema
 
 ```jsonc
 {
-  "id": "q001",                 // unique
-  "question": "...",
-  "ground_truth": "..." | null, // null for unanswerable items
-  "category": "definition | explanation | calculation | comparison | multi_hop | reference | unanswerable",
-  "answerable": true | false,   // does the corpus actually contain the answer
-  "expected_slides": [3],       // 1-indexed slide numbers; [] for unanswerable
-  "source_quote": "..." | ["...", "..."] | null,  // verbatim deck text; array when the answer spans multiple quotes; null for unanswerable
-  "notes": "..." | null         // context, e.g. why a hard negative is hard
+  "id": "q001",
+  "question": "when did we say we'd move the launch to?",
+  "ground_truth": "Friday" | null,              // null for unanswerable
+  "answerable": true | false,
+  "category": "conversation_recall | reminder | todo | meeting | schedule |
+               summary_request | paraphrase_recall | action_request |
+               conversation | unanswerable",
+  "expected_retrieve_needed": true | false,
+  "expected_route": "semantic | structured | hybrid" | null,   // null when retrieve_needed=false
+  "expected_action_type": "retrieval_query | reminder | todo | meeting_note |
+                           schedule | summary_request | conversation | none",
+  "disambiguation_tier": 1 | 2 | 3 | 4 | null,   // roadmap §3 confidence tier; report-only
+  "is_temporal": true | false,
+  "source_ref": "session s3" | "reminder r7" | null,
+  "notes": "..." | null
 }
 ```
 
-## Breakdown
+Coverage (roadmap Step 1.4 deliverables, asserted by
+`tests/eval/test_harness_smoke.py`): every `category` and `action_type`; all
+four disambiguation tiers; **11 "structured-data paraphrase recall"** items
+(the query shares no keywords with the stored value); **20 unanswerable /
+out-of-domain** items including hard negatives (a plausible follow-up whose
+specific answer was deliberately never stated); **17 temporal** items.
 
-| Category | Count | Notes |
-|---|---|---|
-| definition | 26 | "What is X?" |
-| explanation | 16 | "Why/how does X work?" |
-| calculation | 28 | Worked-example numbers (EOQ, ROP, fixed-time-period) and formula components — every number is one actually stated in the deck, never invented |
-| comparison | 6 | X vs Y (fixed-order vs fixed-time-period, holding vs ordering cost, etc.) |
-| multi_hop | 6 | Requires combining facts from 2+ slides |
-| reference | 2 | Deck metadata (course/chapter/textbook, slide 2) |
-| unanswerable | 17 | Topically-adjacent concepts genuinely absent from this corpus, plus 1 fully out-of-domain control question |
+## Calibration
 
-84 answerable + 17 unanswerable = 101 total.
+Two of the four gates are **roadmap-fixed** and committed straight from
+`audits/production_roadmap.md` (Step 1.4 + the Phase 4 gate table), not
+calibrated here: `faithfulness.min` = 0.6 and `agentic_routing.min` = 0.9.
+The roadmap is explicit that these are enforced from Phase 4 onward ("The
+eval must pass before Phase 5 begins"), not at 1.4b — 1.4b's job is to
+*commit* them alongside a working harness and a reviewed set.
 
-## What this is (and isn't) yet
+The other two — `refusal_rate.baseline` and `temporal_accuracy.min` — are
+measured from real local `--calibrate` runs against **`llama3.1:8b`**, the
+app's default model (`.env.example`; `config/generation/models.yaml` falls
+back to it). `temporal_accuracy.min` is the measured accuracy minus a 5pp
+margin for run-to-run stochasticity (a second confirmation run checks the
+band holds); the independent reviewer (`docs/eval_review.md`) signs off on
+the floor. `refusal_rate` is a two-sided band: `baseline ± band_pp`.
 
-This is a **dataset** — `run_ragas_eval.py` (same directory) is the
-scoring harness that runs it. The `expected_slides` field is what RAGAS's
-`context_precision`/`context_recall` key off indirectly: they check
-whether the retrieved context chunks actually support `ground_truth`,
-which in turn was written against the slide(s) listed here.
+`gates.json._meta.golden_set_sha256` pins the exact `golden_qa_set.json` the
+gates were calibrated against; `run_eval.py` re-hashes the file at startup
+and refuses to run if it has drifted (recalibrate, don't silently move the
+set out from under its gates). `--calibrate` skips both the hash check and
+the gate pass/fail and, with no `--sample-size`, runs the 35-item subset the
+two calibrated gates are derived from (every unanswerable item + every
+temporal answerable item) — a full 8B pass on CPU is ~1.5h and is left to
+the manual `eval` CI job.
 
-If you swap in your own corpus, this file becomes invalid (it's written
-against this specific deck's specific facts) — treat it as a worked
-example of how to build a golden set, not a reusable fixture.
-
-## Running the evaluation harness
+## Running it
 
 ```bash
-# Full 101-item run (what CI gates on)
-python -m eval.run_ragas_eval
+# Full 86-item gated run (what the manual CI `eval` job runs)
+OLLAMA_DEFAULT_MODEL=llama3.1:8b LANGFUSE_PUBLIC_KEY="" LANGFUSE_SECRET_KEY="" \
+  ./.venv/Scripts/python.exe -m eval.run_eval
 
-# Fast iteration: random 15-item subset, lower threshold
-python -m eval.run_ragas_eval --sample-size 15 --threshold 0.7
+# Fast iteration — a random subset
+python -m eval.run_eval --sample-size 15 --seed 7
+
+# Re-calibrate the gates (35-item subset, no hash/gate check)
+python -m eval.run_eval --calibrate
 ```
 
-Requires `DEEPSEEK_API_KEY`, one embedding provider key (`GEMINI_API_KEY`
-or `OPENAI_API_KEY`), and `PINECONE_API_KEY` in `.env` — every run
-re-ingests `sample_data/sample_lecture.pptx` into a fresh Pinecone
-namespace (same as `python -m src.retrieval.orchestrator`'s integration
-test), then runs each golden-set question through the real
-`RetrievalOrchestrator` → `GenerationOrchestrator` pipeline. Expect
-~100+ live LLM calls on a full run (pipeline generation + RAGAS judge) —
-use `--sample-size` while iterating.
-
-### Flags
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `--sample-size N` | full set (101) | Evaluate a random subset instead of everything. |
-| `--seed N` | 42 | RNG seed for `--sample-size` sampling (reproducible subsets). |
-| `--threshold F` | 0.75 | Aggregate score CI gate — process exits non-zero if the run's aggregate falls below this. |
-| `--flag-threshold F` | 0.5 | Per-question score below which an item is flagged as a notable failure in the report. |
-| `--golden-set PATH` | `eval/golden_qa_set.json` | Override the input dataset. |
-| `--output-dir PATH` | `eval/results/` | Where the timestamped JSON/Markdown reports are written. |
-
-### Judge configuration
-
-RAGAS needs a judge LLM and, for `answer_correctness`'s semantic-similarity
-term, an embeddings model — both intentionally **separate from the
-pipeline's own generation call**:
-
-- **Judge LLM**: `langchain_openai.ChatOpenAI` pointed at DeepSeek's
-  OpenAI-compatible endpoint (`base_url="https://api.deepseek.com"`,
-  `DEEPSEEK_API_KEY`). This is a different client instance than the
-  pipeline's `LLMClient`/`DeepSeekAdapter` — even though both currently
-  resolve to `deepseek-chat` per `config/generation/models.yaml`, the
-  judge is never the same code path grading its own output, and stays
-  independent if the pipeline's default model changes later.
-- **Judge embeddings**: a local `sentence-transformers/all-MiniLM-L6-v2`
-  model via `langchain_community.embeddings.HuggingFaceEmbeddings`. The
-  pipeline's own `EmbeddingGenerator` (`src/ingestion/embedder.py`) isn't
-  a drop-in LangChain `Embeddings` implementation (it exposes
-  `embed_query`/`embed_queries`, not the `embed_query`/`embed_documents`
-  pair RAGAS expects) and is backed by a paid provider — reusing it would
-  conflate ingestion cost/provider with judge cost on every eval run. A
-  small local model avoids that and costs nothing per run;
-  `sentence-transformers` is already a pipeline dependency (the
-  cross-encoder reranker uses it).
-
-### Scoring
-
-- **Answerable items** (84): `faithfulness`, `context_precision`,
-  `context_recall`, and `answer_correctness` are computed via RAGAS
-  against `ground_truth`, then averaged into one per-question score.
-- **Unanswerable items** (17): there's no `ground_truth` to score RAGAS
-  metrics against by design, so these are scored 1.0 (pipeline correctly
-  hedged) or 0.0 (pipeline confidently answered anyway) using signals the
-  pipeline already produces — `OrchestratorResult.is_ready_for_generation`,
-  `confidence.action` (`src/retrieval/confidence.py`), and whether the
-  answer contains the exact refusal phrase
-  `config/generation/prompts/context_aware.yaml`'s system prompt
-  instructs the model to emit when context is insufficient
-  ("...does not cover this topic in sufficient detail").
-- **Aggregate score**: the mean of all per-question composite scores —
-  this is the headline number CI gates on via `--threshold`.
-
-### Output
-
-Each run writes two timestamped files to `eval/results/`:
-
-- `eval_<timestamp>.json` — machine-readable: aggregate score, pass/fail,
-  breakdown by `category` (definition/explanation/calculation/comparison/
-  multi_hop/reference/unanswerable), breakdown by answerable vs.
-  unanswerable, a `low_scoring_items` list (composite score below
-  `--flag-threshold`), a rough DeepSeek cost estimate, and full per-question
-  detail (question, generated answer, individual metric scores, refusal
-  signals for unanswerable items).
-- `eval_<timestamp>.md` — the same data as a human-readable summary.
-
-The process exit code is non-zero when the aggregate score is below
-`--threshold` — that's the hook for CI gating (see main README's
-"Roadmap" item 3).
+| Flag | Meaning |
+|---|---|
+| `--sample-size N` / `--seed N` | evaluate a reproducible random subset |
+| `--calibrate` | skip the hash + gate checks; with no `--sample-size`, run the 35-item calibration subset (unanswerable + temporal answerable) |
+| `--skip-rerank` | stub the cross-encoder (faster, lower retrieval quality) |
+| `--golden-set` / `--corpus` / `--gates` / `--output-dir` | path overrides |
 
 ## CI
 
-`.github/workflows/eval.yml` runs this harness automatically:
-
-| Trigger | What runs |
-|---|---|
-| Pull request | `--sample-size 15 --threshold 0.75` — fast, cheap feedback |
-| Push to main | full 101-item run |
-| Weekly (Monday 06:00 UTC) | full 101-item run — catches drift between merges |
-| Manual (`workflow_dispatch`) | full run, or pass a sample size |
-
-Requires three repository secrets — `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`,
-`PINECONE_API_KEY` — and takes an optional `PINECONE_INDEX_NAME` repository
-variable (defaults to `rag-pipeline-index`; `VectorStore` auto-creates the
-index if it doesn't exist, so no manual Pinecone setup is needed beyond the
-key). Results are written to the job summary and uploaded as a workflow
-artifact (`eval-results-<run-id>`, 90-day retention) on every run,
-including failed ones.
-
-Gemini's free embedding tier is 1000 requests/day, shared across every CI
-run *and* any local dev usage on the same key — this was exhausted once
-during manual testing while building this harness (see "Known limitations"
-below). That's why the PR trigger uses a small sample rather than the full
-set: it's a cost/quota decision as much as a speed one.
-
-## Baseline run and threshold rationale
-
-Full 101-item run, real RAGAS judge scoring (`eval/results/eval_20260731T210201Z.json`):
-**aggregate 0.8203**, PASSED against `--threshold 0.75`. Breakdown:
-
-| Category | Mean | N |
+| Job | Trigger | What runs |
 |---|---|---|
-| unanswerable | 1.0000 | 17 |
-| multi_hop | 0.9051 | 6 |
-| reference | 0.8558 | 2 |
-| comparison | 0.8238 | 6 |
-| explanation | 0.7819 | 16 |
-| calculation | 0.7934 | 28 |
-| definition | 0.7323 | 26 |
+| `test` → `tests/eval/test_harness_smoke.py` | every push / PR | Schema + wiring only. `bootstrap_pipeline()` + a 2-item pass with **every LLM call stubbed** (agent, generation model, cross-encoder, `llm_check`). No Ollama, no network. |
+| `eval` | `workflow_dispatch` only | The real gated run on `ubuntu-latest`: install Ollama, `ollama pull llama3.1:8b` (must match `gates.json` `_meta.model`), `python -m eval.run_eval`. Exits non-zero on any gate breach. Report uploaded as the `eval-results` artifact. |
 
-**Why the default threshold is 0.75, not tuned closer to 0.82**: this run and
-an earlier identical 12-query retrieval test both showed real run-to-run
-non-determinism (the same query routing through `direct_retrieval` vs.
-`agent_reasoning` on different runs, with corresponding confidence-score
-swings). A ~9% margin below the observed baseline is there to absorb that
-ordinary stochasticity without masking a genuine regression — moving the
-gate closer to 0.82 would risk the CI check flagging normal variance as a
-failure, which trains you to distrust (and eventually ignore) the gate.
+## Second-reviewer sign-off
 
-## Citation-count baseline and `--min-avg-citations` rationale
+`docs/eval_review.md` — an independent fresh-context review of a ≥20-item
+sample: coverage completeness, ground-truth accuracy checked directly
+against `seed_corpus.json`, question realism, and the recommended
+`temporal_accuracy` floor. Verdict: **sign-off with follow-ups.** Implements
+the mitigation for product-spec Risk #6 ("old eval set gives false confidence
+in release readiness").
 
-Added after `scripts/simulate_traffic.py`'s incident simulation (see main
-README's "Observability" section) found that RAGAS faithfulness alone
-doesn't catch a starved-retrieval regression: an answer built from one
-narrow-but-relevant chunk instead of several is still faithful to what it
-got, just less complete. Citation count moves instead — a real simulated
-incident (candidate pool cut from 20 to 3, `rerank_k` cut to 1) dropped
-average citations per answer by ~33% while faithfulness stayed flat. This
-gate is the harness's answer to that gap: `--min-avg-citations` (default
-`2.5`) fails the run if the golden set's average citations-per-answer
-(answerable items only) falls below it, alongside the existing `--threshold`.
+Non-blocking follow-ups it raised (tracked for a post-1.4b eval-hardening
+pass): tighten/document the `paraphrase_recall` "no keyword overlap" claim
+(~half the 11 items share a topical noun with their source record); add
+headroom above the 20-item unanswerable floor; widen or reword the q061
+(`conversation` vs `action_request`) and q044/q045 (`structured` vs `hybrid`)
+routing expectations; give q024 ("reminders coming up this week") a reference
+"today" or drop its relative phrasing.
 
-**The baseline run for this gate hit the exact quota problem this doc
-already warned about** ("Gemini's free embedding tier is 1000 requests/day
-... exhausted once during manual testing" above) — it happened a second
-time, this time 34 requests into a 101-item run, this time from cumulative
-embedding calls across an entire session of building and testing the
-observability layer (ingestion re-embeds the sample deck on every
-`bootstrap_pipeline()` call, and dozens of `scripts/simulate_traffic.py`
-requests plus several eval runs all ran earlier that day on the same key).
-Items 68–101 of that run (`eval/results/eval_20260805T140908Z.json`) all
-show `candidates_retrieved: 0` — a contiguous block of Gemini API failures,
-not genuine pipeline behavior. Using the full 101-item aggregate from that
-run would have produced a false, artificially-low baseline.
-
-**What was actually used**: the clean, unaffected subset — items 1–67, all
-answerable, all real Gemini-embedded retrieval (same provider CI runs with,
-so it's a valid comparison point, just a smaller sample). That subset's
-composite score was **0.7928** — close enough to the documented 0.8203 full-run
-baseline above to trust the subset isn't itself skewed — and its average
-citation count was **3.075**.
-
-**Why the default is 2.5, not closer to 3.07**: same logic as the 0.75
-score threshold — a margin below the observed baseline that absorbs
-ordinary variance without masking a real regression. Chosen specifically to
-still fail on the magnitude of drop the simulated incident actually
-produced (~33%, i.e. down to ~2.06 from 3.07) while tolerating smaller
-normal fluctuation; citation counts are coarser/more discrete than
-continuous RAGAS scores, so this margin (~19%) is wider than the 0.75
-threshold's ~9%.
-
-**Known follow-up**: re-run the full 101-item set once the Gemini quota
-resets, to get a complete (not 67/101) baseline and confirm 2.5 still holds
-across the unanswerable items too. Not blocking — the citations gate only
-scores answerable items, and the clean subset is large enough (67) to be a
-reasonable starting threshold.
-
-## Known limitations found via this eval harness
-
-Building and running this harness surfaced four distinct issues — one fixed
-and verified at scale, two intentionally documented rather than patched, and
-one bug in the harness's own scoring logic (caught and corrected before it
-could distort the baseline). Recording all four here, not just the fixed
-one, because a harness that only reports "everything passed" is less
-trustworthy than one that shows its own limits.
-
-### Fixed: agent-path metadata-filter zero-candidate bug
-
-**Root cause**: `RetrievalAgent`'s LLM call proposes metadata filters like
-`{"subject": "Supply Chain Management", "chapter": "Inventory Management"}`.
-`chapter` resolves correctly (`chapter_title` matches), but `subject`
-resolves to `subject_area`, which `MetadataExtractor` populates with a
-*broad academic discipline* ("Business"), not the course name the agent
-assumes — confirmed by direct Pinecone metadata inspection. Applied as a
-hard `$eq` AND filter, the mismatch zeroes out retrieval entirely. Separately,
-the agent also routinely proposed filter keys (`module`, `concept`,
-`current_topic`) with no schema mapping at all; `MetadataFilterBuilder`
-logged a warning ("Field 'X' not defined in schema") but applied them as
-literal filters anyway — a guaranteed zero-match against a nonexistent
-Pinecone key, silently, since the warning was never surfaced by the caller.
-
-**Fix**: `MetadataFilterBuilder._build_from_dict` now skips (rather than
-applies) fields absent from the schema. `RetrievalOrchestrator` no longer
-merges agent-proposed `subject`/`chapter`/`course` into the hard filter at
-all — matching the design already used for conversation-state filters (see
-`MetadataFilterBuilder._build_from_conversation`'s docstring), which
-avoids exactly this vocabulary-mismatch class of bug for a different filter
-source. Narrower agent-proposed fields (e.g. `topic`) are unaffected and
-still applied.
-
-**Before/after, same 12-query retrieval integration test**
-(`src/retrieval/orchestrator.py`'s own `__main__`): before the fix, 2
-queries routed through the agent path and both returned 0 candidates
-(100% failure on that path). After the fix, a rerun of the same 12 queries
-routed 3 through the agent path (routing itself is non-deterministic
-between runs) and all 3 returned a full candidate set. Verified again at
-scale across the full golden set: 0 zero-candidate agent-path failures in
-both the 101-item pipeline-only run and the 101-item RAGAS-scored run
-(`suspect_agent_zero_candidates: []` in both reports).
-
-### Documented, not fixed: reranker cold-start latency
-
-The cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`) loads
-its model lazily on first use. The very first retrieval call in a freshly
-started process pays a one-time ~10s model-load cost on top of normal
-inference time, which can exceed the retrieval layer's 15s timeout budget
-— observed directly (q001, the first item in a 101-item run, timed out at
-20.6s with 0 candidates as a result). Not a logic bug; a known
-ML-serving pattern (cold start). Left undocumented-as-fixed rather than
-patched: the fix is straightforward (warm the reranker at service startup,
-e.g. one dummy `rerank()` call before accepting traffic) but is an infra
-change, not a retrieval-logic change, so it's out of scope for this harness
-to apply on its own.
-
-### Documented, not fixed: single-term queries against multi-topic chunks (q014)
-
-**Root cause**: `SemanticChunker` grouped five distinct inventory sub-types
-(Cycle Stock, Safety Stock, Anticipation, Pipeline, MRO) into one chunk
-under the broad topic "Types of Inventory" (slides 6-7). For a query asking
-specifically about one of those five ("What does MRO stand for, and what
-does it include?"), the cross-encoder reranker scores the *whole chunk's*
-relevance against the query — and a chunk whose semantic content is spread
-across five sub-topics scores worse than chunks singularly focused on one
-topic (e.g. the deck's EOQ chunks), even though it contains the correct
-answer. The chunk doesn't rank in the pipeline's default top 5 at all.
-
-**Fix directions considered**:
-1. Finer-grained chunking for multi-item topical spans (ingestion-level
-   change, corpus-wide impact — not attempted; see rationale below).
-2. Increase `rerank_k` / `ContextBuilderConfig.max_chunks` (tested, see
-   below).
-
-**Tested (direction 2)**: swept `k` from 5 to 13 (both the reranker's
-output size and `ContextBuilder`'s own — separately configured — chunk
-cap, which is what actually enforces the final context size regardless of
-`PipelineConfig`). Result:
-
-| k | MRO chunk present | Rank | Tokens used |
-|---|---|---|---|
-| 5 (default) | No | — | 1044 |
-| 6, 7 | No | — | 1279, 1416 |
-| 8 | Yes | last (8/8) | 1618 (+55%) |
-| 10, 13 | Yes | last (10/10) | 1937 (+85%) |
-
-Raising `k` does eventually surface the chunk, but only at nearly double
-the token cost per query, and even with the entire candidate pool
-available (k=13) it never rises above dead last — this isn't a marginal
-near-miss at the k=5 cutoff, the chunk's cross-encoder relevance score is
-genuinely low relative to the rest of the pool. That result points at
-direction 1 (chunking granularity) as the real fix, not direction 2 — but
-re-chunking is a corpus-wide ingestion change that would need its own
-validation pass against the rest of the golden set to confirm it doesn't
-regress other questions, which is real scope beyond documenting this one
-finding. Left as a known limitation.
-
-### Self-caught: eval harness's own refusal-phrase detection bug
-
-The unanswerable-item scoring checks generated answers for the exact
-refusal phrase the system prompt instructs (`config/generation/prompts/
-context_aware.yaml`: "...does not cover this topic in sufficient detail").
-One item (q086, "What is JIT inventory management?") scored 0.0 despite the
-model correctly refusing — it had naturally substituted the specific topic
-name for "this topic" ("...does not cover Just-In-Time (JIT) inventory
-management in sufficient detail"), which broke an exact substring match.
-Caught by inspecting every flagged low-scoring item rather than trusting
-the aggregate number, confirmed via the other 16/17 unanswerable items that
-it was an isolated case (not a systemic detection failure), fixed to a
-regex tolerant of the substitution, and **the existing report was
-regenerated from the already-captured pipeline answers and RAGAS metrics —
-no re-running of paid API calls, since only the scoring logic was wrong,
-not the underlying data.** Corrected aggregate: 0.8104 → 0.8203.
+**q082** ("what's the capital of Australia?") is a deliberate out-of-domain
+probe: `expected_action_type: conversation`, `expected_retrieve_needed:
+false`. The companion is not a general-knowledge bot, so the *intent* is that
+it declines to answer from memory — but because the base model may simply
+know "Canberra", a q082 non-refusal in a report is expected behaviour, not a
+regression.

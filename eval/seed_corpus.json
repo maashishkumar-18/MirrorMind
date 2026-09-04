@@ -1,0 +1,259 @@
+{
+  "_meta": {
+    "description": "Synthetic personal-companion memory for the Phase 1 Step 1.4b golden eval set. Seeded into a fresh tmp SQLite DB by eval/run_eval.py::bootstrap_pipeline() on every run. One small recurring cast (Priya, Sam, Marcus, Dana) across a product launch, a Portugal trip, a house move, a book club, and everyday life. Every fact a golden item asks about is traceable to a message or a structured record here.",
+    "cast": ["Priya", "Sam", "Marcus", "Dana"],
+    "base_date": "2026-02-01",
+    "session_metadata_note": "Each session carries a canned `metadata` block (topics/action_types/entities/sentiment/confidence). bootstrap_pipeline() monkeypatches src.ingestion.metadata_extractor.simple_generate to return json.dumps(session['metadata']) so ingestion is deterministic and needs no Ollama."
+  },
+  "sessions": [
+    {
+      "id": "s1",
+      "started_at": "2026-02-02T09:15:00Z",
+      "metadata": {
+        "topics": ["product launch", "launch checklist", "timeline"],
+        "action_types": ["todo"],
+        "entities": ["Priya"],
+        "sentiment": "neutral",
+        "confidence": 0.9
+      },
+      "messages": [
+        {"role": "user", "content": "we need to sort out the launch date. marketing isn't ready for Wednesday."},
+        {"role": "assistant", "content": "What day works instead?"},
+        {"role": "user", "content": "let's move the launch to Friday. that gives marketing two more days."},
+        {"role": "assistant", "content": "Okay, launch is Friday. Anything else blocking?"},
+        {"role": "user", "content": "Priya is going to own the launch checklist. she'll chase down the remaining items."},
+        {"role": "assistant", "content": "Got it — Priya owns the checklist, launch moved to Friday."},
+        {"role": "user", "content": "and the launch budget stays capped at 5000 dollars, no extra spend without asking me."},
+        {"role": "assistant", "content": "Understood. $5000 cap, launch Friday, Priya on the checklist."}
+      ]
+    },
+    {
+      "id": "s2",
+      "started_at": "2026-02-04T20:30:00Z",
+      "metadata": {
+        "topics": ["Portugal trip", "travel planning", "packing"],
+        "action_types": ["todo"],
+        "entities": ["Sam", "Portugal"],
+        "sentiment": "positive",
+        "confidence": 0.92
+      },
+      "messages": [
+        {"role": "user", "content": "planning the Portugal trip. we should leave Saturday morning so we beat the traffic."},
+        {"role": "assistant", "content": "Saturday morning it is. Where are you flying from?"},
+        {"role": "user", "content": "Lisbon direct. Sam is booking the hotel, he found one near the old town."},
+        {"role": "assistant", "content": "Nice. So Sam handles the hotel. What about the rental car?"},
+        {"role": "user", "content": "we'll pick that up at the airport. also I want to bring the tent in case we do a night on the coast."},
+        {"role": "assistant", "content": "Tent for a coast night, got it. Total budget for the trip?"},
+        {"role": "user", "content": "I don't want to go over 1200 for the whole thing, flights included."},
+        {"role": "assistant", "content": "Under $1200 all-in, leave Saturday morning, Sam on the hotel, bringing the tent."}
+      ]
+    },
+    {
+      "id": "s3",
+      "started_at": "2026-02-06T18:00:00Z",
+      "metadata": {
+        "topics": ["house move", "movers", "packing"],
+        "action_types": ["schedule"],
+        "entities": ["Dana"],
+        "sentiment": "neutral",
+        "confidence": 0.88
+      },
+      "messages": [
+        {"role": "user", "content": "the movers are confirmed for the 15th, they arrive at 8am."},
+        {"role": "assistant", "content": "Movers on the 15th at 8am. Are you packed?"},
+        {"role": "user", "content": "mostly. Dana is coming over the weekend before to help me pack the kitchen, that's the part I'm dreading."},
+        {"role": "assistant", "content": "Dana takes the kitchen. Anything fragile they should know about?"},
+        {"role": "user", "content": "the record player. I'll carry that one myself in the car."},
+        {"role": "assistant", "content": "You carry the record player. Movers 8am on the 15th, Dana helps with the kitchen the weekend before."}
+      ]
+    },
+    {
+      "id": "s4",
+      "started_at": "2026-02-08T21:00:00Z",
+      "metadata": {
+        "topics": ["book club", "reading"],
+        "action_types": [],
+        "entities": ["Marcus"],
+        "sentiment": "positive",
+        "confidence": 0.9
+      },
+      "messages": [
+        {"role": "user", "content": "book club picked the next book. we're reading Project Hail Mary."},
+        {"role": "assistant", "content": "Good pick. When's the discussion?"},
+        {"role": "user", "content": "Thursday evening at Marcus's place, 7pm. I need to be about halfway through by then."},
+        {"role": "assistant", "content": "Thursday 7pm at Marcus's, aim for halfway through Project Hail Mary."}
+      ]
+    },
+    {
+      "id": "s5",
+      "started_at": "2026-02-10T11:00:00Z",
+      "metadata": {
+        "topics": ["career", "team change", "one on one"],
+        "action_types": ["meeting_note"],
+        "entities": ["Priya", "payments team"],
+        "sentiment": "mixed",
+        "confidence": 0.85
+      },
+      "messages": [
+        {"role": "user", "content": "had my 1:1 today. I told my manager I want to move to the payments team."},
+        {"role": "assistant", "content": "How did that land?"},
+        {"role": "user", "content": "not a no, but not now. she said revisit it in Q2 once the current project ships."},
+        {"role": "assistant", "content": "So the door's open, just timed for Q2 after the project ships."},
+        {"role": "user", "content": "right. Priya already switched to payments last year so I asked her what it's like, she said it's more on-call but more interesting work."},
+        {"role": "assistant", "content": "Revisit the move in Q2; Priya says payments is more on-call but more interesting."}
+      ]
+    },
+    {
+      "id": "s6",
+      "started_at": "2026-02-11T08:45:00Z",
+      "metadata": {
+        "topics": ["health", "dentist appointment"],
+        "action_types": ["reminder", "schedule"],
+        "entities": ["Dr. Okafor"],
+        "sentiment": "neutral",
+        "confidence": 0.9
+      },
+      "messages": [
+        {"role": "user", "content": "I'm overdue for my annual dental cleaning. need to book with Dr. Okafor."},
+        {"role": "assistant", "content": "Want me to remind you to call?"},
+        {"role": "user", "content": "yeah. and the cleaning itself, whenever they slot me in, put it on the calendar."},
+        {"role": "assistant", "content": "I'll remind you to call Dr. Okafor, and add the cleaning once it's scheduled."}
+      ]
+    },
+    {
+      "id": "s7",
+      "started_at": "2026-02-12T17:30:00Z",
+      "metadata": {
+        "topics": ["car maintenance", "brakes"],
+        "action_types": ["schedule"],
+        "entities": [],
+        "sentiment": "negative",
+        "confidence": 0.87
+      },
+      "messages": [
+        {"role": "user", "content": "the car is making that grinding noise again when I brake. it needs new brake pads."},
+        {"role": "assistant", "content": "Do you have a quote?"},
+        {"role": "user", "content": "the shop said about 400 dollars for the front pads and rotors. I'm dropping it off Monday morning."},
+        {"role": "assistant", "content": "$400 for front pads and rotors, dropping the car off Monday morning."}
+      ]
+    },
+    {
+      "id": "s8",
+      "started_at": "2026-02-13T19:20:00Z",
+      "metadata": {
+        "topics": ["cooking", "recipe", "groceries"],
+        "action_types": ["todo"],
+        "entities": [],
+        "sentiment": "positive",
+        "confidence": 0.9
+      },
+      "messages": [
+        {"role": "user", "content": "I want to try making pesto pasta from scratch this weekend."},
+        {"role": "assistant", "content": "What do you need?"},
+        {"role": "user", "content": "fresh basil and pine nuts, I have the rest. add those to my shopping list."},
+        {"role": "assistant", "content": "Added basil and pine nuts to your list for the pesto pasta."}
+      ]
+    },
+    {
+      "id": "s9",
+      "started_at": "2026-02-14T07:50:00Z",
+      "metadata": {
+        "topics": ["greeting", "small talk"],
+        "action_types": [],
+        "entities": [],
+        "sentiment": "positive",
+        "confidence": 0.6
+      },
+      "messages": [
+        {"role": "user", "content": "morning! how are you today?"},
+        {"role": "assistant", "content": "Doing well, thanks. Ready when you are."},
+        {"role": "user", "content": "just saying hi, nothing I need right now."},
+        {"role": "assistant", "content": "Anytime. Have a good one."}
+      ]
+    },
+    {
+      "id": "s10",
+      "started_at": "2026-02-16T22:10:00Z",
+      "metadata": {
+        "topics": ["gift planning", "birthday"],
+        "action_types": [],
+        "entities": ["Sam"],
+        "sentiment": "positive",
+        "confidence": 0.88
+      },
+      "messages": [
+        {"role": "user", "content": "Sam's birthday is March 3rd and I have no idea what to get him."},
+        {"role": "assistant", "content": "What's he been into lately?"},
+        {"role": "user", "content": "he's been getting into photography. maybe a starter camera, or a nice lens if he already has a body."},
+        {"role": "assistant", "content": "A starter camera or a lens for Sam, birthday March 3rd."}
+      ]
+    }
+  ],
+  "reminders": [
+    {"id": "r1", "session_id": "s2", "title": "Pack the tent for Portugal", "notes": "for the possible coast night", "scheduled_time": "2026-02-27T18:00:00Z"},
+    {"id": "r2", "session_id": "s6", "title": "Call Dr. Okafor to book the dental cleaning", "notes": "annual, overdue", "scheduled_time": "2026-02-12T09:00:00Z"},
+    {"id": "r3", "session_id": null, "title": "Pay the electricity bill", "notes": "", "scheduled_time": "2026-02-20T10:00:00Z"},
+    {"id": "r4", "session_id": null, "title": "Renew the car insurance", "notes": "lapses end of the month", "scheduled_time": "2026-02-25T10:00:00Z"},
+    {"id": "r5", "session_id": "s4", "title": "Text Marcus about book club", "notes": "confirm Thursday 7pm", "scheduled_time": "2026-02-11T17:00:00Z"},
+    {"id": "r6", "session_id": null, "title": "Water the plants", "notes": "every 3 days while it's dry", "scheduled_time": "2026-02-15T08:00:00Z"}
+  ],
+  "todos": [
+    {"id": "t1", "session_id": "s2", "title": "Buy sunscreen and a cooler", "notes": "for the Portugal trip", "priority": "medium", "category": "travel"},
+    {"id": "t2", "session_id": "s1", "title": "Finish the launch checklist", "notes": "Priya is chasing the last items", "priority": "high", "category": "work"},
+    {"id": "t3", "session_id": "s3", "title": "Pay the movers deposit", "notes": "50 percent up front", "priority": "high", "category": "home"},
+    {"id": "t4", "session_id": null, "title": "Return the library books", "notes": "two are already overdue", "priority": "low", "category": "errands"},
+    {"id": "t5", "session_id": "s8", "title": "Get fresh basil and pine nuts", "notes": "for pesto pasta this weekend", "priority": "low", "category": "groceries"},
+    {"id": "t6", "session_id": "s2", "title": "Keep the whole Portugal trip under 1200 dollars", "notes": "flights included, do not go over", "priority": "medium", "category": "travel"}
+  ],
+  "meeting_notes": [
+    {
+      "id": "m1",
+      "session_id": "s1",
+      "raw_transcript": "Launch retro planning. Attendees: me, Priya, Sam. We agreed the launch moves to Friday to give marketing two more days. Priya owns the launch checklist end to end. Sam will prep the announcement blog post. Budget stays at 5000 with no unapproved overage. Follow up: Priya to send the updated checklist by Wednesday.",
+      "searchable_text": "Launch retro. Attendees Priya Sam. Decision: launch moves to Friday for marketing. Priya owns the launch checklist. Sam preps the announcement blog post. Budget 5000 no overage. Follow up Priya sends updated checklist Wednesday.",
+      "attendees": ["Priya", "Sam"],
+      "topics": ["product launch", "timeline", "budget"],
+      "decisions": ["Launch moves to Friday", "Priya owns the launch checklist", "Budget capped at $5000"],
+      "action_items": [{"task": "Send the updated launch checklist", "owner": "Priya", "deadline": "Wednesday"}, {"task": "Prep the announcement blog post", "owner": "Sam", "deadline": null}],
+      "follow_ups": ["Confirm marketing is ready by Thursday"],
+      "needs_review": 0
+    },
+    {
+      "id": "m2",
+      "session_id": "s5",
+      "raw_transcript": "1:1 with my manager. I raised moving to the payments team. She was open to it but wants to wait until the current project ships, so revisit in Q2. No commitment yet. She asked me to keep delivering on the current milestone in the meantime.",
+      "searchable_text": "1:1 with manager. Raised move to payments team. Open but revisit in Q2 after current project ships. No commitment. Keep delivering current milestone.",
+      "attendees": ["manager"],
+      "topics": ["career", "team change"],
+      "decisions": ["Revisit the payments-team move in Q2 after the project ships"],
+      "action_items": [{"task": "Keep delivering the current milestone", "owner": "me", "deadline": null}],
+      "follow_ups": ["Bring it up again at the start of Q2"],
+      "needs_review": 0
+    },
+    {
+      "id": "m3",
+      "session_id": "s3",
+      "raw_transcript": "Moving logistics with Dana. Movers arrive the 15th at 8am. Dana takes the kitchen packing the weekend before. I carry the record player myself. Need to book the moving elevator for our building for the morning of the 15th.",
+      "searchable_text": "Moving logistics with Dana. Movers 15th 8am. Dana packs the kitchen weekend before. I carry the record player. Book the building moving elevator for the morning of the 15th.",
+      "attendees": ["Dana"],
+      "topics": ["house move", "logistics"],
+      "decisions": ["Dana packs the kitchen", "I carry the record player personally"],
+      "action_items": [{"task": "Book the building moving elevator for the 15th", "owner": "me", "deadline": "2026-02-14"}],
+      "follow_ups": [],
+      "needs_review": 0
+    }
+  ],
+  "schedules": [
+    {"id": "sc1", "date": "2026-02-15", "title": "Moving day"},
+    {"id": "sc2", "date": "2026-02-16", "title": "Monday"},
+    {"id": "sc3", "date": "2026-02-19", "title": "Thursday"},
+    {"id": "sc4", "date": "2026-02-20", "title": "Friday"}
+  ],
+  "schedule_items": [
+    {"id": "si1", "schedule_id": "sc1", "title": "Movers arrive", "start_time": "2026-02-15T08:00:00Z", "end_time": "2026-02-15T12:00:00Z", "location": "the flat", "notes": "Sunday the 15th, 8am sharp, they quoted 4 hours"},
+    {"id": "si2", "schedule_id": "sc2", "title": "Drop the car at the shop for new brakes", "start_time": "2026-02-16T08:00:00Z", "end_time": "2026-02-16T08:30:00Z", "location": "Miller's Auto", "notes": "drop-off 8am Monday the 16th, front pads and rotors, about $400"},
+    {"id": "si3", "schedule_id": "sc3", "title": "Book club at Marcus's", "start_time": "2026-02-19T19:00:00Z", "end_time": "2026-02-19T21:00:00Z", "location": "Marcus's place", "notes": "Thursday the 19th, 7pm, Project Hail Mary, be about halfway"},
+    {"id": "si4", "schedule_id": "sc4", "title": "Dental cleaning with Dr. Okafor", "start_time": "2026-02-20T14:00:00Z", "end_time": "2026-02-20T14:45:00Z", "location": "Bright Smile Dental", "notes": "Friday the 20th at 2pm, annual cleaning"},
+    {"id": "si5", "schedule_id": "sc4", "title": "Team standup", "start_time": "2026-02-20T09:00:00Z", "end_time": "2026-02-20T09:15:00Z", "location": "video call", "notes": "daily, 9am"}
+  ]
+}

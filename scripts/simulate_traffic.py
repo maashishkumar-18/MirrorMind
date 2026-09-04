@@ -75,12 +75,16 @@ from src.generation.config import (
     RetrievalMetadata,
 )
 
-# TODO(Phase 1 Step 1.4b): this load-generator still drives the deleted
-# document-era retrieval stack (RetrievalOrchestrator, PIPELINE_REGISTRY —
-# removed in Step 1.3a) and imports src.common.pricing (deleted in Step 1.4a).
-# It is rewritten against RetrievalRouter + GenerationOrchestrator, with the
-# cost_usd bookkeeping replaced by a compute_ms proxy, in Step 1.4b. Until
-# then this module does not import/run.
+# TODO(post-1.4b): this load-generator still drives the deleted document-era
+# retrieval stack (RetrievalOrchestrator, PIPELINE_REGISTRY — removed in Step
+# 1.3a) and imports from the now-renamed eval.run_ragas_eval plus
+# src.common.pricing (deleted in Step 1.4a) and ragas (dropped from
+# requirements.txt in Step 1.4b). It is a portfolio load-generator, not a
+# companion component; a full rewrite onto RetrievalRouter +
+# GenerationOrchestrator (with compute_ms in place of cost_usd) is deferred —
+# same treatment the eval harness got through 1.2–1.4a. Until then this module
+# does not import/run. It is not in CI's pytest/mypy scope; ruff stays clean
+# via the E402 per-file-ignore.
 from src.retrieval.config import HybridWeights
 from src.retrieval.pipelines import LEARNING_PIPELINE
 

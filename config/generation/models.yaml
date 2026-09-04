@@ -9,6 +9,12 @@ models:
     temperature: 0.3
     max_output_tokens: 2048
     top_p: 0.95
-    timeout_seconds: 60
+    # 120s (was 60s): a 7B/8B model generating a full answer on CPU inference
+    # — no GPU acceleration on the reference-class hardware this ships to —
+    # routinely needs 40-90s. A timeout here returns an empty error response,
+    # which the eval then scores as a failed/ungrounded answer, contaminating
+    # the calibration. Phase 2 Step 2.5 benchmarks real latency on the
+    # reference spec; router.yaml's <3.5s budget is that target, not this ceiling.
+    timeout_seconds: 120
     max_retries: 2
     retry_delay_seconds: 1.0

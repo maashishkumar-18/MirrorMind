@@ -36,15 +36,54 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with: { lfs: true } # tests/eval + tests/retrieval load the LFS-vendored all-MiniLM-L6-v2
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - uses: actions/setup-node@v4 # the IPC round-trip test shells out to node
         with: { node-version: "20" }
       - run: pip install -r requirements-dev.txt
       - run: npm ci --prefix ipc
+      # tests/eval/test_harness_smoke.py (the always-on golden-eval smoke test)
+      # runs here automatically — schema + wiring only, all LLM calls stubbed.
       - run: pytest
       - uses: actions/upload-artifact@v4
         with: { name: coverage-xml, path: coverage.xml }
+
+  # Real gated golden eval — manual only (needs a local Ollama model, and one
+  # full run is ~1h on CPU). Mirrors wack-precheck's workflow_dispatch gating.
+  # Thresholds live in eval/gates.json (committed in Phase 1 Step 1.4b, not
+  # set here for the first time); run_eval.py exits non-zero on any breach.
+  # The model MUST match eval/gates.json _meta.model — the gates are
+  # calibrated against llama3.1:8b (the app's default, .env.example).
+  eval:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest # the Ollama install script is Linux-only; 16GB RAM fits an 8B model
+    env:
+      OLLAMA_DEFAULT_MODEL: llama3.1:8b
+      LANGFUSE_PUBLIC_KEY: ""
+      LANGFUSE_SECRET_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements-dev.txt
+      - name: Cache Ollama models
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-${{ env.OLLAMA_DEFAULT_MODEL }}
+      - name: Install + start Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags && break || sleep 1; done
+          ollama pull "$OLLAMA_DEFAULT_MODEL"
+      - name: Run gated golden eval
+        run: python -m eval.run_eval
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: eval-results, path: eval/results/ }
 
   # Protected-branch signing: structure only, no secrets exist until Phase 5.
   # Gates structurally on push+release only (never pull_request) so signing
