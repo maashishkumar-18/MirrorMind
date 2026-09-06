@@ -48,6 +48,17 @@ the throughline, what got done, what's carrying over. Warm and direct.
 {material}
 """
 
+_EMPTY_DAY = "(nothing recorded for this day)"
+_WEEKDAYS = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
 
 @dataclass
 class SummaryConfig:
@@ -154,6 +165,45 @@ class SummaryHandler(TableHandler):
         ).fetchone()
         return self._row_to_summary(row) if row else None
 
+    def generate_due_summaries(self, now: str, *, catch_up_days: int = 7) -> list[Summary]:
+        """Scheduler entry point. Generate every daily summary whose scheduled
+        time has passed within the catch-up window and that isn't recorded yet
+        (skipping days with nothing to summarize — that bounds the backfill),
+        plus the most recent weekly summary if it is due. ``now`` is an ISO
+        timestamp; returns everything generated (``[]`` on a normal tick)."""
+        today = date_cls.fromisoformat(now[:10])
+        generated: list[Summary] = []
+
+        for offset in range(catch_up_days, -1, -1):
+            day = (today - timedelta(days=offset)).isoformat()
+            due_at = f"{day}T{self.config.daily_time}:00"
+            if now < due_at or self.get_summary("daily", day) is not None:
+                continue
+            if self._gather_day(day) == _EMPTY_DAY:
+                continue
+            generated.append(self.generate_daily_summary(day, scheduled_at=due_at))
+
+        weekly = self._maybe_weekly(now, today)
+        if weekly is not None:
+            generated.append(weekly)
+        return generated
+
+    def _maybe_weekly(self, now: str, today: date_cls) -> Summary | None:
+        target = _WEEKDAYS.get(self.config.weekly_day, 6)
+        anchor = today - timedelta(days=(today.weekday() - target) % 7)
+        week_start = (anchor - timedelta(days=6)).isoformat()
+        due_at = f"{anchor.isoformat()}T{self.config.weekly_time}:00"
+        if now < due_at or self.get_summary("weekly", week_start) is not None:
+            return None
+        has_daily = self._conn.execute(
+            "SELECT 1 FROM summaries WHERE summary_type = 'daily' AND deleted_at IS NULL "
+            "AND period_start >= ? AND period_start <= ? LIMIT 1",
+            (week_start, anchor.isoformat()),
+        ).fetchone()
+        if has_daily is None:
+            return None
+        return self.generate_weekly_summary(week_start, scheduled_at=due_at)
+
     # ------------------------------------------------------------------
 
     def _gather_day(self, date: str) -> str:
@@ -225,7 +275,7 @@ class SummaryHandler(TableHandler):
             joined = "\n".join(c["content"] for c in chunks)[:4000]
             sections.append(f"Conversations:\n{joined}")
 
-        return "\n\n".join(sections) or "(nothing recorded for this day)"
+        return "\n\n".join(sections) or _EMPTY_DAY
 
     def _generate(self, prompt: str, *, fallback: str) -> str:
         try:

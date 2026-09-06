@@ -1,0 +1,12 @@
+# Local scheduler thread configuration (Phase 1 Step 1.5b).
+# Loaded by src/features/scheduler.py::SchedulerConfig.from_yaml().
+# Env overrides: RAGPIPE_SCHEDULER_CONFIG (this file's path),
+# RAGPIPE_SCHEDULER_POLL_SECONDS.
+
+scheduler:
+  # How often the thread polls the reminders table for due-and-unfired rows
+  # and checks the summary schedule. Roadmap: <= 60s resolution.
+  poll_seconds: 60
+  # On-launch backfill window: how many past days to check for a missed daily
+  # summary. Days with nothing recorded are skipped, so this can be generous.
+  summary_catch_up_days: 7

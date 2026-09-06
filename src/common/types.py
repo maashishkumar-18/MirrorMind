@@ -303,3 +303,18 @@ class ScheduleConflict:
 
     attempted: ScheduleItem
     conflicts_with: list[ScheduleItem] = field(default_factory=list)
+
+
+@dataclass
+class ReconciliationResult:
+    """``ReminderHandler.reconcile_on_launch()`` — two independent lists for
+    two independent failure modes (project_logic.md §9):
+
+    - ``overdue``: ``scheduled_time`` passed but the reminder never fired (OS
+      dropped the toast, Focus Assist, a reboot).
+    - ``pending_acknowledgment``: it fired, but the app was closed when the
+      user tapped the toast, so it was never completed or dismissed.
+    """
+
+    overdue: list[Reminder] = field(default_factory=list)
+    pending_acknowledgment: list[Reminder] = field(default_factory=list)
