@@ -1,0 +1,12 @@
+# Automatic local backup configuration (Phase 2 Step 2.2).
+# Loaded by src/features/backup_manager.py::BackupConfig.from_yaml().
+# Env overrides: RAGPIPE_BACKUP_CONFIG (this file's path),
+# RAGPIPE_BACKUP_DAILY_TIME, RAGPIPE_BACKUP_RETENTION.
+
+backup:
+  # Local wall-clock time after which the day's backup is taken. The
+  # scheduler thread checks this every tick and takes at most one backup
+  # per calendar day (catch-up on next launch if the app was closed).
+  daily_time: "02:00"
+  # Rolling retention: keep the newest N snapshots, delete older ones.
+  retention: 7

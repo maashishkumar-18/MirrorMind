@@ -35,3 +35,13 @@ def test_noop_bridge_returns_an_id_and_does_nothing_else():
     # no exceptions, no state
     bridge.cancel_toast(toast_id)
     bridge.fire_toast("rem_1", "x")
+    bridge.cancel_all()
+
+
+def test_cancel_all_is_recorded_by_the_in_memory_bridge():
+    # Phase 2 Step 2.2 — full wipe calls this once.
+    bridge = InMemoryToastBridge()
+    bridge.register_toast("rem_1", "2026-02-12T09:00:00Z", "x")
+    bridge.cancel_all()
+    assert ("cancel_all", {}) in bridge.calls
+    assert [op for op, _ in bridge.calls] == ["register", "cancel_all"]

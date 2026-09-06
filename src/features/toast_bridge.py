@@ -41,6 +41,14 @@ class ToastBridge(ABC):
         """Surface a reminder in-app right now — the scheduler's fallback for a
         reminder whose time has arrived while the app is running."""
 
+    @abstractmethod
+    def cancel_all(self) -> None:
+        """Clear every scheduled toast registration. Used by full-wipe
+        (Phase 2 Step 2.2). The real WinRT impl enumerates the platform's
+        scheduled notifications — deliberately not driven off the
+        ``reminders.toast_id`` column, which has a documented brief NULL
+        window (see ``reminder_handler`` module docstring)."""
+
 
 class NoOpToastBridge(ToastBridge):
     """Default bridge — logs and does nothing. Lets the backend run without a
@@ -58,6 +66,9 @@ class NoOpToastBridge(ToastBridge):
 
     def fire_toast(self, reminder_id: str, body: str) -> None:
         logger.debug("NoOp fire_toast reminder=%s", reminder_id)
+
+    def cancel_all(self) -> None:
+        logger.debug("NoOp cancel_all")
 
 
 class InMemoryToastBridge(ToastBridge):
@@ -82,3 +93,6 @@ class InMemoryToastBridge(ToastBridge):
 
     def fire_toast(self, reminder_id: str, body: str) -> None:
         self.calls.append(("fire", {"reminder_id": reminder_id, "body": body}))
+
+    def cancel_all(self) -> None:
+        self.calls.append(("cancel_all", {}))

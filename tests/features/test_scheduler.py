@@ -112,6 +112,38 @@ def test_tick_fires_a_due_reminder_and_backfills_a_summary(
     assert not any(op == "fire" for op, _ in bridge.calls[calls_before:])
 
 
+def test_tick_takes_a_due_backup_once_per_day(session_conn, migrated_db_path, tmp_path):
+    # Phase 2 Step 2.2 — the third _tick responsibility.
+    from src.features.backup_manager import BackupConfig, BackupManager
+
+    bridge = InMemoryToastBridge()
+    sched = SchedulerThread("unused", bridge, config=SchedulerConfig())
+    sched._reminders = ReminderHandler(connection=session_conn, bridge=bridge)
+    sched._summaries = SummaryHandler(connection=session_conn, config=SummaryConfig())
+    sched._backups = BackupManager(
+        migrated_db_path,
+        backup_dir=tmp_path / "backups",
+        config=BackupConfig(daily_time="02:00", retention=7),
+    )
+
+    sched._tick("2026-03-01T03:00:00+00:00")
+    sched._tick("2026-03-01T20:00:00+00:00")
+    assert len(sched._backups.list_backups()) == 1
+
+    sched._tick("2026-03-02T03:00:00+00:00")
+    assert len(sched._backups.list_backups()) == 2
+
+
+def test_tick_without_backups_component_is_a_noop(session_conn):
+    # the existing hand-injected-handlers pattern must keep working
+    bridge = InMemoryToastBridge()
+    sched = SchedulerThread("unused", bridge, config=SchedulerConfig())
+    sched._reminders = ReminderHandler(connection=session_conn, bridge=bridge)
+    sched._summaries = SummaryHandler(connection=session_conn, config=SummaryConfig())
+    assert sched._backups is None
+    sched._tick("2026-03-01T03:00:00+00:00")  # must not raise
+
+
 def test_scheduler_thread_runs_and_stops_cleanly(migrated_db_path):
     conn_bridge = InMemoryToastBridge()
     # a due reminder for the running thread to pick up

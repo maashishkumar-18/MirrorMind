@@ -23,6 +23,7 @@ from pathlib import Path
 import yaml
 
 from db.connection import open_session_db
+from src.features.backup_manager import BackupConfig, BackupManager
 from src.features.base import now_iso
 from src.features.reminder_handler import ReminderHandler
 from src.features.summary_handler import SummaryConfig, SummaryHandler
@@ -75,6 +76,7 @@ class SchedulerThread(threading.Thread):
         key: str | None = None,
         config: SchedulerConfig | None = None,
         summary_config: SummaryConfig | None = None,
+        backup_config: BackupConfig | None = None,
     ):
         super().__init__(daemon=True, name="companion-scheduler")
         self._db_path = db_path
@@ -82,9 +84,11 @@ class SchedulerThread(threading.Thread):
         self._bridge = bridge
         self._config = config or SchedulerConfig.from_yaml()
         self._summary_config = summary_config
+        self._backup_config = backup_config
         self._stop_event = threading.Event()
         self._reminders: ReminderHandler | None = None
         self._summaries: SummaryHandler | None = None
+        self._backups: BackupManager | None = None
 
     def run(self) -> None:
         # The key is applied here, at the connection; the handlers below
@@ -93,6 +97,9 @@ class SchedulerThread(threading.Thread):
         conn = open_session_db(self._db_path, self._key)
         self._reminders = ReminderHandler(connection=conn, bridge=self._bridge)
         self._summaries = SummaryHandler(connection=conn, config=self._summary_config)
+        # BackupManager opens its own short-lived source connection per backup
+        # (a WAL reader alongside this handler connection is safe).
+        self._backups = BackupManager(self._db_path, key=self._key, config=self._backup_config)
         try:
             while not self._stop_event.is_set():
                 self._tick(now_iso())
@@ -118,3 +125,8 @@ class SchedulerThread(threading.Thread):
             )
         except Exception:  # noqa: BLE001
             logger.exception("scheduler: generate_due_summaries failed")
+        if self._backups is not None:
+            try:
+                self._backups.run_due_backup(now)
+            except Exception:  # noqa: BLE001
+                logger.exception("scheduler: run_due_backup failed")

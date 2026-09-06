@@ -82,6 +82,27 @@ def test_resolve_default_model_fallback_chain(tmp_path, monkeypatch):
     assert resolve_default_model() == "qwen2.5:7b"
 
 
+def test_last_exported_at_roundtrip(cfg_path):
+    # Phase 2 Step 2.2
+    cfg = AppConfig.load()
+    assert cfg.last_exported_at is None
+    cfg.set_last_exported_at("2026-03-02T12:00:00+00:00")
+    reloaded = AppConfig.load()
+    assert reloaded.last_exported_at == "2026-03-02T12:00:00+00:00"
+    cfg.set_last_exported_at(None)
+    assert AppConfig.load().last_exported_at is None
+
+
+def test_v1_file_without_last_exported_at_loads(cfg_path):
+    cfg_path.write_text(
+        '{"version": 1, "active_model": "llama3.1:8b", "updated_at": "2026-01-01T00:00:00Z"}',
+        encoding="utf-8",
+    )
+    cfg = AppConfig.load()
+    assert cfg.active_model == "llama3.1:8b"
+    assert cfg.last_exported_at is None
+
+
 def test_path_resolution_prefers_explicit_then_env(tmp_path, monkeypatch):
     monkeypatch.setenv("RAGPIPE_APP_CONFIG_PATH", str(tmp_path / "explicit.json"))
     monkeypatch.setenv("RAGPIPE_DATA_DIR", str(tmp_path / "data"))

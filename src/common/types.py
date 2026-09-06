@@ -9,6 +9,7 @@ review these session-era contracts were frozen against.
 
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -318,3 +319,41 @@ class ReconciliationResult:
 
     overdue: list[Reminder] = field(default_factory=list)
     pending_acknowledgment: list[Reminder] = field(default_factory=list)
+
+
+# ============================================================================
+# Backup / restore / export contracts (Production Roadmap Phase 2 Step 2.2)
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class BackupSnapshot:
+    """One rolling daily backup file produced by ``BackupManager`` — a
+    SQLCipher-encrypted single-file copy of the session database."""
+
+    path: Path
+    created_at: str  # ISO 8601 UTC, parsed from the filename timestamp
+    size_bytes: int
+
+
+@dataclass(frozen=True)
+class RestoreResult:
+    """Outcome of ``BackupManager.restore()``. ``needs_restart`` is the seam
+    the Phase 3 process supervisor acts on — 2.2 only swaps the file, it
+    cannot restart the backend itself."""
+
+    ok: bool
+    needs_restart: bool
+    detail: str
+
+
+@dataclass(frozen=True)
+class ExportBadgeState:
+    """``DataManager.export_badge_state()`` — everything the Settings nav
+    badge and the "Last exported:" line need (project_logic.md §12). The
+    frontend renders it; the backend computes it."""
+
+    needs_export: bool  # last export is missing or older than 30 days
+    last_exported_at: str | None
+    days_since: int | None
+    settings_line: str

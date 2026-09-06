@@ -32,7 +32,7 @@ from src.features.base import now_iso  # generic ISO-8601 UTC timestamp helper
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
-_CONFIG_VERSION = 1
+_CONFIG_VERSION = 2  # v2 (Phase 2 Step 2.2) added last_exported_at; v1 files load fine
 
 
 def app_config_path(path: str | None = None) -> Path:
@@ -51,6 +51,9 @@ class AppConfig:
     """The app-config document. Construct via :meth:`load`."""
 
     active_model: str | None = None
+    #: ISO 8601 timestamp of the last successful data export (Phase 2 Step 2.2);
+    #: ``None`` = never exported. Drives the Settings export nudge badge.
+    last_exported_at: str | None = None
     updated_at: str = ""
     version: int = _CONFIG_VERSION
     #: where this instance reads/writes; not serialized
@@ -77,8 +80,10 @@ class AppConfig:
             data = {}
 
         active = data.get("active_model")
+        last_exported = data.get("last_exported_at")
         return cls(
             active_model=str(active) if active else None,
+            last_exported_at=str(last_exported) if last_exported else None,
             updated_at=str(data.get("updated_at", "")),
             version=int(data.get("version", _CONFIG_VERSION)),
             path=resolved,
@@ -94,6 +99,7 @@ class AppConfig:
         payload = {
             "version": self.version,
             "active_model": self.active_model,
+            "last_exported_at": self.last_exported_at,
             "updated_at": self.updated_at,
         }
         tmp = target.with_name(target.name + ".tmp")
@@ -104,6 +110,11 @@ class AppConfig:
     def set_active_model(self, name: str | None) -> None:
         """Set (or clear, with ``None``) the active model and persist."""
         self.active_model = name or None
+        self.save()
+
+    def set_last_exported_at(self, value: str | None) -> None:
+        """Set (or clear, with ``None``) the last-export timestamp and persist."""
+        self.last_exported_at = value or None
         self.save()
 
 
