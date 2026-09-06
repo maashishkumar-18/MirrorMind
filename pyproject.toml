@@ -48,6 +48,10 @@ ignore = ["E501"]
 "scripts/simulate_traffic.py" = ["E402"]             # same
 "src/common/llm_client.py" = ["B904"]                # raise-without-from in except blocks
 "src/retrieval/context_builder.py" = ["F841"]
+# F841: TokenCounter.count_tokens_batch's dead `all_tokens` accumulator is
+# char-pinned by tests/retrieval/test_context_builder_token_counter.py (Phase 0).
+# The Phase 1 audit's 1.3-C1 ("stale, masks nothing") was WRONG — verified by a
+# full `ruff check .` run: the finding still fires. Keep this entry.
 # B904: the raise-without-from is inside BM25Index.build_index, which Phase 0
 # characterization tests pin byte-identical (tests/retrieval/test_bm25_index.py).
 "src/retrieval/hybrid_search.py" = ["B904"]

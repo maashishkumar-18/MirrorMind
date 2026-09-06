@@ -155,7 +155,12 @@ New message:
     def _fallback(raw: str) -> AgenticOutput:
         """A safe conversational output when the model response is unusable."""
         response = (raw or "").strip()
-        if not response or response.startswith("{") or response.startswith("```"):
+        # Don't echo raw model output that still looks like the JSON envelope we
+        # failed to parse (leading `{`/`[`, a markdown fence, or a body that is
+        # mostly braces/brackets — a truncated object). project_logic.md §4:
+        # the user must never see the machine contract.
+        brace_ratio = sum(response.count(c) for c in '{}[]"') / len(response) if response else 0.0
+        if not response or response.startswith(("{", "[", "```")) or brace_ratio > 0.15:
             response = "Sorry, I had trouble understanding that — could you rephrase?"
         return AgenticOutput(
             action_type=AgenticActionType.CONVERSATION,

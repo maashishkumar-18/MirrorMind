@@ -103,7 +103,8 @@ class ChunkEnricher:
     def _build_source_prefix(self, chunk: Chunk) -> str:
         topic = chunk.topics[0] if chunk.topics else "general"
         topic = self._truncate(topic, self.config.max_prefix_length // 2)
-        prefix = f"[Session: {chunk.session_id} | {chunk.timestamp} | Topic: {topic}]"
+        ts = chunk.timestamp or "unknown"
+        prefix = f"[Session: {chunk.session_id} | {ts} | Topic: {topic}]"
         if len(prefix) > self.config.max_prefix_length:
             prefix = prefix[: self.config.max_prefix_length - 4] + "...]"
         return prefix

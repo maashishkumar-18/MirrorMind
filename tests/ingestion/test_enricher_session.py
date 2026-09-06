@@ -50,6 +50,14 @@ def test_no_topics_falls_back_to_general(enricher):
     assert "Topic: general]" in ec.source_prefix
 
 
+def test_empty_timestamp_yields_unknown_not_a_blank_field(enricher):
+    """Phase 1 audit 1.2-F2: an empty timestamp must not produce
+    '[Session: s1 |  | Topic: …]' (double space, empty middle field)."""
+    (ec,) = enricher.enrich([_chunk(timestamp="")])
+    assert ec.source_prefix == "[Session: s1 | unknown | Topic: greetings]"
+    assert " |  | " not in ec.source_prefix
+
+
 def test_to_metadata_is_session_shaped(enricher):
     (ec,) = enricher.enrich([_chunk()])
     md = ChunkEnricher.to_metadata(ec)

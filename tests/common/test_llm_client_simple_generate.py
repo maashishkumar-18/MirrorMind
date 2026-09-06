@@ -62,6 +62,22 @@ def test_model_config_provider_field_matches_the_requested_provider():
     assert prompt_obj.user_prompt == "hello"
 
 
+def test_model_name_falls_back_to_ollama_default_env_then_hardcoded(monkeypatch):
+    """Phase 1 audit 1.1-F3: pin the model-name fallback, not just the provider."""
+    registry, adapter = _fake_registry()
+
+    monkeypatch.delenv("OLLAMA_DEFAULT_MODEL", raising=False)
+    simple_generate("hi", registry=registry)
+    (_p, config), _ = adapter.generate.call_args
+    assert config.model_name == "llama3.1:8b"
+
+    adapter.generate.reset_mock()
+    monkeypatch.setenv("OLLAMA_DEFAULT_MODEL", "mistral:latest")
+    simple_generate("hi", registry=registry)
+    (_p, config), _ = adapter.generate.call_args
+    assert config.model_name == "mistral:latest"
+
+
 def test_no_registry_injected_still_works_and_defaults_to_ollama():
     """Without an injected registry, simple_generate() must build its own
     ProviderRegistry() rather than raising. As of Step 1.1 that registry has

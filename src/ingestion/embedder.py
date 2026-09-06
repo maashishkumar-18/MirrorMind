@@ -359,7 +359,7 @@ class EmbeddingGenerator:
             return result[0][0]
         return None
 
-    def embed_query(self, query: str) -> list[float] | None:
+    def embed_query(self, query: str) -> np.ndarray | list[float] | None:
         """
         Generate an embedding vector for a user query.
 
@@ -371,7 +371,11 @@ class EmbeddingGenerator:
             query: User query text.
 
         Returns:
-            Embedding vector (List[float]) or None if embedding fails.
+            The embedding vector, or None if embedding fails. A ``(dim,)``
+            ``np.ndarray`` from ``LocalEmbeddingProvider`` (the only registered
+            provider as of Phase 1 Step 1.1); ``list[float]`` only from the
+            unregistered cloud adapters. Callers must not use bare truthiness
+            on the result — ``if vec is not None and len(vec)`` / ``vec.size``.
         """
         if not query or not query.strip():
             return None
@@ -405,7 +409,7 @@ class EmbeddingGenerator:
 
         return None
 
-    def embed_queries(self, queries: list[str]) -> list[list[float] | None]:
+    def embed_queries(self, queries: list[str]) -> list[np.ndarray | list[float] | None]:
         """
         Generate embedding vectors for multiple query strings in a single
         batched API call, instead of one round trip per query.
@@ -415,10 +419,11 @@ class EmbeddingGenerator:
 
         Returns:
             List of embedding vectors (or None for blank/failed entries),
-            in the same order as `queries`.
+            in the same order as `queries`. Each vector is a ``(dim,)``
+            ``np.ndarray`` from ``LocalEmbeddingProvider`` (see ``embed_query``).
         """
         indexed = [(i, q) for i, q in enumerate(queries) if q and q.strip()]
-        results: list[list[float] | None] = [None] * len(queries)
+        results: list[np.ndarray | list[float] | None] = [None] * len(queries)
 
         if not indexed:
             return results

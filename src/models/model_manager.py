@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 import shutil
 import time
 from collections import deque
@@ -69,10 +70,25 @@ class _DiskFull(Exception):
     """Internal — a pull error event indicating no space left on device."""
 
 
+class _CallbackError(Exception):
+    """Internal — the caller's ``progress_callback`` raised. Treated as a
+    terminal failure so ``_run_download`` still cleans up (Phase 1 audit F1:
+    a raising callback must not leave a partial model on disk)."""
+
+
 class _LayerInconsistent(Exception):
     """Internal — layer state can't be trusted (bad digest, corrupt blob, or a
     reported success that fails integrity verification). Triggers a clean
     delete-and-restart-from-zero."""
+
+
+# Disk-full is detected by matching the pull error text — Ollama surfaces the OS
+# ENOSPC message rather than a structured code (Phase 1 audit F3: broadened past
+# the 3 exact spec strings).
+_DISK_FULL_RE = re.compile(
+    r"no space left|enospc|not enough\b.*\bspace|\bdisk\b.{0,6}\bfull\b|out of disk",
+    re.IGNORECASE,
+)
 
 
 class PullStreamer(Protocol):
@@ -187,11 +203,33 @@ class ModelManager:
         model_name: str,
         progress_callback: Callable[[DownloadProgress], None],
     ) -> DownloadResult:
-        self._active_downloads.add(model_name)
+        # Track under the normalized (tagged) name so get_model_status reports
+        # DOWNLOADING regardless of whether the query uses the bare or tagged
+        # form (Phase 1 audit F2).
+        tracked = normalize_model_name(model_name)
+        self._active_downloads.add(tracked)
         try:
             return self._run_download(model_name, progress_callback)
         finally:
-            self._active_downloads.discard(model_name)
+            self._active_downloads.discard(tracked)
+
+    @staticmethod
+    def _emit(
+        progress_callback: Callable[[DownloadProgress], None],
+        progress: DownloadProgress,
+        *,
+        critical: bool = True,
+    ) -> None:
+        """Call the caller's progress_callback. A raise from it during the
+        download (``critical``) becomes ``_CallbackError`` so ``_run_download``
+        cleans up; a raise after the model is already complete is swallowed
+        (the download succeeded — a UI callback bug must not undo it)."""
+        try:
+            progress_callback(progress)
+        except Exception as exc:
+            if critical:
+                raise _CallbackError(str(exc)) from exc
+            logger.warning("progress_callback raised after completion: %s", exc)
 
     def _run_download(
         self,
@@ -205,10 +243,26 @@ class ModelManager:
         (b) a clean restart from zero, announced with ``_RESTART_MESSAGE``;
         (c) a specific, actionable ``ModelDownloadError`` — after cleanup.
 
-        Never an ambiguous partial state. ``attempts`` is a single counter
-        incremented on every iteration (restart or resume); ``_MAX_ATTEMPTS``
-        bounds the whole loop regardless of the failure mix.
+        Never an ambiguous partial state, including when the caller's
+        ``progress_callback`` itself raises (Phase 1 audit F1).
         """
+        try:
+            return self._run_download_inner(model_name, progress_callback)
+        except _CallbackError as exc:
+            self._safe_delete(model_name)
+            raise ModelDownloadError(
+                "The download was stopped by the app before it finished. Any partial "
+                "data has been cleaned up — try again."
+            ) from exc
+
+    def _run_download_inner(
+        self,
+        model_name: str,
+        progress_callback: Callable[[DownloadProgress], None],
+    ) -> DownloadResult:
+        """The retry loop. ``attempts`` is a single counter incremented on every
+        iteration (restart or resume); ``_MAX_ATTEMPTS`` bounds the whole loop
+        regardless of the failure mix."""
         restarts = 0
         resumes = 0
         attempts = 0
@@ -228,29 +282,42 @@ class ModelManager:
                 raise
             except _LayerInconsistent as exc:
                 self._safe_delete(model_name)
-                if restarts >= self._MAX_RESTARTS:
+                # Raise (don't announce a restart we won't get to attempt) when
+                # we're out of restarts OR out of attempts — otherwise the user
+                # sees "restarting…" immediately followed by a failure message
+                # (Phase 1 audit C2).
+                if restarts >= self._MAX_RESTARTS or attempts >= self._MAX_ATTEMPTS:
                     raise ModelDownloadError(
                         f"Couldn't download '{model_name}' — the download kept failing "
                         "verification. Please try again later."
                     ) from exc
                 restarts += 1
-                progress_callback(
-                    DownloadProgress(phase="restarting", percent=0.0, message=self._RESTART_MESSAGE)
+                self._emit(
+                    progress_callback,
+                    DownloadProgress(
+                        phase="restarting", percent=0.0, message=self._RESTART_MESSAGE
+                    ),
                 )
                 continue
             except PullInterrupted:
                 if attempts >= self._MAX_ATTEMPTS:
                     break
                 resumes += 1
-                progress_callback(
+                self._emit(
+                    progress_callback,
                     DownloadProgress(
                         phase="downloading", message="Connection lost — resuming download."
-                    )
+                    ),
                 )
                 continue
 
-            # Success reported and integrity verified.
-            progress_callback(DownloadProgress(phase="complete", percent=100.0))
+            # Success reported and integrity verified. A callback failure here
+            # must NOT delete the good model, so this emit is non-critical.
+            self._emit(
+                progress_callback,
+                DownloadProgress(phase="complete", percent=100.0),
+                critical=False,
+            )
             return DownloadResult(
                 model_name=model_name,
                 status="restarted_then_complete" if restarts else "complete",
@@ -287,7 +354,7 @@ class ModelManager:
                 self._raise_for_error(status, model_name)
 
             if status == "pulling manifest":
-                progress_callback(DownloadProgress(phase="manifest"))
+                self._emit(progress_callback, DownloadProgress(phase="manifest"))
             elif status.startswith("downloading") or ("total" in event and "completed" in event):
                 digest = str(event.get("digest") or status)
                 total = int(event.get("total", 0) or 0)
@@ -299,23 +366,24 @@ class ModelManager:
                 percent = 100.0 * sum_c / sum_t if sum_t else 0.0
                 samples.append((self._clock(), sum_c))
                 speed, eta = self._speed_and_eta(samples, sum_c, sum_t)
-                progress_callback(
+                self._emit(
+                    progress_callback,
                     DownloadProgress(
                         phase="downloading",
                         percent=round(percent, 2),
                         speed_mbps=speed,
                         eta_seconds=eta,
-                    )
+                    ),
                 )
             elif status.startswith("verifying"):
-                progress_callback(DownloadProgress(phase="verifying"))
+                self._emit(progress_callback, DownloadProgress(phase="verifying"))
             # "writing manifest" / "removing any unused layers" / unknown -> ignore
 
         raise PullInterrupted("pull stream ended before a success event")
 
     def _raise_for_error(self, message: str, model_name: str) -> None:
         low = message.lower()
-        if "no space" in low or "enospc" in low or "not enough space" in low:
+        if _DISK_FULL_RE.search(low):
             raise _DiskFull(message)
         if (
             "not found" in low

@@ -68,6 +68,24 @@ def test_schema_violating_json_falls_back(monkeypatch):
     assert out.retrieve_needed is False
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "[1, 2, 3]",  # JSON array — old scrub only caught leading '{'
+        '{"retrieval_route": "semantic", "search_query": "x"',  # truncated object
+        'garbled {"a":1} {"b":2} {"c":3} output',  # brace-heavy prose
+    ],
+)
+def test_envelope_looking_garbage_is_not_echoed_to_the_user(monkeypatch, raw):
+    """Phase 1 audit 1.3-C4: the fallback must not surface raw machine-contract
+    text as the user-facing response."""
+    _patch_generate(monkeypatch, raw)
+    out = RetrievalAgent().reason("q")
+    assert out.action_type == AgenticActionType.CONVERSATION
+    assert out.retrieve_needed is False
+    assert out.response == "Sorry, I had trouble understanding that — could you rephrase?"
+
+
 def test_provider_exception_falls_back(monkeypatch):
     def _boom(*a, **k):
         raise RuntimeError("ollama not running")

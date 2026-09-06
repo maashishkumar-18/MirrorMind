@@ -46,7 +46,15 @@ _CITATION_RE = re.compile(
 
 
 class CitationExtractor:
-    """Extracts session-temporal citation markers from generated text."""
+    """Extracts session-temporal citation markers from generated text.
+
+    NOTE (Phase 1 Step 1.4a): this is a full session-shaped rewrite of the
+    document-era ``CitationExtractor`` (which regex-parsed ``[Course|Chapter|
+    Slide N]`` brackets), not that class. It survives under the same name only
+    because ``PostProcessor.process`` Step 2 still needs an extract-then-match
+    step. A grep for the scrapped document-era behavior will land here — there
+    is none left; ``_CITATION_RE`` matches only session/record markers.
+    """
 
     def extract(self, text: str) -> list[Citation]:
         """

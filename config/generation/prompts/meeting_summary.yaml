@@ -1,4 +1,4 @@
-# Meeting Summary Template (Phase 1 Step 1.4; consumed by Step 1.5 MeetingNoteHandler)
+# Meeting Summary Template (Phase 1 Step 1.4; for the Phase 3 orchestrator to select when confirming a MeetingNoteHandler action; not yet wired by a caller (audit 1.4-C3))
 # Variables: {context}, {conversation_history}, {query}
 # Note: meeting-note capture generates NO conversational response by default
 # (project_logic.md / roadmap Step 1.5); this template is for when the user

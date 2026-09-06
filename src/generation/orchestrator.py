@@ -173,6 +173,11 @@ class GenerationOrchestrator:
                     "output": generated.usage.output_tokens,
                     "total": generated.usage.total_tokens,
                 },
+                # Local Ollama inference has no per-token $ cost — the
+                # latency-proxy replaces the retired deepseek cost_usd span
+                # payload (Phase 1 Step 1.4; audit C4). Also persisted on
+                # PipelineCallMetrics.compute_ms via MetricsStore.
+                metadata={"compute_ms": round((time.time() - gen_start) * 1000, 2)},
             )
             if generated.finish_reason == "error":
                 gen_span.update(level="ERROR", status_message=generated.error_type)

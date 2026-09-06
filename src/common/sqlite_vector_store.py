@@ -71,6 +71,18 @@ class SQLiteVectorStore(VectorStoreInterface):
                 "(via db.migration_runner.MigrationRunner) before constructing SQLiteVectorStore."
             )
 
+        # Roadmap Step 1.1: "verify integrity" at construction. quick_check is
+        # the cheap variant (skips the full page-by-page integrity_check) and is
+        # enough to catch a truncated / corrupt DB file before we load every
+        # embedding into memory. Phase 2 Step 2.1's on-launch PRAGMA integrity_check
+        # is the thorough version; this is the store-local guard.
+        result = self._conn.execute("PRAGMA quick_check").fetchone()
+        if result is None or result[0] != "ok":
+            raise RuntimeError(
+                f"session database failed PRAGMA quick_check ({result[0] if result else 'no result'}) "
+                "— the file is corrupt; restore from a backup before continuing."
+            )
+
         # Parallel in-memory index. _matrix[i] is the embedding for _ids[i];
         # _rows[chunk_id] holds that row's decoded metadata.
         self._ids: list[str] = []

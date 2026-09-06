@@ -8,6 +8,7 @@ The "in-memory" part of this store is the numpy embedding matrix, not the
 DB — the DB is a normal on-disk SQLite file.
 """
 
+import os
 import sqlite3
 from datetime import UTC, datetime
 
@@ -86,6 +87,21 @@ def test_requires_exactly_one_of_db_path_or_connection(db_path):
         SQLiteVectorStore()
     with pytest.raises(ValueError):
         SQLiteVectorStore(db_path=db_path, connection=sqlite3.connect(":memory:"))
+
+
+def test_construction_verifies_integrity_and_rejects_a_corrupt_db(db_path):
+    """Phase 1 audit 1.1-F1: the roadmap's 'verify integrity' at construction is
+    real (a PRAGMA quick_check), not just a table-existence probe — a corrupt
+    file is refused, not silently loaded."""
+    # The migrated DB is already ~50 pages (schema + FTS5 shadow tables). Zero a
+    # slab in the middle so a b-tree page below the header is malformed.
+    size = os.path.getsize(db_path)
+    with open(db_path, "r+b") as fh:
+        fh.seek(size // 2)
+        fh.write(b"\x00" * 8192)
+
+    with pytest.raises((RuntimeError, sqlite3.DatabaseError)):
+        SQLiteVectorStore(db_path=db_path)
 
 
 def test_upsert_then_query_returns_session_retrieved_chunks(store):

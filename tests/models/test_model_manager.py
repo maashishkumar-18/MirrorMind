@@ -341,3 +341,88 @@ def test_progress_percent_sums_across_layers(app_cfg):
     downloads = [e for e in events if e.phase == "downloading"]
     assert downloads[2].percent == 12.5
     assert downloads[-1].percent == 100.0
+
+
+# --------------------------------------------------------------------------
+# Phase 1 audit regressions
+# --------------------------------------------------------------------------
+
+
+def test_raising_progress_callback_cleans_up_and_raises_model_error(app_cfg):
+    """1.6-F1: a callback that raises mid-download must not leave a partial
+    model on disk or surface a raw exception."""
+    streamer = FakePullStreamer([[dl(0, 100), dl(50, 100), {"status": "success"}]])
+    mm, ollama = make_mm(streamer, app_cfg)
+
+    def boom(p: DownloadProgress) -> None:
+        if p.phase == "downloading":
+            raise RuntimeError("callback boom")
+
+    with pytest.raises(ModelDownloadError):
+        mm.download_model(MODEL, boom)
+    assert ollama.delete_calls == [MODEL]
+    assert MODEL not in mm._active_downloads
+
+
+def test_callback_raising_after_completion_does_not_delete_the_model(app_cfg):
+    """1.6-F1: the model is already verified when 'complete' fires — a callback
+    failure there must NOT undo the good download."""
+    streamer = FakePullStreamer([[dl(0, 100), dl(100, 100), {"status": "success"}]])
+    mm, ollama = make_mm(streamer, app_cfg)
+
+    def boom(p: DownloadProgress) -> None:
+        if p.phase == "complete":
+            raise RuntimeError("late boom")
+
+    result = mm.download_model(MODEL, boom)
+    assert result.verified is True
+    assert ollama.delete_calls == []
+
+
+def test_tagless_download_is_tracked_under_the_tagged_name(app_cfg):
+    """1.6-F2: get_model_status must see DOWNLOADING whether the query uses the
+    bare or tagged name."""
+    streamer = FakePullStreamer([[dl(0, 100), dl(100, 100), {"status": "success"}]])
+    mm, _ = make_mm(streamer, app_cfg, ollama=FakeOllama(installed={"mistral:latest"}))
+
+    seen: list[set[str]] = []
+    mm.download_model("mistral", lambda _p: seen.append(set(mm._active_downloads)))
+    assert any("mistral:latest" in snapshot for snapshot in seen)
+
+
+@pytest.mark.parametrize(
+    "err",
+    [
+        "write /root/.ollama/blobs/sha256-x: no space left on device",
+        "ENOSPC: write failed",
+        "not enough disk space available on the target drive",
+        "the target disk is full",
+    ],
+)
+def test_disk_full_detection_covers_message_variants(app_cfg, err):
+    """1.6-F3: disk-full classification should not be limited to the 3 exact
+    spec strings."""
+    mm, ollama = make_mm(FakePullStreamer([[{"status": "error", "error": err}]]), app_cfg)
+    with pytest.raises(ModelDownloadError) as ei:
+        mm.download_model(MODEL, lambda _p: None)
+    assert str(ei.value).startswith("Not enough disk space")
+    assert ollama.delete_calls == [MODEL]
+
+
+def test_no_restart_message_when_attempts_are_exhausted(app_cfg):
+    """1.6-C2: don't tell the user 'restarting from the beginning' and then
+    immediately fail — the message sequence must stay coherent."""
+    scripts = [
+        [dl(0, 100), FakePullStreamer.INTERRUPT],
+        [dl(0, 100), FakePullStreamer.INTERRUPT],
+        [dl(0, 100), FakePullStreamer.INTERRUPT],
+        [{"status": "error", "error": "invalid digest sha256:bad"}],
+    ]
+    mm, ollama = make_mm(FakePullStreamer(scripts), app_cfg)
+    events: list[DownloadProgress] = []
+    with pytest.raises(ModelDownloadError) as ei:
+        mm.download_model(MODEL, events.append)
+
+    assert all(e.phase != "restarting" for e in events)
+    assert "kept failing verification" in str(ei.value)
+    assert ollama.delete_calls  # cleaned up before raising

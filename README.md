@@ -1,5 +1,14 @@
 # RAG Pipeline
 
+> **⚠️ This README describes the pre-migration document-RAG pipeline and is
+> out of date.** As of Phase 1 (complete) the codebase has been migrated to the
+> backend of a local-only "Personal AI Companion": session-shaped data, local
+> SQLite + `all-MiniLM-L6-v2` + Ollama, no Pinecone / cloud LLMs, no document
+> parsing. `RetrievedChunk` / `CitationLocationType` / the retrieval
+> orchestrator / `sample_data/` no longer exist. See `audits/production_roadmap.md`,
+> `audits/project_logic.md`, and `audits/PHASE_1_AUDIT.md` for current state.
+> This file will be rewritten during Phase 5 (packaging / Store listing).
+
 A standalone, config-driven Retrieval-Augmented Generation pipeline: document
 ingestion → hybrid search → cross-encoder reranking → confidence-gated
 generation with citation round-tripping. Extracted from a larger

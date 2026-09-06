@@ -1,4 +1,4 @@
-# Reminder Confirmation Template (Phase 1 Step 1.4; consumed by Step 1.5 ReminderHandler)
+# Reminder Confirmation Template (Phase 1 Step 1.4; for the Phase 3 orchestrator to select when confirming a ReminderHandler action; not yet wired by a caller (audit 1.4-C3))
 # Variables: {context}, {conversation_history}, {query}
 version: "1.0.0"
 description: "Confirms a reminder the companion just created"

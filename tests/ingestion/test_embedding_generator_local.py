@@ -30,6 +30,15 @@ def test_embed_query_roundtrip_offline():
     assert np.asarray(vec).shape == (384,)
 
 
+def test_embed_query_returns_ndarray_matching_the_annotation():
+    """Phase 1 audit 1.1-F2: the return is a real np.ndarray (the local
+    provider's shape), not the list[float] the old annotation claimed."""
+    gen = EmbeddingGenerator(enable_logging=False)
+    assert isinstance(gen.embed_query("hello"), np.ndarray)
+    out = gen.embed_queries(["hello", "", "world"])
+    assert isinstance(out[0], np.ndarray) and isinstance(out[2], np.ndarray)
+
+
 def test_embed_queries_batch_offline():
     gen = EmbeddingGenerator(enable_logging=False)
     out = gen.embed_queries(["buy milk", "", "call mum"])

@@ -70,6 +70,12 @@ class SessionIngestionPipeline:
         result = IngestionResult(session_id=session_id, metadata=metadata)
         result.failed_chunk_ids = list(embedded.failed_chunks)
 
+        # Upsert-only: this never deletes chunk ids absent from the new run, so
+        # re-ingesting a session that SHRANK below a sub-chunk window boundary
+        # (e.g. 25 -> 10 messages) leaves its now-stale `<id>::sub::*` rows in
+        # session_chunks. Deferred to the "re-chunk after every message" trigger
+        # wiring; `test_reingest_is_idempotent` only covers same-size re-ingest
+        # (audit 1.2-F4).
         for ec in embedded.chunks:
             record = _to_session_record(ec)
             self.store.upsert(record)

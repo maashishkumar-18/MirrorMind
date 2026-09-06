@@ -40,6 +40,11 @@ class ScheduleHandler(TableHandler):
             location=location,
             notes=notes,
         )
+        # Check-then-act: the overlap query runs before the write block below.
+        # Safe because the backend is single-connection and handlers are
+        # single-threaded (the scheduler thread has its own connection and never
+        # writes schedule_items) — there is no second writer to race. Revisit if
+        # that changes (audit 1.5-C1).
         conflicts = self._overlapping(start_time, end_time)
         if conflicts:
             return ScheduleConflict(attempted=attempted, conflicts_with=conflicts)
