@@ -1,0 +1,92 @@
+"""Unit tests for src/models/app_config.py (Phase 1 Step 1.6)."""
+
+import pytest
+
+from src.models.app_config import (
+    AppConfig,
+    app_config_path,
+    model_setup_required,
+    resolve_default_model,
+)
+
+pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def cfg_path(tmp_path, monkeypatch):
+    """Point the app-config at a fresh file under tmp_path and clear every
+    env var that path/model resolution consults."""
+    path = tmp_path / "app_config.json"
+    monkeypatch.setenv("RAGPIPE_APP_CONFIG_PATH", str(path))
+    monkeypatch.delenv("RAGPIPE_DATA_DIR", raising=False)
+    monkeypatch.delenv("OLLAMA_DEFAULT_MODEL", raising=False)
+    return path
+
+
+def test_missing_file_is_first_launch(cfg_path):
+    cfg = AppConfig.load()
+    assert cfg.active_model is None
+    assert model_setup_required() is True
+
+
+def test_save_then_reload_roundtrip(cfg_path):
+    cfg = AppConfig.load()
+    cfg.set_active_model("llama3.1:8b")
+
+    assert cfg_path.exists()
+    reloaded = AppConfig.load()
+    assert reloaded.active_model == "llama3.1:8b"
+    assert reloaded.updated_at  # stamped on save
+    assert model_setup_required() is False
+
+
+def test_save_is_atomic_no_tmp_left(cfg_path):
+    AppConfig.load().set_active_model("mistral:latest")
+    assert not (cfg_path.parent / (cfg_path.name + ".tmp")).exists()
+    assert list(cfg_path.parent.glob("*.tmp")) == []
+
+
+def test_set_active_model_none_clears(cfg_path):
+    cfg = AppConfig.load()
+    cfg.set_active_model("phi4-mini:latest")
+    cfg.set_active_model(None)
+    assert AppConfig.load().active_model is None
+    assert model_setup_required() is True
+
+
+def test_corrupt_json_falls_back_to_defaults(cfg_path):
+    cfg_path.write_text("{{{ not valid json", encoding="utf-8")
+    cfg = AppConfig.load()  # must not raise
+    assert cfg.active_model is None
+
+
+def test_non_object_root_falls_back_to_defaults(cfg_path):
+    cfg_path.write_text("[1, 2, 3]", encoding="utf-8")
+    assert AppConfig.load().active_model is None
+
+
+def test_resolve_default_model_fallback_chain(tmp_path, monkeypatch):
+    path = tmp_path / "app_config.json"
+    monkeypatch.setenv("RAGPIPE_APP_CONFIG_PATH", str(path))
+
+    # 1. hardcoded default when nothing is set
+    monkeypatch.delenv("OLLAMA_DEFAULT_MODEL", raising=False)
+    assert resolve_default_model() == "llama3.1:8b"
+
+    # 2. env var when set and no active model
+    monkeypatch.setenv("OLLAMA_DEFAULT_MODEL", "gemma2:9b")
+    assert resolve_default_model() == "gemma2:9b"
+
+    # 3. app-config active model wins over env
+    AppConfig.load().set_active_model("qwen2.5:7b")
+    assert resolve_default_model() == "qwen2.5:7b"
+
+
+def test_path_resolution_prefers_explicit_then_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAGPIPE_APP_CONFIG_PATH", str(tmp_path / "explicit.json"))
+    monkeypatch.setenv("RAGPIPE_DATA_DIR", str(tmp_path / "data"))
+    assert app_config_path() == tmp_path / "explicit.json"
+    assert app_config_path("/tmp/override.json").name == "override.json"
+
+    monkeypatch.delenv("RAGPIPE_APP_CONFIG_PATH", raising=False)
+    assert app_config_path() == tmp_path / "data" / "app_config.json"

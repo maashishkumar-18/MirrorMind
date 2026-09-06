@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "_comment": "Curated model catalog for the Personal AI Companion (Phase 1 Step 1.6). Bundled in the app, never fetched from the network. size_bytes is the approximate on-disk Ollama size; min_ram_gb is the minimum system RAM for usable CPU inference. Loaded by src/models/catalog.py.",
+  "models": [
+    {
+      "name": "llama3.1:8b",
+      "display_name": "Llama 3.1 8B",
+      "size_bytes": 4920000000,
+      "description": "Meta's balanced 8B model. The best default for most machines — strong reasoning, good instruction-following, reasonable speed on CPU.",
+      "min_ram_gb": 8,
+      "recommended": true
+    },
+    {
+      "name": "llama3.2:latest",
+      "display_name": "Llama 3.2 3B",
+      "size_bytes": 2020000000,
+      "description": "A lightweight 3B model. Noticeably faster on modest hardware, at some cost to answer depth. A good choice on 8 GB machines.",
+      "min_ram_gb": 4
+    },
+    {
+      "name": "phi4-mini:latest",
+      "display_name": "Phi-4 Mini",
+      "size_bytes": 2490000000,
+      "description": "Microsoft's compact 3.8B model tuned for reasoning and instruction-following. Fast, with quality above its weight class.",
+      "min_ram_gb": 4
+    },
+    {
+      "name": "mistral:latest",
+      "display_name": "Mistral 7B",
+      "size_bytes": 4110000000,
+      "description": "Mistral AI's 7B model. A capable general-purpose alternative to Llama 3.1 with a slightly smaller footprint.",
+      "min_ram_gb": 8
+    },
+    {
+      "name": "qwen2.5:7b",
+      "display_name": "Qwen 2.5 7B",
+      "size_bytes": 4680000000,
+      "description": "Alibaba's 7B model with strong multilingual and structured-output performance. A solid pick if your notes mix languages.",
+      "min_ram_gb": 8
+    },
+    {
+      "name": "gemma2:9b",
+      "display_name": "Gemma 2 9B",
+      "size_bytes": 5440000000,
+      "description": "Google's 9B model. Higher answer quality than the 7–8B options, but slower on CPU and needs more memory headroom.",
+      "min_ram_gb": 16
+    }
+  ]
+}
