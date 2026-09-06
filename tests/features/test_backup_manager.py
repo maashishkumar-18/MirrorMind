@@ -75,6 +75,19 @@ def test_encrypted_backup_is_not_openable_as_plaintext(tmp_path):
         plain.execute("SELECT count(*) FROM sqlite_master").fetchone()
 
 
+def test_create_backup_leaves_no_partial_file(manager):
+    # Phase 2 Step 2.3 crash-safety: write to *.db.partial then os.replace.
+    manager.create_backup()
+    assert list(manager._dir.glob("*.partial")) == []
+
+
+def test_list_backups_ignores_a_stray_partial_file(manager):
+    snap = manager.create_backup()
+    stray = snap.path.with_name("session-20990101T000000000000Z.db.partial")
+    stray.write_bytes(b"truncated garbage")
+    assert [s.path.name for s in manager.list_backups()] == [snap.path.name]
+
+
 def test_list_backups_is_newest_first(manager):
     base = datetime(2026, 3, 1, 2, 0, tzinfo=UTC)
     snaps = [manager.create_backup(when=base + timedelta(days=i)) for i in range(3)]

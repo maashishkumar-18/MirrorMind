@@ -106,16 +106,22 @@ class BackupManager:
         self._dir.mkdir(parents=True, exist_ok=True)
         stamp = (when or datetime.now(UTC)).strftime(_FILENAME_STAMP)
         dest_path = self._dir / f"{_FILENAME_PREFIX}{stamp}.db"
+        # Write to *.db.partial first, then os.replace to the final name — a
+        # crash mid-copy leaves an orphaned .partial that list_backups()
+        # (glob "session-*.db") ignores, never a truncated file a user could
+        # pick from the restore list (Phase 2 Step 2.3 crash-safety audit).
+        partial_path = dest_path.with_name(dest_path.name + ".partial")
 
         # Source is the live WAL database -> open_session_db (WAL pragma,
         # busy_timeout, driver-aware row factory), never a bare connect.
         source = open_session_db(self._db_path, self._key)
-        dest = connect_for_migrations(str(dest_path), self._key)
+        dest = connect_for_migrations(str(partial_path), self._key)
         try:
             source.backup(dest)
         finally:
             dest.close()
             source.close()
+        os.replace(partial_path, dest_path)
 
         self.prune()
         return BackupSnapshot(
