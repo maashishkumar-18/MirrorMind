@@ -183,3 +183,123 @@ class SessionMessage:
 
     role: str
     content: str
+
+
+# ============================================================================
+# Feature-handler entity contracts (Production Roadmap Phase 1 Step 1.5)
+#
+# Plain dataclasses that hydrate a row from the structured tables in
+# db/migrations/0001_initial_schema.sql — ``reminders`` / ``todos`` /
+# ``meeting_notes`` / ``schedule_items`` / ``summaries``. Fields mirror the
+# writable base-table columns; ``deleted_at`` / ``sync_metadata`` are not
+# surfaced (soft-delete is internal to the handler, sync is inert in v1).
+# ============================================================================
+
+
+@dataclass
+class ActionItem:
+    """One row of ``meeting_notes.action_items`` (a JSON array of these)."""
+
+    task: str
+    owner: str | None = None
+    deadline: str | None = None
+
+
+@dataclass
+class Reminder:
+    """A ``reminders`` row. ``scheduled_time`` is the intended fire time;
+    ``fired_at`` / ``completed_at`` / ``dismissed_at`` track the lifecycle the
+    on-launch reconciliation and the scheduler thread (Step 1.5b) read."""
+
+    id: str
+    title: str
+    scheduled_time: str
+    session_id: str | None = None
+    notes: str = ""
+    fired_at: str | None = None
+    completed_at: str | None = None
+    dismissed_at: str | None = None
+    toast_id: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class Todo:
+    """A ``todos`` row. ``priority`` is ``"low"`` / ``"medium"`` / ``"high"``
+    or ``None`` (the table's CHECK constraint). Completed todos are retained
+    with ``completed_at`` set — never deleted."""
+
+    id: str
+    title: str
+    session_id: str | None = None
+    notes: str = ""
+    priority: str | None = None
+    category: str | None = None
+    completed_at: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class MeetingNote:
+    """A ``meeting_notes`` row. The JSON-array columns are hydrated to typed
+    lists; ``searchable_text`` is the flat text the application layer writes
+    for FTS5 (docs/schema_review.md §6). ``needs_review`` is set when neither
+    ``decisions`` nor ``action_items`` came back from extraction."""
+
+    id: str
+    raw_transcript: str
+    session_id: str | None = None
+    attendees: list[str] = field(default_factory=list)
+    topics: list[str] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list)
+    action_items: list[ActionItem] = field(default_factory=list)
+    follow_ups: list[str] = field(default_factory=list)
+    needs_review: bool = False
+    searchable_text: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class ScheduleItem:
+    """A ``schedule_items`` row. Belongs to a ``schedules`` row (one per
+    date), created on demand by ``ScheduleHandler``."""
+
+    id: str
+    schedule_id: str
+    title: str
+    start_time: str
+    end_time: str
+    location: str = ""
+    notes: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class Summary:
+    """A ``summaries`` row. ``summary_type`` is ``"daily"`` or ``"weekly"``.
+    ``scheduled_at`` is the intended generation time (kept stable across
+    regeneration); ``generated_at`` is when it was actually produced."""
+
+    id: str
+    summary_type: str
+    period_start: str
+    period_end: str
+    content: str
+    scheduled_at: str
+    generated_at: str
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class ScheduleConflict:
+    """Returned (not raised) by ``ScheduleHandler`` when a new/updated item
+    would overlap an existing commitment — the caller decides how to resolve
+    it (the handler never silently overwrites, per project_logic.md §5)."""
+
+    attempted: ScheduleItem
+    conflicts_with: list[ScheduleItem] = field(default_factory=list)

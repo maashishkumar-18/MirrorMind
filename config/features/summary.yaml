@@ -1,0 +1,13 @@
+# Summary schedule configuration (Phase 1 Step 1.5).
+# Loaded by src/features/summary_handler.py::SummaryConfig.from_yaml().
+# Env overrides: RAGPIPE_SUMMARY_CONFIG (this file's path),
+# RAGPIPE_SUMMARY_DAILY_TIME, RAGPIPE_SUMMARY_WEEKLY_DAY, RAGPIPE_SUMMARY_WEEKLY_TIME.
+
+schedule:
+  # Local wall-clock time the daily summary is generated for (HH:MM). The
+  # scheduler thread (Step 1.5b) stamps summaries.scheduled_at with this even
+  # when it runs late, so a missed summary keeps its intended timestamp.
+  daily_time: "21:00"
+  # Day the weekly summary covers-from / is generated on.
+  weekly_day: "sunday"
+  weekly_time: "18:00"
