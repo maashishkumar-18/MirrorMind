@@ -72,11 +72,13 @@ class SchedulerThread(threading.Thread):
         db_path: str,
         bridge: ToastBridge,
         *,
+        key: str | None = None,
         config: SchedulerConfig | None = None,
         summary_config: SummaryConfig | None = None,
     ):
         super().__init__(daemon=True, name="companion-scheduler")
         self._db_path = db_path
+        self._key = key
         self._bridge = bridge
         self._config = config or SchedulerConfig.from_yaml()
         self._summary_config = summary_config
@@ -85,7 +87,10 @@ class SchedulerThread(threading.Thread):
         self._summaries: SummaryHandler | None = None
 
     def run(self) -> None:
-        conn = open_session_db(self._db_path)
+        # The key is applied here, at the connection; the handlers below
+        # receive that connection directly, so their own db_path/key path
+        # is not involved.
+        conn = open_session_db(self._db_path, self._key)
         self._reminders = ReminderHandler(connection=conn, bridge=self._bridge)
         self._summaries = SummaryHandler(connection=conn, config=self._summary_config)
         try:

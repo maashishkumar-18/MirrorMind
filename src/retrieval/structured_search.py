@@ -17,7 +17,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 
-from db.connection import open_session_db
+from db.connection import open_session_db, set_session_row_factory
 from src.common.types import SessionRetrievedChunk
 
 
@@ -79,7 +79,7 @@ class StructuredTableSearch:
             raise ValueError("Pass exactly one of db_path or connection")
 
         self._conn = connection or open_session_db(db_path, key)  # type: ignore[arg-type]
-        self._conn.row_factory = sqlite3.Row
+        set_session_row_factory(self._conn)
 
     def search(
         self,

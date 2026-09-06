@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from db.connection import connect_for_migrations, operational_errors
+
 DEFAULT_MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 DEFAULT_SNAPSHOT_DIR = Path(__file__).parent / "snapshots"
 
@@ -108,10 +110,16 @@ class MigrationRunner:
         db_path: str,
         migrations_dir: Path | None = None,
         snapshot_dir: Path | None = None,
+        key: str | None = None,
     ):
         self.db_path = db_path
         self.migrations_dir = migrations_dir or DEFAULT_MIGRATIONS_DIR
         self.snapshot_dir = snapshot_dir or DEFAULT_SNAPSHOT_DIR
+        #: SQLCipher key (64-hex) when the session DB is encrypted; ``None``
+        #: for a plaintext file. Threaded into every connection this runner
+        #: opens, including the pre-migration snapshot's source AND dest so
+        #: the .bak is itself encrypted (Phase 2 Step 2.1).
+        self.key = key
 
     def discover_migrations(self) -> list[Migration]:
         """
@@ -157,14 +165,14 @@ class MigrationRunner:
         """version -> checksum, for every migration already recorded as applied."""
         try:
             rows = conn.execute("SELECT version, checksum FROM schema_migrations").fetchall()
-        except sqlite3.OperationalError:
+        except operational_errors():
             # schema_migrations doesn't exist yet -- no migrations have ever
             # been applied to this database (it's created by 0001 itself).
             return {}
         return {row[0]: row[1] for row in rows}
 
     def _applied_versions_no_lock(self) -> dict[str, str]:
-        conn = sqlite3.connect(self.db_path)
+        conn = connect_for_migrations(self.db_path, self.key)
         try:
             return self.applied_versions(conn)
         finally:
@@ -189,8 +197,10 @@ class MigrationRunner:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         dest_path = self.snapshot_dir / f"{db_stem}-pre-migration-{timestamp}.bak"
 
-        source = sqlite3.connect(self.db_path)
-        dest = sqlite3.connect(str(dest_path))
+        # Both ends keyed with the same key: SQLCipher's online backup between
+        # two same-key connections produces an encrypted .bak (spike-verified).
+        source = connect_for_migrations(self.db_path, self.key)
+        dest = connect_for_migrations(str(dest_path), self.key)
         try:
             source.backup(dest)
         finally:
@@ -217,9 +227,13 @@ class MigrationRunner:
         re-run retries cleanly.
 
         This explicit BEGIN/COMMIT/ROLLBACK is required, not optional
-        styling. Two more convenient-looking alternatives were tried and
-        both empirically confirmed broken for this use case, not just
-        assumed broken from documentation:
+        styling. It behaves identically whether the connection is plain
+        ``sqlite3`` or ``sqlcipher3.dbapi2`` (same driver isolation-level
+        semantics -- Phase 2 Step 2.1 spike-verified: an interior DDL
+        failure inside an explicit transaction leaves no table behind).
+        Two more convenient-looking alternatives were tried and both
+        empirically confirmed broken for this use case, not just assumed
+        broken from documentation:
 
         1. `sqlite3.Connection.executescript()` does not provide
            atomicity at all -- an earlier statement in the same script
@@ -250,7 +264,7 @@ class MigrationRunner:
            fixed.
         """
         migrations = self.discover_migrations()
-        conn = sqlite3.connect(self.db_path)
+        conn = connect_for_migrations(self.db_path, self.key)
         try:
             applied = self.applied_versions(conn)
             pending = [m for m in migrations if m.version not in applied]
@@ -259,7 +273,7 @@ class MigrationRunner:
 
             conn.close()  # release before snapshot() opens its own connections
             self.snapshot()
-            conn = sqlite3.connect(self.db_path, isolation_level=None)
+            conn = connect_for_migrations(self.db_path, self.key, isolation_level=None)
 
             newly_applied = []
             for migration in pending:
@@ -290,7 +304,7 @@ class MigrationRunner:
     def status(self) -> list[dict[str, Any]]:
         """Diagnostics: every discovered migration, with its applied state."""
         migrations = self.discover_migrations()
-        conn = sqlite3.connect(self.db_path)
+        conn = connect_for_migrations(self.db_path, self.key)
         try:
             applied = self.applied_versions(conn)
         finally:

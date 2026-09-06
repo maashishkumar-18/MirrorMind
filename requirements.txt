@@ -80,6 +80,19 @@ plotly==6.9.0
 # stay on the line streamlit 1.61.0 was actually built/tested against.
 starlette>=0.46.0,<1.0
 
+# Encryption at rest & key management (Phase 2 Step 2.1)
+# sqlcipher3: the SQLCipher DB-API binding. pysqlcipher3 (sdist-only, 2023) and
+# sqlcipher3-binary (Linux-only wheels) both fail on Windows without a C
+# toolchain; coleifer's sqlcipher3 is the only distribution shipping a
+# self-contained cp311 win_amd64 wheel (statically-linked libsqlcipher 4.x,
+# FTS5 compiled in). Linux wheels also present, for the ubuntu `eval` CI job.
+# Imported as `from sqlcipher3 import dbapi2` in db/connection.py.
+sqlcipher3==0.6.2
+# keyring: reads/writes the DB encryption key in the Windows Credential
+# Manager (keyring.backends.Windows.WinVaultKeyring). Pulls pywin32-ctypes on
+# win32. Used by src/security/keyring_store.py.
+keyring==25.6.0
+
 # Utilities
 python-dotenv==1.0.1
 # pydantic==2.7.4 (originally pinned here) conflicts with google-genai==2.16.0

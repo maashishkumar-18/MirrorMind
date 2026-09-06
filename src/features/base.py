@@ -18,7 +18,7 @@ import sqlite3
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from db.connection import open_session_db
+from db.connection import open_session_db, set_session_row_factory
 
 
 def now_iso() -> str:
@@ -49,7 +49,7 @@ class TableHandler:
             raise ValueError("Pass exactly one of db_path or connection")
 
         self._conn = connection or open_session_db(db_path, key)  # type: ignore[arg-type]
-        self._conn.row_factory = sqlite3.Row
+        set_session_row_factory(self._conn)
 
         for table in self._REQUIRED_TABLES:
             self._require_table(table)

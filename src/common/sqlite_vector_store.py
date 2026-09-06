@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 
 import numpy as np
 
-from db.connection import open_session_db
+from db.connection import open_session_db, set_session_row_factory
 from src.common.types import (
     SessionChunkRecord,
     SessionRetrievedChunk,
@@ -63,7 +63,7 @@ class SQLiteVectorStore(VectorStoreInterface):
             raise ValueError("Pass exactly one of db_path or connection")
 
         self._conn = connection or open_session_db(db_path, key)  # type: ignore[arg-type]
-        self._conn.row_factory = sqlite3.Row
+        set_session_row_factory(self._conn)
 
         if not self._table_exists("session_chunks"):
             raise RuntimeError(
