@@ -7,13 +7,16 @@ vector store are real (tmp, keyed-off / plaintext).
 
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 
 import pytest
 
-from src.backend.session_worker import ChatResult, SessionWorker
+from db.connection import open_session_db
+from src.backend.session_worker import ChatResult, SessionWorker, _minutes_between
 from src.backend.wire import MethodError
 from src.common.types import AgenticActionType, AgenticOutput, RetrievalRoute, SessionRetrievedChunk
+from src.features.base import now_iso
 from src.models.app_config import AppConfig
 
 
@@ -80,7 +83,7 @@ def _ao(
     )
 
 
-def _worker(keyed_db, tmp_path, monkeypatch, *, agent, router=None, orch=None, pipeline=None):
+def _worker(keyed_db, tmp_path, monkeypatch, *, agent, router=None, orch=None, pipeline=None, **kw):
     monkeypatch.setenv("RAGPIPE_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("RAGPIPE_APP_CONFIG_PATH", str(tmp_path / "app_config.json"))
     AppConfig.load(None).set_active_model("llama3.1:8b")
@@ -91,6 +94,7 @@ def _worker(keyed_db, tmp_path, monkeypatch, *, agent, router=None, orch=None, p
         router=router or FakeRouter(),
         orchestrator=orch or FakeOrchestrator(),
         pipeline=pipeline or FakePipeline(),
+        **kw,
     )
     w.start()
     assert w.wait_ready(30)
@@ -217,3 +221,114 @@ def test_stop_drains_a_pending_reingest(keyed_db, tmp_path, monkeypatch):
     _call(w, lambda: w.send("persist me"))
     assert w.stop(timeout=30) is True
     assert pipeline.calls  # the follow-up ran before the thread exited
+
+
+# -- 3.1c: idle auto-close + reconciliation -------------------------------------
+
+
+def test_idle_close_starts_a_new_session(keyed_db, tmp_path, monkeypatch):
+    pipeline = FakePipeline()
+    w = _worker(
+        keyed_db, tmp_path, monkeypatch, agent=FakeAgent(_ao()), pipeline=pipeline, idle_minutes=30
+    )
+    try:
+        first = _call(w, lambda: w.send("hello")).session_id
+        _call(w, lambda: None)  # drain first re-ingest
+        w._last_activity = "2020-01-01T00:00:00+00:00"  # force the gap wide open
+        second = _call(w, lambda: w.send("i'm back")).session_id
+        assert second != first
+        _call(w, lambda: None)  # drain
+
+        conn = open_session_db(keyed_db)
+        try:
+            row = conn.execute(
+                "SELECT ended_at, close_reason FROM sessions WHERE id = ?", (first,)
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["ended_at"] is not None and row["close_reason"] == "idle_timeout"
+        # the closed session got a final re-ingest keyed to its own id
+        assert any(sid == first for sid, _ in pipeline.calls)
+    finally:
+        w.stop(timeout=30)
+
+
+def test_not_idle_keeps_the_same_session(keyed_db, tmp_path, monkeypatch):
+    w = _worker(keyed_db, tmp_path, monkeypatch, agent=FakeAgent(_ao()), idle_minutes=60)
+    try:
+        first = _call(w, lambda: w.send("a")).session_id
+        second = _call(w, lambda: w.send("b")).session_id
+        assert first == second
+    finally:
+        w.stop(timeout=30)
+
+
+def test_last_activity_is_stamped_after_processing(keyed_db, tmp_path, monkeypatch):
+    class SlowAgent(FakeAgent):
+        def reason(self, query, history=None):
+            time.sleep(0.3)
+            return super().reason(query, history)
+
+    w = _worker(keyed_db, tmp_path, monkeypatch, agent=SlowAgent(_ao()))
+    try:
+        before = now_iso()
+        _call(w, lambda: w.send("slow one"))
+        # the 0.3s spent in reason() is *before* _last_activity is stamped
+        assert _minutes_between(before, w._last_activity) * 60 >= 0.25
+    finally:
+        w.stop(timeout=30)
+
+
+def test_new_conversation_reingest_the_closed_session(keyed_db, tmp_path, monkeypatch):
+    pipeline = FakePipeline()
+    w = _worker(keyed_db, tmp_path, monkeypatch, agent=FakeAgent(_ao()), pipeline=pipeline)
+    try:
+        closed = _call(w, lambda: w.send("first")).session_id
+        _call(w, lambda: None)  # drain the message re-ingest
+        pipeline.calls.clear()
+        _call(w, w.new_conversation)
+        _call(w, lambda: None)  # drain the close re-ingest
+        assert any(sid == closed for sid, _ in pipeline.calls)
+    finally:
+        w.stop(timeout=30)
+
+
+def test_prologue_finalizes_a_dangling_session(keyed_db, tmp_path, monkeypatch):
+    conn = open_session_db(keyed_db)
+    conn.execute(
+        "INSERT INTO sessions (id, started_at, created_at, updated_at) VALUES "
+        "('orphan', 't', 't', 't')"
+    )
+    conn.commit()
+    conn.close()
+
+    w = _worker(keyed_db, tmp_path, monkeypatch, agent=FakeAgent(_ao()))
+    try:
+        conn = open_session_db(keyed_db)
+        row = conn.execute(
+            "SELECT ended_at, close_reason FROM sessions WHERE id = 'orphan'"
+        ).fetchone()
+        conn.close()
+        assert row["ended_at"] is not None and row["close_reason"] == "app_shutdown"
+    finally:
+        w.stop(timeout=30)
+
+
+def test_reconciliation_and_on_ready(keyed_db, tmp_path, monkeypatch):
+    # seed one overdue reminder
+    conn = open_session_db(keyed_db)
+    conn.execute(
+        "INSERT INTO reminders (id, title, scheduled_time, created_at, updated_at) VALUES "
+        "('r1', 'call the dentist', '2000-01-01T00:00:00+00:00', 't', 't')"
+    )
+    conn.commit()
+    conn.close()
+
+    seen: list = []
+    w = _worker(keyed_db, tmp_path, monkeypatch, agent=FakeAgent(_ao()), on_ready=seen.append)
+    try:
+        assert len(seen) == 1 and [r.id for r in seen[0].overdue] == ["r1"]
+        recon = _call(w, w.reconciliation)
+        assert [r.id for r in recon.overdue] == ["r1"]
+    finally:
+        w.stop(timeout=30)

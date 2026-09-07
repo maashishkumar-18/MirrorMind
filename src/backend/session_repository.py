@@ -44,6 +44,21 @@ class SessionRepository(TableHandler):
                 (now, reason, now, session_id),
             )
 
+    def finalize_dangling_sessions(self, reason: str) -> int:
+        """Close every session left open (``ended_at IS NULL``) — used in the
+        `SessionWorker` prologue to tidy up after a crash / kill with no
+        `app.shutdown`. Returns how many rows were closed."""
+        if reason not in _VALID_CLOSE_REASONS:
+            raise ValueError(f"close_reason must be one of {_VALID_CLOSE_REASONS}, got {reason!r}")
+        now = now_iso()
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE sessions SET ended_at = ?, close_reason = ?, updated_at = ? "
+                "WHERE ended_at IS NULL AND deleted_at IS NULL",
+                (now, reason, now),
+            )
+        return cur.rowcount
+
     def session_started_at(self, session_id: str) -> str | None:
         row = self._get_row("sessions", session_id)
         return row["started_at"] if row is not None else None

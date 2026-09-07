@@ -18,6 +18,7 @@ drains a pending one.
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import threading
 import time
@@ -25,6 +26,7 @@ import uuid
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from db.connection import open_session_db
@@ -34,8 +36,9 @@ from src.backend.paths import data_dir
 from src.backend.session_repository import SessionRepository
 from src.backend.wire import MethodError
 from src.common.sqlite_vector_store import SQLiteVectorStore
-from src.common.types import SessionRetrievedChunk
+from src.common.types import ReconciliationResult, SessionRetrievedChunk
 from src.features.base import now_iso
+from src.features.reminder_handler import ReminderHandler
 from src.generation.config import (
     ChatTurn,
     ConfidenceLevel,
@@ -57,6 +60,33 @@ logger = logging.getLogger(__name__)
 
 HISTORY_TURNS = 6
 _NO_MODEL_MESSAGE = "No AI model is set up yet. Choose one in Settings → Models to get started."
+
+# project_logic.md §13: a session closes after a configurable idle timeout
+# (~30-60 min). Env-overridable like HISTORY_TURNS; no YAML — the worker is not
+# a "feature" and §13 only needs the value externalized.
+_DEFAULT_IDLE_MINUTES = 45.0
+
+
+def _idle_minutes() -> float:
+    raw = os.getenv("RAGPIPE_SESSION_IDLE_MINUTES")
+    if raw is None:
+        return _DEFAULT_IDLE_MINUTES
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("RAGPIPE_SESSION_IDLE_MINUTES=%r is not a number; using default", raw)
+        return _DEFAULT_IDLE_MINUTES
+
+
+def _minutes_between(earlier_iso: str, later_iso: str) -> float:
+    """Gap in minutes between two ISO-8601 timestamps. A parse failure returns
+    0.0 — a session is never spuriously closed because a timestamp was odd."""
+    try:
+        a = datetime.fromisoformat(earlier_iso)
+        b = datetime.fromisoformat(later_iso)
+    except ValueError:
+        return 0.0
+    return (b - a).total_seconds() / 60.0
 
 
 def _tier(confidence: float) -> int:
@@ -104,6 +134,8 @@ class SessionWorker(threading.Thread):
         app_config_path: str | None = None,
         *,
         history_turns: int = HISTORY_TURNS,
+        idle_minutes: float | None = None,
+        on_ready: Callable[[ReconciliationResult], None] | None = None,
         agent: RetrievalAgent | None = None,
         router: RetrievalRouter | None = None,
         orchestrator: GenerationOrchestrator | None = None,
@@ -114,6 +146,8 @@ class SessionWorker(threading.Thread):
         self._key = key
         self._app_config_path = app_config_path
         self._history_turns = history_turns
+        self._idle_minutes = idle_minutes if idle_minutes is not None else _idle_minutes()
+        self._on_ready = on_ready
         # Injection seams — tests pass fakes so the worker never loads the
         # all-MiniLM / cross-encoder models. When all four are injected the
         # per-model rebuild is skipped. Mirrors bootstrap_pipeline()'s style.
@@ -148,6 +182,9 @@ class SessionWorker(threading.Thread):
         self._orchestrator: GenerationOrchestrator | None = None
         self._pipeline: SessionIngestionPipeline | None = None
         self._ingest_pending = False
+        #: captured in _build() (worker thread), read only by reconciliation()
+        #: (also worker thread) — no lock. Never cleared until the next launch.
+        self._reconciliation = ReconciliationResult()
 
     # ------------------------------------------------------------------
     # Thread lifecycle
@@ -161,6 +198,12 @@ class SessionWorker(threading.Thread):
             self._fatal = f"{type(exc).__name__}: {exc}"
         finally:
             self._ready.set()
+
+        if self._fatal is None and self._on_ready is not None:
+            try:
+                self._on_ready(self._reconciliation)
+            except Exception:  # noqa: BLE001
+                logger.exception("session worker on_ready callback failed")
 
         while True:
             item = self._queue.get()
@@ -209,6 +252,17 @@ class SessionWorker(threading.Thread):
     def _build(self) -> None:
         self._conn = open_session_db(self._db_path, self._key)
         self._repo = SessionRepository(connection=self._conn)
+
+        # Close any session a previous run left open (crash / kill with no
+        # app.shutdown). project_logic.md §13.
+        closed = self._repo.finalize_dangling_sessions("app_shutdown")
+        if closed:
+            logger.info("finalized %d session(s) left open by a previous run", closed)
+
+        # On-launch reminder reconciliation (project_logic.md §9 steps 7-8) —
+        # two independent lists, surfaced via on_ready + reminders.reconciliation.
+        self._reconciliation = ReminderHandler(connection=self._conn).reconcile_on_launch(now_iso())
+
         self._store = SQLiteVectorStore(db_path=self._db_path, key=self._key)
         self._structured = StructuredTableSearch(connection=self._conn)
         self._metrics = MetricsStore(db_path=str(data_dir() / "metrics.db"))
@@ -274,15 +328,39 @@ class SessionWorker(threading.Thread):
         assert self._conn is not None
         return check_quick(self._conn)
 
+    def reconciliation(self) -> ReconciliationResult:
+        """The overdue / pending-acknowledgment reminder lists captured at
+        warm-up (project_logic.md §9). Never cleared — same data every call."""
+        self._raise_if_unavailable()
+        return self._reconciliation
+
     def new_conversation(self) -> str:
         self._raise_if_unavailable()
         assert self._repo is not None
         if self._session_id is not None:
-            self._repo.finalize_session(self._session_id, "explicit")
+            self._close_session(self._session_id, "explicit")
         self._session_id = self._repo.create_session()
         self._turn_count = 0
         self._last_activity = now_iso()
         return self._session_id
+
+    def _close_session(self, session_id: str, reason: str) -> None:
+        """Finalize a session and re-embed its final transcript.
+
+        The re-ingest is ENQUEUED, not synchronous: ``_reingest`` reads
+        ``messages`` (all rows persisted, ``ended_at``-independent), so a
+        closed session re-embeds correctly from the queue — and a synchronous
+        drain here would stall the ``send()`` that triggered the close (the
+        user's *returning* message) by ~40-90s for no correctness gain, since
+        every prior message already triggered a completed re-ingest. Shutdown
+        runs it synchronously so nothing is dropped.
+        """
+        assert session_id and self._repo is not None
+        self._repo.finalize_session(session_id, reason)
+        if self._shutting_down:
+            self._reingest(session_id)
+        else:
+            self._enqueue_followup(lambda: self._reingest(session_id))
 
     def history(self, session_id: str | None) -> tuple[str, list[dict[str, object]]]:
         self._raise_if_unavailable()
@@ -303,6 +381,17 @@ class SessionWorker(threading.Thread):
             raise MethodError("no_model_active", _NO_MODEL_MESSAGE)
         if active != self._bound_model:
             self._rebuild_model_bundle(active)
+
+        # Idle auto-close (project_logic.md §13) — checked BEFORE the reuse/
+        # create decision so this message starts a fresh session.
+        now = now_iso()
+        if (
+            self._session_id is not None
+            and _minutes_between(self._last_activity, now) > self._idle_minutes
+        ):
+            self._close_session(self._session_id, "idle_timeout")
+            self._session_id = None
+            self._turn_count = 0
 
         session_id = self._session_id or self._repo.create_session()
         self._session_id = session_id
@@ -363,7 +452,6 @@ class SessionWorker(threading.Thread):
 
         self._repo.append_message(session_id, "assistant", answer)
         self._turn_count += 2
-        self._last_activity = now_iso()
 
         self._record_metrics(
             ao=ao,
@@ -378,6 +466,10 @@ class SessionWorker(threading.Thread):
             self._reingest(session_id)
         else:
             self._enqueue_followup(lambda: self._reingest(session_id))
+
+        # Stamped at the END of a successful send — the true inter-message gap,
+        # not shrunk by however long this call's inference took.
+        self._last_activity = now_iso()
 
         return ChatResult(
             session_id=session_id,

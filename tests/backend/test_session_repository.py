@@ -79,6 +79,25 @@ def test_all_messages_and_history(repo):
     assert "created_at" in hist[0]
 
 
+def test_finalize_dangling_sessions(repo):
+    a, b, c = repo.create_session(), repo.create_session(), repo.create_session()
+    repo.finalize_session(b, "explicit")  # already closed
+    repo._conn.execute("UPDATE sessions SET deleted_at = 't' WHERE id = ?", (c,))
+    repo._conn.commit()
+
+    closed = repo.finalize_dangling_sessions("app_shutdown")
+    assert closed == 1  # only `a`
+    assert repo._get_row("sessions", a)["close_reason"] == "app_shutdown"
+    assert repo._get_row("sessions", b)["close_reason"] == "explicit"  # untouched
+
+    assert repo.finalize_dangling_sessions("app_shutdown") == 0  # idempotent
+
+
+def test_finalize_dangling_sessions_rejects_bad_reason(repo):
+    with pytest.raises(ValueError):
+        repo.finalize_dangling_sessions("boom")
+
+
 def test_required_tables_guard(tmp_path):
     bare = tmp_path / "bare.db"
     conn = sqlite3.connect(bare)

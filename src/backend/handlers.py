@@ -14,6 +14,7 @@ from collections.abc import Callable
 
 from pydantic import BaseModel
 
+from src.backend.reminders_wire import reminder_wire
 from src.backend.wire import HandlerContext, MethodError
 from src.common.ipc.envelope import CURRENT_IPC_VERSION
 from src.common.ipc.methods import (
@@ -39,6 +40,8 @@ from src.common.ipc.methods import (
     ModelDownloadResult,
     ModelStatusParams,
     ModelStatusResult,
+    RemindersReconciliationResult,
+    ReminderWire,
 )
 from src.models.app_config import AppConfig
 from src.models.types import DownloadProgress, ModelDownloadError
@@ -219,6 +222,18 @@ def _chat_history(p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatHistoryRe
     )
 
 
+def _reminders_reconciliation(
+    _p: BaseModel, ctx: HandlerContext, _rid: str
+) -> RemindersReconciliationResult:
+    recon = _require_worker(ctx).reconciliation()
+    return RemindersReconciliationResult(
+        overdue=[ReminderWire.model_validate(reminder_wire(r)) for r in recon.overdue],
+        pending_acknowledgment=[
+            ReminderWire.model_validate(reminder_wire(r)) for r in recon.pending_acknowledgment
+        ],
+    )
+
+
 HANDLERS: dict[str, Handler] = {
     "app.status": _app_status,
     "health.check": _health_check,
@@ -232,4 +247,5 @@ HANDLERS: dict[str, Handler] = {
     "chat.send": _chat_send,
     "chat.new": _chat_new,
     "chat.history": _chat_history,
+    "reminders.reconciliation": _reminders_reconciliation,
 }

@@ -39,10 +39,12 @@ def _fake_worker(monkeypatch, request):
     (``@pytest.mark.integration``) runs its own process and is unaffected."""
     if "integration" in request.keywords:
         return None
-    holder = {}
+    holder: dict = {}
 
-    def _factory(*_a, **_k):
-        holder["worker"] = FakeSessionWorker()
+    def _factory(*_a, on_ready=None, **_k):
+        holder["worker"] = FakeSessionWorker(
+            on_ready=on_ready, reconciliation=holder.get("reconciliation")
+        )
         return holder["worker"]
 
     monkeypatch.setattr(main_mod, "SessionWorker", _factory)
@@ -179,6 +181,26 @@ def test_chat_send_bad_params_is_validation_error(_fake_worker):
     rc, envs = _run(_req("chat.send", "b", {"text": ""}), _req("app.shutdown", "z"))
     assert rc == 0
     assert _payloads(envs, "error")[0]["code"] == "validation_error"
+
+
+def test_reminders_pending_event_emitted_when_reconciliation_non_empty(_fake_worker):
+    from src.common.types import ReconciliationResult, Reminder
+
+    _fake_worker["reconciliation"] = ReconciliationResult(
+        overdue=[Reminder(id="r1", title="dentist", scheduled_time="2020-01-01T00:00:00+00:00")]
+    )
+    rc, envs = _run(_req("reminders.reconciliation", "r"), _req("app.shutdown", "z"))
+    assert rc == 0
+    ev = _payloads(envs, "event", "app.reminders_pending")
+    assert ev and [r["id"] for r in ev[0]["params"]["overdue"]] == ["r1"]
+    resp = _payloads(envs, "response", "reminders.reconciliation")[0]["result"]
+    assert [r["id"] for r in resp["overdue"]] == ["r1"]
+
+
+def test_reminders_pending_event_not_emitted_when_empty(_fake_worker):
+    rc, envs = _run(_req("app.shutdown", "z"))
+    assert rc == 0
+    assert _payloads(envs, "event", "app.reminders_pending") == []
 
 
 def test_degraded_mode_blocks_chat(monkeypatch, _fake_worker):

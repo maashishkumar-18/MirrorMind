@@ -99,12 +99,23 @@ class FakeSessionWorker:
     ``submit(fn)`` runs ``fn`` inline so the dispatcher's worker path is
     exercised without spinning a real thread."""
 
-    def __init__(self, *, health_ok: bool = True, send_result=None, no_model: bool = False):
+    def __init__(
+        self,
+        *,
+        health_ok: bool = True,
+        send_result=None,
+        no_model: bool = False,
+        on_ready=None,
+        reconciliation=None,
+    ):
         from db.health import IntegrityResult
+        from src.common.types import ReconciliationResult
 
         self._health = IntegrityResult(ok=health_ok, details=["ok"] if health_ok else ["bad"])
         self._send_result = send_result
         self._no_model = no_model
+        self._on_ready = on_ready
+        self._reconciliation = reconciliation or ReconciliationResult()
         self.sessions: list[str] = []
         self.sent: list[str] = []
         self.started = False
@@ -113,6 +124,11 @@ class FakeSessionWorker:
     # lifecycle (used when patched into main)
     def start(self) -> None:
         self.started = True
+        if self._on_ready is not None:
+            self._on_ready(self._reconciliation)
+
+    def reconciliation(self):
+        return self._reconciliation
 
     def wait_ready(self, timeout=None) -> bool:
         return True

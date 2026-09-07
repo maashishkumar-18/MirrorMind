@@ -35,11 +35,13 @@ from src.backend.dispatcher import Dispatcher
 from src.backend.keys import resolve_db_key
 from src.backend.lifecycle import ShutdownCoordinator
 from src.backend.paths import session_db_path, snapshot_dir
+from src.backend.reminders_wire import reconciliation_payload
 from src.backend.session_worker import SessionWorker
 from src.backend.single_instance import SingleInstanceGuard
 from src.backend.transport import StdioTransport
 from src.backend.wire import HandlerContext, make_error, make_event
 from src.common.ipc.envelope import CURRENT_IPC_VERSION
+from src.common.types import ReconciliationResult
 from src.features.backup_manager import BackupManager
 from src.features.scheduler import SchedulerThread
 from src.features.toast_bridge import NoOpToastBridge
@@ -109,7 +111,17 @@ def _serve(transport: StdioTransport) -> int:
         # The SessionWorker owns the only long-lived session connection + the
         # keyed SQLiteVectorStore (both sqlite3 thread-affine). Close ours now.
         conn.close()
-        worker = SessionWorker(db_path, key=key, app_config_path=None)
+
+        def _emit_reminders_pending(recon: ReconciliationResult) -> None:
+            # project_logic.md §9: overdue / pending-ack reminders must never be
+            # silently dropped. Fired from the worker thread once warm-up
+            # completes; transport.send is lock-guarded.
+            if recon.overdue or recon.pending_acknowledgment:
+                transport.send(make_event("app.reminders_pending", reconciliation_payload(recon)))
+
+        worker = SessionWorker(
+            db_path, key=key, app_config_path=None, on_ready=_emit_reminders_pending
+        )
         worker.start()
         the_worker = worker
         ctx = HandlerContext(

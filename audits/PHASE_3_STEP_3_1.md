@@ -1,7 +1,7 @@
 # Phase 3 Step 3.1 — Frontend Architecture and IPC Client
 
-**Status:** sub-steps **3.1a** + **3.1b** landed. 3.1c–3.1d + the Rust/React scaffold are
-pending.
+**Status:** sub-steps **3.1a** + **3.1b** + **3.1c** landed. 3.1d + the Rust/React scaffold
+are pending.
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -28,7 +28,7 @@ sequenced after the backend spine is solid and tested.
 | `sessions`/`messages` persistence (`SessionRepository(TableHandler)`), `chat.new` / `chat.history`, in-memory session state on the `SessionWorker` thread | Python backend | **3.1b ✅** |
 | generation routed through the app-config active model (gate: `model_setup_required()` → `no_model_active`; `RetrievalAgent(model=)` / `MetadataExtractor(model=)` / `GenerationOrchestrator(model_name=)`) | Python backend | **3.1b ✅** |
 | `SQLiteVectorStore` key wiring — the `SessionWorker` opens `SQLiteVectorStore(db_path, key=key)` on its own thread; `SQLiteVectorStore.close()` added; `coordinator.register("session_worker", …)` teardown (scheduler → session_worker → tracing) | Python backend | **3.1b ✅** |
-| idle-session auto-close (§13): lazy check at `chat.send` entry + `SchedulerThread` backstop + on-launch `ReminderHandler.reconcile_on_launch()` | Python backend | **3.1c** |
+| idle-session auto-close (§13): lazy check at `chat.send` entry (`RAGPIPE_SESSION_IDLE_MINUTES`, default 45) + `run()`-prologue finalize of dangling sessions + on-launch `ReminderHandler.reconcile_on_launch()` surfaced via `app.reminders_pending` event + `reminders.reconciliation` method | Python backend | **3.1c ✅** |
 | `src-tauri/` Rust shell, `tauri.conf.json` (**`bundle.externalBin` for the Python sidecar** + `shell:sidecar` allowlist — a missing `externalBin` is the classic "works in dev, broken in MSIX"), Vite + React + TS + Zustand + React Router, typed **zod IPC client**, `ipc/schema/methods.ts` mirror + round-trip test | Rust + React | **scaffold sub-step** |
 | Degraded-mode **banner UI** ("AI features temporarily unavailable — restarting…" → "Ready"), first-launch model **flow UI**, version-mismatch → "please restart" UI, IPC timeout → "temporarily unavailable" | React frontend | **scaffold sub-step** |
 | Tauri **process supervisor** — restart with exponential backoff 1s/2s/4s, **3 restarts after the initial launch (4 total launches)**, then degraded banner + "Restart app" | Rust shell | **later** |
@@ -43,6 +43,48 @@ sequenced after the backend spine is solid and tested.
 supervisor relaunches (backoff). A **restore** → supervisor stops the backend (quiescing every
 DB connection), *then* `fs::rename`, *then* relaunches. 3.1a delivers the backend half: exit
 code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
+
+---
+
+## What landed in 3.1c
+
+**Idle auto-close** (project_logic §13): `SessionWorker.send()` checks
+`now - _last_activity > RAGPIPE_SESSION_IDLE_MINUTES` (default 45, env-overridable — no YAML)
+**before** resolving the session; on expiry `_close_session(old, "idle_timeout")` + a fresh
+session for the incoming message. `_last_activity` is now stamped at the **end** of a
+successful `send()` (was mid-method) so a slow inference never shrinks the next inter-message
+gap. `_close_session()` also enqueues a final re-ingest of the closing transcript — **not
+synchronous**: `_reingest` reads `messages` (ended_at-independent) so it works from the queue,
+and a sync 40-90s drain would stall the user's *returning* message for zero correctness gain
+(every prior message already re-ingested). `chat.new` routes through `_close_session` too.
+
+**`run()` prologue** — `SessionRepository.finalize_dangling_sessions("app_shutdown")` (new
+method) closes any session a previous crash/kill left open;
+`ReminderHandler(connection=conn).reconcile_on_launch(now_iso())` captures the overdue /
+pending-ack lists into `self._reconciliation` (written + read only on the worker thread — no
+lock; never cleared).
+
+**Surfacing** — the worker fires an `on_ready(reconciliation)` callback once warm-up finishes
+→ `main` emits an `app.reminders_pending` **event** whenever either list is non-empty (after
+`app.ready`) — the "never silently dropped" guarantee — plus a new `reminders.reconciliation`
+**method** (`worker=True`, not `degraded_ok`) to re-fetch. `src/backend/reminders_wire.py` maps
+`Reminder` → wire dict, shared by the handler and the event builder. New wire models
+`ReminderWire` / `RemindersReconciliation{Params,Result}` / `AppRemindersPendingEvent`.
+
+**No schema change** — `sessions.ended_at` + `close_reason` CHECK already in `0001`;
+`finalize_session` writes them today.
+
+**Scheduler ⇄ worker contention** — the `SessionWorker` writes `session_chunks` (re-ingest)
+and `sessions` (finalize); the `SchedulerThread` writes only `reminders` and `summaries` and
+*reads* `session_chunks` / `sessions` for summary gathering. **No two threads write the same
+table.** WAL + `busy_timeout=30000` (both connections, via `open_session_db`) covers a
+scheduler summary-read overlapping a worker chunk-write. `sessions` stays single-writer (the
+"abandoned session closes on next launch" decision — no SchedulerThread `sessions` writer).
+
+No new deps; `pyproject.toml` / CI unchanged. `tests/backend/` +13 (686 → **699**);
+`black` / `ruff` / `mypy src observability db` clean. Verified end-to-end in-process: the
+prologue closes a dangling session, `app.reminders_pending` carries a seeded overdue reminder,
+`reminders.reconciliation` round-trips.
 
 ---
 

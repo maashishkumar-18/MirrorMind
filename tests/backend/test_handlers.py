@@ -168,3 +168,18 @@ def test_chat_handler_without_worker_is_unavailable(ctx_factory):
     with pytest.raises(MethodError) as ei:
         handlers.HANDLERS["chat.send"](ChatSendParams(text="x"), ctx_factory(), "r")
     assert ei.value.code == "unavailable"
+
+
+def test_reminders_reconciliation_maps_the_worker_result(ctx_factory):
+    from src.common.ipc.methods import RemindersReconciliationParams
+    from src.common.types import ReconciliationResult, Reminder
+
+    recon = ReconciliationResult(
+        overdue=[Reminder(id="r1", title="dentist", scheduled_time="2020-01-01T00:00:00+00:00")],
+        pending_acknowledgment=[],
+    )
+    ctx = ctx_factory(worker=FakeSessionWorker(reconciliation=recon))
+    res = handlers.HANDLERS["reminders.reconciliation"](RemindersReconciliationParams(), ctx, "r")
+    assert [r.id for r in res.overdue] == ["r1"]
+    assert res.overdue[0].title == "dentist"
+    assert res.pending_acknowledgment == []

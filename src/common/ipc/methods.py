@@ -243,6 +243,34 @@ class ChatHistoryResult(_Result):
 
 
 # --------------------------------------------------------------------------
+# reminders.reconciliation  (on-launch overdue / pending-ack lists, §9)
+# --------------------------------------------------------------------------
+class ReminderWire(_Result):
+    id: str
+    title: str
+    scheduled_time: str
+    notes: str
+    fired_at: str | None
+    completed_at: str | None
+    dismissed_at: str | None
+    created_at: str
+
+
+class RemindersReconciliationParams(_Params):
+    pass
+
+
+class RemindersReconciliationResult(_Result):
+    overdue: list[ReminderWire]
+    pending_acknowledgment: list[ReminderWire]
+
+
+class AppRemindersPendingEvent(_Result):
+    overdue: list[ReminderWire]
+    pending_acknowledgment: list[ReminderWire]
+
+
+# --------------------------------------------------------------------------
 # Lifecycle events (server-initiated; no request/params from the frontend)
 # --------------------------------------------------------------------------
 class AppReadyEvent(_Result):
@@ -289,4 +317,7 @@ METHOD_CONTRACTS: dict[str, MethodContract] = {
     "chat.send": MethodContract(ChatSendParams, ChatSendResult, worker=True),
     "chat.new": MethodContract(ChatNewParams, ChatNewResult, worker=True),
     "chat.history": MethodContract(ChatHistoryParams, ChatHistoryResult, worker=True),
+    "reminders.reconciliation": MethodContract(
+        RemindersReconciliationParams, RemindersReconciliationResult, worker=True
+    ),
 }

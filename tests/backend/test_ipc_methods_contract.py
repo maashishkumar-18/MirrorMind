@@ -34,7 +34,13 @@ def test_degraded_whitelist_is_the_expected_set():
 
 def test_worker_methods_are_the_expected_set():
     worker = {n for n, c in METHOD_CONTRACTS.items() if c.worker}
-    assert worker == {"health.check", "chat.send", "chat.new", "chat.history"}
+    assert worker == {
+        "health.check",
+        "chat.send",
+        "chat.new",
+        "chat.history",
+        "reminders.reconciliation",
+    }
 
 
 def test_worker_methods_are_never_degraded_ok():
