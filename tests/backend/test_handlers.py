@@ -170,6 +170,16 @@ def test_chat_handler_without_worker_is_unavailable(ctx_factory):
     assert ei.value.code == "unavailable"
 
 
+def test_chat_confirm_action_maps_the_worker_result(ctx_factory):
+    from src.common.ipc.methods import ChatConfirmActionParams
+
+    ctx = ctx_factory(worker=FakeSessionWorker())
+    res = handlers.HANDLERS["chat.confirm_action"](
+        ChatConfirmActionParams(pending_action_id="pa-1", choice="reminder"), ctx, "r"
+    )
+    assert res.action_type == "reminder" and res.feature and res.feature.kind == "reminder"
+
+
 def test_reminders_reconciliation_maps_the_worker_result(ctx_factory):
     from src.common.ipc.methods import RemindersReconciliationParams
     from src.common.types import ReconciliationResult, Reminder

@@ -56,6 +56,20 @@ Transcript:
 class MeetingNoteHandler(TableHandler):
     _REQUIRED_TABLES = ("meeting_notes",)
 
+    def __init__(
+        self,
+        db_path: str | None = None,
+        *,
+        connection: object | None = None,
+        key: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        super().__init__(db_path, connection=connection, key=key)  # type: ignore[arg-type]
+        # None keeps the historical behaviour ($OLLAMA_DEFAULT_MODEL); the
+        # Phase 3 backend passes the app-config active model. Mirrors
+        # MetadataExtractor / RetrievalAgent.
+        self._model = model
+
     def capture_meeting_note(
         self, raw_transcript: str, *, session_id: str | None = None
     ) -> MeetingNote:
@@ -118,7 +132,7 @@ class MeetingNoteHandler(TableHandler):
         prompt = _EXTRACTION_PROMPT.format(transcript=raw_transcript[:_TRANSCRIPT_CHAR_LIMIT])
         for attempt in range(_MAX_RETRIES + 1):
             try:
-                return self._parse_json(simple_generate(prompt))
+                return self._parse_json(simple_generate(prompt, model_name=self._model))
             except Exception as e:  # noqa: BLE001 — never propagate; fall back to needs_review
                 if attempt == _MAX_RETRIES:
                     logger.warning("meeting-note extraction failed (%s); flagging for review", e)

@@ -1,7 +1,7 @@
 # Phase 3 Step 3.1 — Frontend Architecture and IPC Client
 
-**Status:** sub-steps **3.1a** + **3.1b** + **3.1c** landed. 3.1d + the Rust/React scaffold
-are pending.
+**Status:** sub-steps **3.1a** + **3.1b** + **3.1c** + **3.1d** landed — **the Step 3.1
+backend is complete.** Next: the Rust/React scaffold sub-step.
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -23,7 +23,7 @@ sequenced after the backend spine is solid and tested.
 | Non-chat methods wiring 1.6/2.1/2.2 primitives: `app.status`, `health.check`, `model.catalog/status/download/activate`, `backup.list/restore`, `app.shutdown` | Python backend | **3.1a ✅** |
 | Degraded mode on integrity failure (only status/backup methods served) + `app.integrity_failed` / `app.previous_data_unrecoverable` / `app.ready` events | Python backend | **3.1a ✅** |
 | `BackupManager.stage_restore()` (validate-only) + `RestoreResult.validated_snapshot_path` | Python backend | **3.1a ✅** |
-| NL slot extraction (utterance → reminder/todo/schedule/meeting_note fields) + `AgenticOutput.action_type` → feature-handler dispatch (deferred from Step 1.5; `chat.send` returns `action_type` but does not act on it) | Python backend | **3.1d** |
+| NL slot extraction (`SlotExtractor` — 2nd `simple_generate`, Tier-1 only) + `action_type` → `action_dispatch` → Step 1.5 create handlers; four-tier routing (§3) in `SessionWorker.send()`; `chat.confirm_action` for Tier-2 disambiguation; `ScheduleConflict` surfaced not overwritten | Python backend | **3.1d ✅** |
 | **Per-message orchestrator** (`chat.send`, project_logic §4): persist user msg → `RetrievalAgent.reason` → `RetrievalRouter.route` → `GenerationOrchestrator.generate` (short-circuit to `ao.response` when `retrieve_needed=False`) → persist assistant msg → trigger ingestion | Python backend | **3.1b ✅** |
 | `sessions`/`messages` persistence (`SessionRepository(TableHandler)`), `chat.new` / `chat.history`, in-memory session state on the `SessionWorker` thread | Python backend | **3.1b ✅** |
 | generation routed through the app-config active model (gate: `model_setup_required()` → `no_model_active`; `RetrievalAgent(model=)` / `MetadataExtractor(model=)` / `GenerationOrchestrator(model_name=)`) | Python backend | **3.1b ✅** |
@@ -43,6 +43,47 @@ sequenced after the backend spine is solid and tested.
 supervisor relaunches (backoff). A **restore** → supervisor stops the backend (quiescing every
 DB connection), *then* `fs::rename`, *then* relaunches. 3.1a delivers the backend half: exit
 code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
+
+---
+
+## What landed in 3.1d
+
+**Four-tier routing** in `SessionWorker.send()` (project_logic §3), for an actionable
+`action_type` (`reminder` / `todo` / `schedule` / `meeting_note` / `summary_request`):
+
+- **Tier 1 (≥0.85)** — `SlotExtractor.extract()` (a **2nd** `simple_generate`, per-type
+  prompt, `recover_json`, `{}` on any failure) → `action_dispatch.dispatch()` → the Step 1.5
+  create handler → a **deterministic** confirmation string. No retrieval / generation.
+  `meeting_note` self-extracts (its handler's own LLM call) — no slot call.
+- **Tier 2 (0.70–0.85)** — stash ONE `_pending_action` (id + action_type + utterance +
+  `ao.response`), return `disambiguation={pending_action_id, options}`. The frontend resolves
+  via the new **`chat.confirm_action(pending_action_id, choice)`** method (`worker=True`,
+  result = `ChatSendResult`). A stale id → `no_pending_action`; **any new `chat.send`
+  discards it** and sets `dismissed_pending: true` (no "is this a confirmation?" heuristic —
+  the dedicated method removes that ambiguity).
+- **Tier 3 (0.50–0.70)** — a one-line clarification with a syntax example
+  (`_CLARIFICATIONS` dict).
+- **else** (conversation / none / retrieval_query, or actionable at Tier 4) — the existing
+  retrieve/generate/short-circuit branch, unchanged.
+
+New modules: `src/backend/slot_extractor.py`, `src/backend/action_dispatch.py`
+(`_coerce_iso`: `datetime.fromisoformat` → `dateutil.parser.parse` fallback → `None` →
+"missing slot" nudge; **`ScheduleConflict` surfaced, entity not created** — the overwrite/keep
+resolution is a documented gap for the Schedule view; **never raises** into `send()`),
+`src/common/json_recovery.py` (lifts `RetrievalAgent._parse_json` — the agent now delegates;
+`MetadataExtractor` / `MeetingNoteHandler` left as-is with a note). `MeetingNoteHandler` gains
+a `model=` ctor (mirrors `MetadataExtractor`). `_pending_action` is cleared on
+`new_conversation()` and the idle `_close_session` path.
+
+`ChatSendResult` gains `feature` / `disambiguation` / `conflict` / `dismissed_pending` (all
+optional, additive under IPC v1). `requirements.txt` += `python-dateutil` (was transitive,
+promoted); `requirements-dev.txt` += `types-python-dateutil`.
+
+`tests/backend/` +29 (`test_json_recovery` / `test_slot_extractor` / `test_action_dispatch`
+new; tier + `confirm_action` cases across `test_session_worker` / `test_handlers` /
+`test_main`). **699 → 728 tests**, black/ruff/mypy clean. Verified end-to-end in-process:
+Tier-1 creates a real `reminders` row; Tier-2 returns `disambiguation` with a
+`pending_action_id` and no row.
 
 ---
 

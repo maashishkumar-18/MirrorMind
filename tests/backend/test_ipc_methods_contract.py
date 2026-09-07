@@ -37,6 +37,7 @@ def test_worker_methods_are_the_expected_set():
     assert worker == {
         "health.check",
         "chat.send",
+        "chat.confirm_action",
         "chat.new",
         "chat.history",
         "reminders.reconciliation",

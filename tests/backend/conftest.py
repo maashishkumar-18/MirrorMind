@@ -170,6 +170,15 @@ class FakeSessionWorker:
             else (self._send_result or _default_chat_result(text))
         )
 
+    def confirm_action(self, pending_action_id: str, choice: str):
+        self.sent.append(("confirm", pending_action_id, choice))
+        r = _default_chat_result(f"confirmed:{choice}")
+        r.action_type = choice
+        r.feature = (
+            {"kind": choice, "id": "x", "summary": "x"} if choice != "conversation" else None
+        )
+        return r
+
 
 @pytest.fixture
 def keyed_db(tmp_path: Path) -> str:

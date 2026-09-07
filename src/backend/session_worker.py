@@ -29,16 +29,23 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+import src.backend.action_dispatch as action_dispatch
 from db.connection import open_session_db
 from db.health import IntegrityResult, check_quick
 from observability.metrics_store import MetricsStore, PipelineCallMetrics
 from src.backend.paths import data_dir
 from src.backend.session_repository import SessionRepository
+from src.backend.slot_extractor import SlotExtractor
 from src.backend.wire import MethodError
 from src.common.sqlite_vector_store import SQLiteVectorStore
-from src.common.types import ReconciliationResult, SessionRetrievedChunk
+from src.common.types import (
+    AgenticActionType,
+    ReconciliationResult,
+    SessionRetrievedChunk,
+)
 from src.features.base import now_iso
 from src.features.reminder_handler import ReminderHandler
+from src.features.toast_bridge import NoOpToastBridge
 from src.generation.config import (
     ChatTurn,
     ConfidenceLevel,
@@ -124,6 +131,79 @@ class ChatResult:
     grounding_confidence: float
     citations: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    #: 3.1d — what a Tier-1 actionable message produced, if anything
+    feature: dict | None = None  # {"kind", "id", "summary"}
+    disambiguation: dict | None = None  # {"pending_action_id", "options"}
+    conflict: dict | None = None  # schedule overlap — {"attempted", "conflicts_with"}
+    dismissed_pending: bool = False  # a stale disambiguation popup was just discarded
+
+
+@dataclass
+class PendingAction:
+    id: str
+    action_type: AgenticActionType
+    utterance: str
+    ao_response: str
+    created_at: str
+
+
+_ACTIONABLE = frozenset(
+    {
+        AgenticActionType.REMINDER,
+        AgenticActionType.TODO,
+        AgenticActionType.MEETING_NOTE,
+        AgenticActionType.SCHEDULE,
+        AgenticActionType.SUMMARY_REQUEST,
+    }
+)
+
+_NEIGHBOUR = {
+    AgenticActionType.REMINDER: AgenticActionType.TODO,
+    AgenticActionType.TODO: AgenticActionType.REMINDER,
+    AgenticActionType.SCHEDULE: AgenticActionType.REMINDER,
+    AgenticActionType.MEETING_NOTE: AgenticActionType.SUMMARY_REQUEST,
+    AgenticActionType.SUMMARY_REQUEST: AgenticActionType.RETRIEVAL_QUERY,
+}
+
+_CLARIFICATIONS: dict[AgenticActionType, str] = {
+    AgenticActionType.REMINDER: (
+        'It sounds like you want a reminder — try "Remind me to call John on Tuesday at 2pm".'
+    ),
+    AgenticActionType.TODO: (
+        'Want me to add that as a todo? Try "Add a todo: draft the Q3 report, high priority".'
+    ),
+    AgenticActionType.SCHEDULE: (
+        'Sounds like a schedule entry — try "Schedule a review with Sam 3-4pm on Thursday".'
+    ),
+    AgenticActionType.MEETING_NOTE: (
+        "If that's a meeting to capture, paste the notes or transcript and I'll pull out the key points."
+    ),
+    AgenticActionType.SUMMARY_REQUEST: (
+        'Want a summary? Try "Summarize my day" or "Summarize this week".'
+    ),
+}
+
+
+_VERBS = {
+    AgenticActionType.REMINDER: "set a reminder",
+    AgenticActionType.TODO: "add a todo",
+    AgenticActionType.SCHEDULE: "put that on your schedule",
+    AgenticActionType.MEETING_NOTE: "capture that as a meeting note",
+    AgenticActionType.SUMMARY_REQUEST: "pull together a summary",
+}
+
+
+def _verb(action_type: AgenticActionType) -> str:
+    return _VERBS.get(action_type, "do that")
+
+
+def _disambig_options(primary: AgenticActionType) -> list[str]:
+    opts = [primary.value]
+    neigh = _NEIGHBOUR.get(primary)
+    if neigh is not None:
+        opts.append(neigh.value)
+    opts.append(AgenticActionType.CONVERSATION.value)
+    return opts
 
 
 class SessionWorker(threading.Thread):
@@ -140,6 +220,7 @@ class SessionWorker(threading.Thread):
         router: RetrievalRouter | None = None,
         orchestrator: GenerationOrchestrator | None = None,
         pipeline: SessionIngestionPipeline | None = None,
+        slot_extractor: SlotExtractor | None = None,
     ) -> None:
         super().__init__(daemon=True, name="companion-session-worker")
         self._db_path = db_path
@@ -155,6 +236,7 @@ class SessionWorker(threading.Thread):
         self._inj_router = router
         self._inj_orchestrator = orchestrator
         self._inj_pipeline = pipeline
+        self._inj_slot_extractor = slot_extractor
         self._injected = all(x is not None for x in (agent, router, orchestrator, pipeline))
 
         self._queue: queue.Queue[tuple[Callable[[], Any], Future] | None] = queue.Queue()
@@ -167,6 +249,7 @@ class SessionWorker(threading.Thread):
         self._session_id: str | None = None
         self._turn_count = 0
         self._last_activity = now_iso()
+        self._pending_action: PendingAction | None = None
 
         # built in run()'s prologue
         self._conn: Any = None
@@ -181,6 +264,7 @@ class SessionWorker(threading.Thread):
         self._agent: RetrievalAgent | None = None
         self._orchestrator: GenerationOrchestrator | None = None
         self._pipeline: SessionIngestionPipeline | None = None
+        self._slot_extractor: SlotExtractor | None = None
         self._ingest_pending = False
         #: captured in _build() (worker thread), read only by reconciliation()
         #: (also worker thread) — no lock. Never cleared until the next launch.
@@ -282,6 +366,7 @@ class SessionWorker(threading.Thread):
         """(Re)build only the model-bound objects — the router / reranker /
         embedder / store are model-agnostic and stay put. A no-op when the
         bundle is fully injected (tests)."""
+        self._slot_extractor = self._inj_slot_extractor or SlotExtractor(model=active_model)
         if self._injected:
             self._agent = self._inj_agent
             self._orchestrator = self._inj_orchestrator
@@ -337,6 +422,7 @@ class SessionWorker(threading.Thread):
     def new_conversation(self) -> str:
         self._raise_if_unavailable()
         assert self._repo is not None
+        self._pending_action = None
         if self._session_id is not None:
             self._close_session(self._session_id, "explicit")
         self._session_id = self._repo.create_session()
@@ -356,6 +442,7 @@ class SessionWorker(threading.Thread):
         runs it synchronously so nothing is dropped.
         """
         assert session_id and self._repo is not None
+        self._pending_action = None  # a disambiguation never survives a session boundary
         self._repo.finalize_session(session_id, reason)
         if self._shutting_down:
             self._reingest(session_id)
@@ -396,10 +483,20 @@ class SessionWorker(threading.Thread):
         session_id = self._session_id or self._repo.create_session()
         self._session_id = session_id
 
+        # Any new chat.send discards a pending Tier-2 disambiguation (roadmap:
+        # "Dismissible — falls through to Tier 4"). The dedicated
+        # chat.confirm_action method is the only way to resolve one.
+        dismissed_pending = self._pending_action is not None
+        self._pending_action = None
+
         history = self._repo.recent_turns(session_id, self._history_turns)  # prior turns only
         user_idx = self._repo.append_message(session_id, "user", text)
 
         ao = self._agent.reason(text, history)
+        tier = _tier(ao.confidence)
+        feature: dict | None = None
+        conflict: dict | None = None
+        disambiguation: dict | None = None
         warnings: list[str] = []
         citations: list[dict[str, str]] = []
         is_grounded = False
@@ -407,7 +504,27 @@ class SessionWorker(threading.Thread):
         retrieval_ms = 0.0
         chunk_count = 0
 
-        if ao.retrieve_needed:
+        if ao.action_type in _ACTIONABLE and tier == 1:
+            # Tier 1 — auto-execute. No retrieval / generation.
+            outcome = self._execute_action(ao.action_type, text)
+            answer = outcome.answer
+            feature = outcome.feature
+            conflict = outcome.conflict
+        elif ao.action_type in _ACTIONABLE and tier == 2:
+            # Tier 2 — disambiguation popup; the frontend resolves via chat.confirm_action.
+            pa_id = f"pa-{uuid.uuid4().hex[:12]}"
+            self._pending_action = PendingAction(
+                pa_id, ao.action_type, text, ao.response, now_iso()
+            )
+            answer = f"Did you want me to {_verb(ao.action_type)}, or is this something else?"
+            disambiguation = {
+                "pending_action_id": pa_id,
+                "options": _disambig_options(ao.action_type),
+            }
+        elif ao.action_type in _ACTIONABLE and tier == 3:
+            # Tier 3 — clarification prompt, conversation continues.
+            answer = _CLARIFICATIONS.get(ao.action_type, "Could you rephrase that?")
+        elif ao.retrieve_needed:
             t0 = time.time()
             chunks: list[SessionRetrievedChunk] = self._router.route(ao, text)
             retrieval_ms = (time.time() - t0) * 1000
@@ -476,7 +593,7 @@ class SessionWorker(threading.Thread):
             turn_index=user_idx,
             answer=answer,
             confidence=ao.confidence,
-            tier=_tier(ao.confidence),
+            tier=tier,
             action_type=ao.action_type.value,
             retrieve_needed=ao.retrieve_needed,
             retrieval_route=ao.retrieval_route.value if ao.retrieve_needed else None,
@@ -484,6 +601,89 @@ class SessionWorker(threading.Thread):
             grounding_confidence=grounding_confidence,
             citations=citations,
             warnings=warnings,
+            feature=feature,
+            disambiguation=disambiguation,
+            conflict=conflict,
+            dismissed_pending=dismissed_pending,
+        )
+
+    def confirm_action(self, pending_action_id: str, choice: str) -> ChatResult:
+        """Resolve a Tier-2 disambiguation. ``choice`` is an action-type value
+        or ``"conversation"`` (dismiss)."""
+        self._raise_if_unavailable()
+        assert self._repo is not None
+        pa = self._pending_action
+        if pa is None or pa.id != pending_action_id:
+            raise MethodError(
+                "no_pending_action", "that confirmation has expired — send your message again"
+            )
+        self._pending_action = None
+        session_id = self._session_id or self._repo.create_session()
+        self._session_id = session_id
+
+        feature: dict | None = None
+        conflict: dict | None = None
+        if choice in (AgenticActionType.CONVERSATION.value, AgenticActionType.NONE.value):
+            answer = pa.ao_response or "Okay, never mind."
+            action_type = AgenticActionType.CONVERSATION.value
+            tier = 4
+        else:
+            try:
+                chosen = AgenticActionType(choice)
+            except ValueError:
+                chosen = pa.action_type
+            outcome = self._execute_action(chosen, pa.utterance)
+            answer, feature, conflict = outcome.answer, outcome.feature, outcome.conflict
+            action_type = chosen.value
+            tier = 1
+
+        turn_index = self._repo.append_message(session_id, "assistant", answer)
+        self._turn_count += 1
+        self._record_metrics(
+            ao=None,
+            answer=answer,
+            retrieval_ms=0.0,
+            chunk_count=0,
+            is_grounded=False,
+            citation_count=0,
+        )
+        if self._shutting_down:
+            self._reingest(session_id)
+        else:
+            self._enqueue_followup(lambda: self._reingest(session_id))
+        self._last_activity = now_iso()
+
+        return ChatResult(
+            session_id=session_id,
+            turn_index=turn_index,
+            answer=answer,
+            confidence=1.0 if tier == 1 else 0.0,
+            tier=tier,
+            action_type=action_type,
+            retrieve_needed=False,
+            retrieval_route=None,
+            is_grounded=False,
+            grounding_confidence=0.0,
+            feature=feature,
+            conflict=conflict,
+        )
+
+    def _execute_action(
+        self, action_type: AgenticActionType, utterance: str
+    ) -> action_dispatch.DispatchOutcome:
+        if action_type == AgenticActionType.MEETING_NOTE:
+            slots: dict[str, object] = {}  # capture_meeting_note self-extracts
+        else:
+            assert self._slot_extractor is not None
+            slots = self._slot_extractor.extract(action_type, utterance, now_iso())
+        return action_dispatch.dispatch(
+            action_type,
+            slots,
+            utterance,
+            conn=self._conn,
+            session_id=self._session_id,
+            bridge=NoOpToastBridge(),
+            model=self._bound_model,
         )
 
     # ------------------------------------------------------------------
@@ -522,6 +722,8 @@ class SessionWorker(threading.Thread):
     ) -> None:
         if self._metrics is None:
             return
+        confidence = ao.confidence if ao is not None else 0.0
+        route = ao.retrieval_route.value if (ao is not None and ao.retrieve_needed) else "none"
         try:
             self._metrics.record(
                 PipelineCallMetrics(
@@ -529,16 +731,14 @@ class SessionWorker(threading.Thread):
                     env="backend",
                     query="",  # project_logic §6.1 — no message content in metrics
                     retrieval_time_ms=retrieval_ms,
-                    confidence_score=ao.confidence,
-                    confidence_level=_confidence_level(ao.confidence).value,
+                    confidence_score=confidence,
+                    confidence_level=_confidence_level(confidence).value,
                     retrieval_hit=chunk_count > 0,
                     candidates_retrieved=chunk_count,
                     is_grounded=is_grounded,
                     citations_count=citation_count,
                     model_name=self._bound_model,
-                    retrieval_pipeline_name=(
-                        ao.retrieval_route.value if ao.retrieve_needed else "none"
-                    ),
+                    retrieval_pipeline_name=route,
                 )
             )
         except Exception:  # noqa: BLE001

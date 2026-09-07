@@ -20,11 +20,9 @@ validation failure degrades to a safe conversational ``AgenticOutput``
 rather than raising into the request path.
 """
 
-import json
-import re
-
 from pydantic import ValidationError
 
+from src.common.json_recovery import recover_json
 from src.common.llm_client import ProviderRegistry, simple_generate
 from src.common.types import (
     AgenticActionType,
@@ -124,32 +122,9 @@ New message:
 
     @staticmethod
     def _parse_json(raw: str) -> dict:
-        text = raw.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as e:
-            match = re.search(r"\{.*\}", text, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-            # Small local models routinely drop the closing brace after the
-            # final "response" string — balance braces and retry once.
-            start = text.find("{")
-            opened = text.count("{") - text.count("}")
-            if start != -1 and opened > 0:
-                repaired = text[start:].rstrip().rstrip(",") + "}" * opened
-                try:
-                    return json.loads(repaired)
-                except json.JSONDecodeError:
-                    pass
-            raise ValueError(f"could not parse agentic output JSON: {raw[:200]}") from e
+        # Shared recovery (fence strip / {...} regex / brace-balance repair) —
+        # src/common/json_recovery.py.
+        return recover_json(raw)
 
     @staticmethod
     def _fallback(raw: str) -> AgenticOutput:

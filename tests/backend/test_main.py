@@ -203,6 +203,16 @@ def test_reminders_pending_event_not_emitted_when_empty(_fake_worker):
     assert _payloads(envs, "event", "app.reminders_pending") == []
 
 
+def test_chat_confirm_action_round_trips(_fake_worker):
+    rc, envs = _run(
+        _req("chat.confirm_action", "c", {"pending_action_id": "pa-1", "choice": "todo"}),
+        _req("app.shutdown", "z"),
+    )
+    assert rc == 0
+    res = _payloads(envs, "response", "chat.confirm_action")[0]["result"]
+    assert res["action_type"] == "todo" and res["feature"]["kind"] == "todo"
+
+
 def test_degraded_mode_blocks_chat(monkeypatch, _fake_worker):
     monkeypatch.setattr(
         main_mod, "check_integrity", lambda _c: IntegrityResult(ok=False, details=["x"])

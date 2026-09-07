@@ -25,6 +25,10 @@ from src.common.ipc.methods import (
     BackupRestoreResult,
     CatalogEntry,
     ChatCitation,
+    ChatConfirmActionParams,
+    ChatConflict,
+    ChatDisambiguation,
+    ChatFeature,
     ChatHistoryParams,
     ChatHistoryResult,
     ChatMessage,
@@ -190,9 +194,7 @@ def _app_shutdown(_p: BaseModel, ctx: HandlerContext, _rid: str) -> AppShutdownR
     return AppShutdownResult(stopping=True)
 
 
-def _chat_send(p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatSendResult:
-    assert isinstance(p, ChatSendParams)
-    r = _require_worker(ctx).send(p.text)  # runs on the worker thread (contract worker=True)
+def _chat_result(r) -> ChatSendResult:
     return ChatSendResult(
         session_id=r.session_id,
         turn_index=r.turn_index,
@@ -206,7 +208,21 @@ def _chat_send(p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatSendResult:
         grounding_confidence=r.grounding_confidence,
         citations=[ChatCitation(**c) for c in r.citations],
         warnings=r.warnings,
+        feature=ChatFeature(**r.feature) if r.feature else None,
+        disambiguation=ChatDisambiguation(**r.disambiguation) if r.disambiguation else None,
+        conflict=ChatConflict.model_validate(r.conflict) if r.conflict else None,
+        dismissed_pending=r.dismissed_pending,
     )
+
+
+def _chat_send(p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatSendResult:
+    assert isinstance(p, ChatSendParams)
+    return _chat_result(_require_worker(ctx).send(p.text))  # runs on the worker thread
+
+
+def _chat_confirm_action(p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatSendResult:
+    assert isinstance(p, ChatConfirmActionParams)
+    return _chat_result(_require_worker(ctx).confirm_action(p.pending_action_id, p.choice))
 
 
 def _chat_new(_p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatNewResult:
@@ -245,6 +261,7 @@ HANDLERS: dict[str, Handler] = {
     "backup.restore": _backup_restore,
     "app.shutdown": _app_shutdown,
     "chat.send": _chat_send,
+    "chat.confirm_action": _chat_confirm_action,
     "chat.new": _chat_new,
     "chat.history": _chat_history,
     "reminders.reconciliation": _reminders_reconciliation,

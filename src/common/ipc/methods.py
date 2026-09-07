@@ -202,6 +202,32 @@ class ChatCitation(_Result):
     approximate_timestamp: str
 
 
+class ChatFeature(_Result):
+    #: "reminder" | "todo" | "schedule_item" | "meeting_note" | "summary"
+    kind: str
+    id: str
+    summary: str
+
+
+class ChatDisambiguation(_Result):
+    pending_action_id: str
+    #: action-type values the user picks between (plus "conversation" to dismiss)
+    options: list[str]
+
+
+class ChatConflictItem(_Result):
+    id: str
+    title: str
+    start_time: str
+    end_time: str
+    location: str
+
+
+class ChatConflict(_Result):
+    attempted: ChatConflictItem
+    conflicts_with: list[ChatConflictItem]
+
+
 class ChatSendResult(_Result):
     session_id: str
     turn_index: int
@@ -214,8 +240,14 @@ class ChatSendResult(_Result):
     retrieval_route: str | None
     is_grounded: bool
     grounding_confidence: float
-    citations: list[ChatCitation]
-    warnings: list[str]
+    citations: list[ChatCitation] = []
+    warnings: list[str] = []
+    #: 3.1d — a Tier-1 actionable message's outcome
+    feature: ChatFeature | None = None
+    disambiguation: ChatDisambiguation | None = None
+    conflict: ChatConflict | None = None
+    #: a stale disambiguation popup was just discarded by this message
+    dismissed_pending: bool = False
 
 
 class ChatNewParams(_Params):
@@ -240,6 +272,16 @@ class ChatMessage(_Result):
 class ChatHistoryResult(_Result):
     session_id: str
     messages: list[ChatMessage]
+
+
+class ChatConfirmActionParams(_Params):
+    pending_action_id: str = Field(min_length=1)
+    #: an action-type value, or "conversation" to dismiss
+    choice: str = Field(min_length=1)
+
+
+#: same shape as chat.send's result
+ChatConfirmActionResult = ChatSendResult
 
 
 # --------------------------------------------------------------------------
@@ -317,6 +359,9 @@ METHOD_CONTRACTS: dict[str, MethodContract] = {
     "chat.send": MethodContract(ChatSendParams, ChatSendResult, worker=True),
     "chat.new": MethodContract(ChatNewParams, ChatNewResult, worker=True),
     "chat.history": MethodContract(ChatHistoryParams, ChatHistoryResult, worker=True),
+    "chat.confirm_action": MethodContract(
+        ChatConfirmActionParams, ChatConfirmActionResult, worker=True
+    ),
     "reminders.reconciliation": MethodContract(
         RemindersReconciliationParams, RemindersReconciliationResult, worker=True
     ),

@@ -70,11 +70,26 @@ class FakePipeline:
         return SimpleNamespace(session_id=session_id)
 
 
+class FakeSlotExtractor:
+    def __init__(self, slots=None):
+        self.slots = slots or {}
+        self.calls: list = []
+
+    def extract(self, action_type, utterance, now):
+        self.calls.append((action_type, utterance))
+        return dict(self.slots)
+
+
 def _ao(
-    *, retrieve_needed=False, route=RetrievalRoute.SEMANTIC, confidence=0.9, response="hi there"
+    *,
+    action_type=AgenticActionType.CONVERSATION,
+    retrieve_needed=False,
+    route=RetrievalRoute.SEMANTIC,
+    confidence=0.9,
+    response="hi there",
 ):
     return AgenticOutput(
-        action_type=AgenticActionType.CONVERSATION,
+        action_type=action_type,
         confidence=confidence,
         retrieve_needed=retrieve_needed,
         retrieval_route=route,
@@ -87,6 +102,7 @@ def _worker(keyed_db, tmp_path, monkeypatch, *, agent, router=None, orch=None, p
     monkeypatch.setenv("RAGPIPE_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("RAGPIPE_APP_CONFIG_PATH", str(tmp_path / "app_config.json"))
     AppConfig.load(None).set_active_model("llama3.1:8b")
+    kw.setdefault("slot_extractor", FakeSlotExtractor())
     w = SessionWorker(
         keyed_db,
         app_config_path=str(tmp_path / "app_config.json"),
@@ -330,5 +346,146 @@ def test_reconciliation_and_on_ready(keyed_db, tmp_path, monkeypatch):
         assert len(seen) == 1 and [r.id for r in seen[0].overdue] == ["r1"]
         recon = _call(w, w.reconciliation)
         assert [r.id for r in recon.overdue] == ["r1"]
+    finally:
+        w.stop(timeout=30)
+
+
+# -- 3.1d: slot extraction + tier dispatch -------------------------------------
+
+REM = AgenticActionType.REMINDER
+
+
+def _rem_slots():
+    return {"title": "call the dentist", "scheduled_time": "2026-09-10T15:00:00+00:00"}
+
+
+def test_tier1_actionable_creates_the_entity_and_skips_generation(keyed_db, tmp_path, monkeypatch):
+    orch = FakeOrchestrator()
+    slot = FakeSlotExtractor(_rem_slots())
+    w = _worker(
+        keyed_db,
+        tmp_path,
+        monkeypatch,
+        agent=FakeAgent(_ao(action_type=REM, confidence=0.95)),
+        orch=orch,
+        slot_extractor=slot,
+    )
+    try:
+        res = _call(w, lambda: w.send("remind me to call the dentist thursday at 3"))
+        assert res.tier == 1 and res.feature and res.feature["kind"] == "reminder"
+        assert orch.requests == []  # no generation on the Tier-1 path
+        assert slot.calls and slot.calls[0][0] == REM
+        conn = open_session_db(keyed_db)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM reminders").fetchone()[0] == 1
+            roles = [r[0] for r in conn.execute("SELECT role FROM messages ORDER BY turn_index")]
+        finally:
+            conn.close()
+        assert roles == ["user", "assistant"]
+    finally:
+        w.stop(timeout=30)
+
+
+def test_tier2_disambiguation_then_confirm(keyed_db, tmp_path, monkeypatch):
+    w = _worker(
+        keyed_db,
+        tmp_path,
+        monkeypatch,
+        agent=FakeAgent(_ao(action_type=REM, confidence=0.78, response="I could set a reminder.")),
+        slot_extractor=FakeSlotExtractor(_rem_slots()),
+    )
+    try:
+        res = _call(w, lambda: w.send("dentist thursday"))
+        assert res.tier == 2 and res.disambiguation
+        pa_id = res.disambiguation["pending_action_id"]
+        assert "reminder" in res.disambiguation["options"]
+        conn = open_session_db(keyed_db)
+        assert conn.execute("SELECT COUNT(*) FROM reminders").fetchone()[0] == 0
+        conn.close()
+
+        # stale id rejected
+        with pytest.raises(MethodError):
+            _call(w, lambda: w.confirm_action("pa-bogus", "reminder"))
+
+        confirmed = _call(w, lambda: w.confirm_action(pa_id, "reminder"))
+        assert confirmed.feature and confirmed.feature["kind"] == "reminder"
+        conn = open_session_db(keyed_db)
+        assert conn.execute("SELECT COUNT(*) FROM reminders").fetchone()[0] == 1
+        conn.close()
+    finally:
+        w.stop(timeout=30)
+
+
+def test_confirm_action_dismiss_creates_nothing(keyed_db, tmp_path, monkeypatch):
+    w = _worker(
+        keyed_db,
+        tmp_path,
+        monkeypatch,
+        agent=FakeAgent(_ao(action_type=REM, confidence=0.75, response="Just chatting?")),
+        slot_extractor=FakeSlotExtractor(_rem_slots()),
+    )
+    try:
+        res = _call(w, lambda: w.send("hmm dentist"))
+        out = _call(
+            w, lambda: w.confirm_action(res.disambiguation["pending_action_id"], "conversation")
+        )
+        assert out.answer == "Just chatting?" and out.feature is None
+        conn = open_session_db(keyed_db)
+        assert conn.execute("SELECT COUNT(*) FROM reminders").fetchone()[0] == 0
+        conn.close()
+    finally:
+        w.stop(timeout=30)
+
+
+def test_new_send_dismisses_a_pending_action(keyed_db, tmp_path, monkeypatch):
+    w = _worker(
+        keyed_db,
+        tmp_path,
+        monkeypatch,
+        agent=FakeAgent(_ao(action_type=REM, confidence=0.78)),
+        slot_extractor=FakeSlotExtractor(_rem_slots()),
+    )
+    try:
+        first = _call(w, lambda: w.send("dentist thursday")).disambiguation["pending_action_id"]
+        res2 = _call(w, lambda: w.send("actually never mind, how are you"))
+        assert res2.dismissed_pending is True  # the first pending action was discarded
+        # (this message re-triggers Tier 2 with a *new* id — a fresh classification)
+        assert w._pending_action is not None and w._pending_action.id != first
+    finally:
+        w.stop(timeout=30)
+
+
+def test_tier3_clarification_no_pending_no_row(keyed_db, tmp_path, monkeypatch):
+    w = _worker(
+        keyed_db,
+        tmp_path,
+        monkeypatch,
+        agent=FakeAgent(_ao(action_type=REM, confidence=0.60)),
+        slot_extractor=FakeSlotExtractor(_rem_slots()),
+    )
+    try:
+        res = _call(w, lambda: w.send("something about the dentist maybe"))
+        assert res.tier == 3 and res.disambiguation is None and "Remind me" in res.answer
+        assert w._pending_action is None
+        conn = open_session_db(keyed_db)
+        assert conn.execute("SELECT COUNT(*) FROM reminders").fetchone()[0] == 0
+        conn.close()
+    finally:
+        w.stop(timeout=30)
+
+
+def test_pending_action_cleared_on_new_conversation(keyed_db, tmp_path, monkeypatch):
+    w = _worker(
+        keyed_db,
+        tmp_path,
+        monkeypatch,
+        agent=FakeAgent(_ao(action_type=REM, confidence=0.78)),
+        slot_extractor=FakeSlotExtractor(_rem_slots()),
+    )
+    try:
+        _call(w, lambda: w.send("dentist"))
+        assert w._pending_action is not None
+        _call(w, w.new_conversation)
+        assert w._pending_action is None
     finally:
         w.stop(timeout=30)
