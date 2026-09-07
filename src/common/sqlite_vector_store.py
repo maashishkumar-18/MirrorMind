@@ -63,6 +63,7 @@ class SQLiteVectorStore(VectorStoreInterface):
             raise ValueError("Pass exactly one of db_path or connection")
 
         self._conn = connection or open_session_db(db_path, key)  # type: ignore[arg-type]
+        self._owns_conn = connection is None
         set_session_row_factory(self._conn)
 
         if not self._table_exists("session_chunks"):
@@ -371,6 +372,13 @@ class SQLiteVectorStore(VectorStoreInterface):
             primary_chunks=primary,
             sub_chunks=len(self._ids) - primary,
         )
+
+    def close(self) -> None:
+        """Close the underlying connection. Only meaningful when the store was
+        constructed with ``db_path`` (it owns the connection); a store built
+        from an injected ``connection`` leaves closing to the owner. Idempotent."""
+        if self._owns_conn:
+            self._conn.close()
 
 
 def _blob_to_vector(blob: bytes) -> np.ndarray:

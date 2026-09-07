@@ -10,6 +10,9 @@ from src.common.ipc.methods import (
     AppStatusParams,
     BackupListParams,
     BackupRestoreParams,
+    ChatHistoryParams,
+    ChatNewParams,
+    ChatSendParams,
     HealthCheckParams,
     ModelActivateParams,
     ModelCatalogParams,
@@ -17,7 +20,7 @@ from src.common.ipc.methods import (
     ModelStatusParams,
 )
 from src.models.app_config import AppConfig
-from tests.backend.conftest import FakeModelManager, FakeOllama
+from tests.backend.conftest import FakeModelManager, FakeOllama, FakeSessionWorker
 
 
 def test_app_status_first_launch(ctx_factory, tmp_path):
@@ -42,10 +45,20 @@ def test_app_status_after_activation(ctx_factory, tmp_path):
     assert res.last_exported_at == "2026-09-01T00:00:00Z"
 
 
-def test_health_check_ok_on_fresh_db(ctx_factory):
-    ctx = ctx_factory()
+def test_health_check_goes_through_the_worker(ctx_factory):
+    from tests.backend.conftest import FakeSessionWorker
+
+    ctx = ctx_factory(worker=FakeSessionWorker(health_ok=True))
     res = handlers.HANDLERS["health.check"](HealthCheckParams(), ctx, "r")
     assert res.ok is True and res.details == ["ok"]
+
+
+def test_health_check_unavailable_without_worker(ctx_factory):
+    from src.backend.wire import MethodError
+
+    with pytest.raises(MethodError) as ei:
+        handlers.HANDLERS["health.check"](HealthCheckParams(), ctx_factory(), "r")
+    assert ei.value.code == "unavailable"
 
 
 def test_model_catalog(ctx_factory):
@@ -125,3 +138,33 @@ def test_backup_restore_invalid_snapshot(ctx_factory, tmp_path):
     with pytest.raises(MethodError) as ei:
         handlers.HANDLERS["backup.restore"](BackupRestoreParams(path=str(bad)), ctx, "r")
     assert ei.value.code == "restore_invalid"
+
+
+# -- chat handlers ----------------------------------------------------------
+
+
+def test_chat_send_maps_worker_result(ctx_factory):
+    ctx = ctx_factory(worker=FakeSessionWorker())
+    res = handlers.HANDLERS["chat.send"](ChatSendParams(text="hello"), ctx, "r")
+    assert res.answer == "echo: hello" and res.tier == 1 and res.retrieve_needed is False
+
+
+def test_chat_send_no_model_active_propagates(ctx_factory):
+    ctx = ctx_factory(worker=FakeSessionWorker(no_model=True))
+    with pytest.raises(MethodError) as ei:
+        handlers.HANDLERS["chat.send"](ChatSendParams(text="hi"), ctx, "r")
+    assert ei.value.code == "no_model_active"
+
+
+def test_chat_new_and_history(ctx_factory):
+    ctx = ctx_factory(worker=FakeSessionWorker())
+    new = handlers.HANDLERS["chat.new"](ChatNewParams(), ctx, "r")
+    assert new.session_id == "session_0000"
+    hist = handlers.HANDLERS["chat.history"](ChatHistoryParams(), ctx, "r")
+    assert hist.messages == []
+
+
+def test_chat_handler_without_worker_is_unavailable(ctx_factory):
+    with pytest.raises(MethodError) as ei:
+        handlers.HANDLERS["chat.send"](ChatSendParams(text="x"), ctx_factory(), "r")
+    assert ei.value.code == "unavailable"

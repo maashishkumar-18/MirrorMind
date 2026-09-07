@@ -12,7 +12,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from src.common.llm_client import simple_generate
+from src.common.llm_client import ProviderRegistry, simple_generate
 from src.common.types import AgenticActionType, SessionMessage
 
 _ACTION_TYPES = sorted(a.value for a in AgenticActionType)
@@ -35,6 +35,16 @@ class SessionMetadata:
 
 class MetadataExtractor:
     """Extracts :class:`SessionMetadata` from a conversation transcript."""
+
+    def __init__(
+        self, model: str | None = None, *, registry: ProviderRegistry | None = None
+    ) -> None:
+        # ``None`` keeps the historical behaviour (``simple_generate`` resolves
+        # ``$OLLAMA_DEFAULT_MODEL``); the Phase 3 backend passes the app-config
+        # active model so ingestion follows a Settings model switch. Mirrors
+        # ``RetrievalAgent.__init__``.
+        self._model = model
+        self._registry = registry
 
     def extract(
         self, session_id: str, messages: list[SessionMessage], timestamp: str
@@ -71,7 +81,9 @@ Rules:
 Transcript:
 {sample}
 """
-        response_text = simple_generate(prompt).strip()
+        response_text = simple_generate(
+            prompt, model_name=self._model, registry=self._registry
+        ).strip()
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
             if response_text.startswith("json"):

@@ -73,8 +73,8 @@ def test_handler_crash_becomes_internal_error_and_loop_survives(dispatcher_facto
     def boom(*_a, **_k):
         raise RuntimeError("kaboom")
 
-    monkeypatch.setitem(handlers.HANDLERS, "health.check", boom)
-    d.handle_raw(envelope("health.check", "r1"))
+    monkeypatch.setitem(handlers.HANDLERS, "model.catalog", boom)
+    d.handle_raw(envelope("model.catalog", "r1"))
     d.handle_raw(envelope("app.status", "r2"))
     d.close(wait=True)
 
@@ -98,3 +98,22 @@ def test_app_shutdown_acks_and_sets_flag(dispatcher_factory):
     assert d.shutdown_requested.is_set()
     resp = transport.by_type("response")[0]
     assert resp["payload"]["result"] == {"stopping": True}
+
+
+def test_worker_method_is_routed_to_the_worker(dispatcher_factory):
+    from tests.backend.conftest import FakeSessionWorker
+
+    fake = FakeSessionWorker()
+    d, transport, _ = dispatcher_factory(worker=fake)
+    d.handle_raw(envelope("chat.new", "r1"))
+    d.close(wait=True)
+    resp = transport.by_type("response")[0]
+    assert resp["payload"]["method"] == "chat.new"
+    assert resp["payload"]["result"]["session_id"] == "session_0000"
+
+
+def test_worker_method_without_a_worker_is_unavailable(dispatcher_factory):
+    d, transport, _ = dispatcher_factory()  # no worker
+    d.handle_raw(envelope("chat.send", "r1", {"text": "hi"}))
+    d.close(wait=True)
+    assert _errors(transport)[0]["code"] == "unavailable"

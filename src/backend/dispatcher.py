@@ -44,11 +44,15 @@ class Dispatcher:
         *,
         expected_version: int = CURRENT_IPC_VERSION,
         max_workers: int = 4,
+        worker: object | None = None,
     ) -> None:
         self._transport = transport
         self._ctx = ctx
         self._expected_version = expected_version
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ipc")
+        # the single-threaded SessionWorker (owns the session DB + vector index);
+        # worker=True methods hop onto it via .submit()
+        self._worker = worker
         self.shutdown_requested = threading.Event()
         #: set by a successful ``backup.restore`` — main exits 5, the supervisor swaps + relaunches
         self.restart_snapshot: str | None = None
@@ -129,6 +133,21 @@ class Dispatcher:
         if method == "app.shutdown":
             self._run(method, params, request_id)  # inline: ack before the drain
             return
+
+        if contract.worker:
+            if self._worker is None:
+                self._transport.send(
+                    make_error(
+                        request_id,
+                        "unavailable",
+                        "chat features are not available right now",
+                        method,
+                    )
+                )
+                return
+            self._worker.submit(lambda: self._run(method, params, request_id))  # type: ignore[attr-defined]
+            return
+
         self._executor.submit(self._run, method, params, request_id)
 
     def _run(self, method: str, params: BaseModel, request_id: str) -> None:

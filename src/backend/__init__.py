@@ -21,6 +21,8 @@ This package holds the backend's share:
 
 from src.backend.dispatcher import Dispatcher
 from src.backend.lifecycle import ShutdownCoordinator, ShutdownStepResult
+from src.backend.session_repository import SessionRepository
+from src.backend.session_worker import ChatResult, SessionWorker
 from src.backend.single_instance import AlreadyRunningError, SingleInstanceGuard
 from src.backend.transport import StdioTransport
 from src.backend.wire import HandlerContext, MethodError
@@ -32,9 +34,12 @@ from src.backend.wire import HandlerContext, MethodError
 
 __all__ = [
     "AlreadyRunningError",
+    "ChatResult",
     "Dispatcher",
     "HandlerContext",
     "MethodError",
+    "SessionRepository",
+    "SessionWorker",
     "ShutdownCoordinator",
     "ShutdownStepResult",
     "SingleInstanceGuard",

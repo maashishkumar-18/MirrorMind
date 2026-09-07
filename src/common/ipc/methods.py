@@ -190,6 +190,59 @@ class AppShutdownResult(_Result):
 
 
 # --------------------------------------------------------------------------
+# chat.send / chat.new / chat.history  (routed to the SessionWorker thread)
+# --------------------------------------------------------------------------
+class ChatSendParams(_Params):
+    text: str = Field(min_length=1)
+
+
+class ChatCitation(_Result):
+    chunk_id: str
+    session_id: str
+    approximate_timestamp: str
+
+
+class ChatSendResult(_Result):
+    session_id: str
+    turn_index: int
+    answer: str
+    confidence: float
+    #: project_logic §3: 1 auto-execute, 2 disambiguation, 3 clarification, 4 conversation
+    tier: int
+    action_type: str
+    retrieve_needed: bool
+    retrieval_route: str | None
+    is_grounded: bool
+    grounding_confidence: float
+    citations: list[ChatCitation]
+    warnings: list[str]
+
+
+class ChatNewParams(_Params):
+    pass
+
+
+class ChatNewResult(_Result):
+    session_id: str
+
+
+class ChatHistoryParams(_Params):
+    session_id: str | None = None
+
+
+class ChatMessage(_Result):
+    turn_index: int
+    role: str
+    content: str
+    created_at: str
+
+
+class ChatHistoryResult(_Result):
+    session_id: str
+    messages: list[ChatMessage]
+
+
+# --------------------------------------------------------------------------
 # Lifecycle events (server-initiated; no request/params from the frontend)
 # --------------------------------------------------------------------------
 class AppReadyEvent(_Result):
@@ -218,11 +271,14 @@ class MethodContract(NamedTuple):
     result: type[BaseModel]
     #: served while the backend is in degraded (integrity-failed) mode
     degraded_ok: bool = False
+    #: runs on the single-threaded SessionWorker (owns the session DB
+    #: connection + the vector index), not the dispatcher's general pool
+    worker: bool = False
 
 
 METHOD_CONTRACTS: dict[str, MethodContract] = {
     "app.status": MethodContract(AppStatusParams, AppStatusResult, degraded_ok=True),
-    "health.check": MethodContract(HealthCheckParams, HealthCheckResult),
+    "health.check": MethodContract(HealthCheckParams, HealthCheckResult, worker=True),
     "model.catalog": MethodContract(ModelCatalogParams, ModelCatalogResult),
     "model.status": MethodContract(ModelStatusParams, ModelStatusResult),
     "model.download": MethodContract(ModelDownloadParams, ModelDownloadResult),
@@ -230,4 +286,7 @@ METHOD_CONTRACTS: dict[str, MethodContract] = {
     "backup.list": MethodContract(BackupListParams, BackupListResult, degraded_ok=True),
     "backup.restore": MethodContract(BackupRestoreParams, BackupRestoreResult, degraded_ok=True),
     "app.shutdown": MethodContract(AppShutdownParams, AppShutdownResult, degraded_ok=True),
+    "chat.send": MethodContract(ChatSendParams, ChatSendResult, worker=True),
+    "chat.new": MethodContract(ChatNewParams, ChatNewResult, worker=True),
+    "chat.history": MethodContract(ChatHistoryParams, ChatHistoryResult, worker=True),
 }

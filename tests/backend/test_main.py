@@ -18,6 +18,7 @@ import pytest
 import src.backend.main as main_mod
 from db.health import IntegrityResult
 from src.security.errors import PreviousDataUnrecoverableError
+from tests.backend.conftest import FakeSessionWorker
 
 KEY = "a" * 64
 
@@ -29,6 +30,23 @@ def _isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
     monkeypatch.delenv("OLLAMA_DEFAULT_MODEL", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _fake_worker(monkeypatch, request):
+    """Swap the real SessionWorker (loads all-MiniLM + a cross-encoder) for a
+    synchronous fake in every in-process main test. The subprocess smoke
+    (``@pytest.mark.integration``) runs its own process and is unaffected."""
+    if "integration" in request.keywords:
+        return None
+    holder = {}
+
+    def _factory(*_a, **_k):
+        holder["worker"] = FakeSessionWorker()
+        return holder["worker"]
+
+    monkeypatch.setattr(main_mod, "SessionWorker", _factory)
+    return holder
 
 
 def _run(*messages: dict) -> tuple[int, list[dict]]:
@@ -140,6 +158,36 @@ def test_backup_restore_stages_and_exits_5(tmp_path):
     assert staged and staged[0]["params"]["validated_snapshot_path"]
     resp = _payloads(envs, "response", "backup.restore")[0]["result"]
     assert resp["ok"] is True and resp["needs_restart"] is True
+
+
+def test_chat_new_and_send_in_process(_fake_worker):
+    rc, envs = _run(
+        _req("chat.new", "a"),
+        _req("chat.send", "b", {"text": "hello there"}),
+        _req("chat.history", "c"),
+        _req("app.shutdown", "z"),
+    )
+    assert rc == 0
+    assert _payloads(envs, "response", "chat.new")[0]["result"]["session_id"] == "session_0000"
+    sent = _payloads(envs, "response", "chat.send")[0]["result"]
+    assert sent["answer"] == "echo: hello there" and sent["tier"] == 1
+    assert _payloads(envs, "response", "chat.history")[0]["result"]["messages"] == []
+    assert _fake_worker["worker"].stopped is True
+
+
+def test_chat_send_bad_params_is_validation_error(_fake_worker):
+    rc, envs = _run(_req("chat.send", "b", {"text": ""}), _req("app.shutdown", "z"))
+    assert rc == 0
+    assert _payloads(envs, "error")[0]["code"] == "validation_error"
+
+
+def test_degraded_mode_blocks_chat(monkeypatch, _fake_worker):
+    monkeypatch.setattr(
+        main_mod, "check_integrity", lambda _c: IntegrityResult(ok=False, details=["x"])
+    )
+    rc, envs = _run(_req("chat.send", "b", {"text": "hi"}), _req("app.shutdown", "z"))
+    assert rc == 0
+    assert _payloads(envs, "error")[0]["code"] in {"integrity_failed", "unavailable"}
 
 
 @pytest.mark.integration

@@ -18,6 +18,7 @@ Usage:
 import logging
 import time
 import uuid
+from dataclasses import replace
 from typing import Any
 
 from dotenv import load_dotenv
@@ -55,11 +56,19 @@ class GenerationOrchestrator:
         prompt_builder: PromptBuilder | None = None,
         llm_client: LLMClient | None = None,
         post_processor: PostProcessor | None = None,
+        *,
+        model_name: str | None = None,
     ):
         self.config = config or GenerationConfig.from_yaml(config_dir)
         self.prompt_builder = prompt_builder or PromptBuilder()
         self.llm_client = llm_client or LLMClient()
         self.post_processor = post_processor or PostProcessor(config=self.config.post_processing)
+        # When set, overrides the resolved ModelConfig.model_name for every
+        # request — the Phase 3 backend passes the app-config active model so
+        # generation follows a Settings model switch without a restart
+        # (project_logic.md §8; the first-launch gate itself is enforced by the
+        # caller via model_setup_required()).
+        self._model_name = model_name
 
     def generate(self, request: GenerationRequest) -> GenerationResponse:
         """
@@ -107,6 +116,8 @@ class GenerationOrchestrator:
         try:
             mode_config = self.config.get_mode_config(request.mode)
             model_config = self.config.get_model_config(mode_config.model_key)
+            if self._model_name:
+                model_config = replace(model_config, model_name=self._model_name)
         except Exception as e:
             logger.error(f"Configuration resolution failed: {e}")
             return self._build_error_response(

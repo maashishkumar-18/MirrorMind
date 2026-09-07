@@ -77,6 +77,84 @@ class FakeModelManager:
         return DownloadResult(model_name=name, status="complete", verified=True)
 
 
+def _default_chat_result(text: str):
+    from src.backend.session_worker import ChatResult
+
+    return ChatResult(
+        session_id="session_0000",
+        turn_index=0,
+        answer=f"echo: {text}",
+        confidence=0.9,
+        tier=1,
+        action_type="conversation",
+        retrieve_needed=False,
+        retrieval_route=None,
+        is_grounded=False,
+        grounding_confidence=0.0,
+    )
+
+
+class FakeSessionWorker:
+    """Stand-in for SessionWorker — synchronous, no thread, no model loads.
+    ``submit(fn)`` runs ``fn`` inline so the dispatcher's worker path is
+    exercised without spinning a real thread."""
+
+    def __init__(self, *, health_ok: bool = True, send_result=None, no_model: bool = False):
+        from db.health import IntegrityResult
+
+        self._health = IntegrityResult(ok=health_ok, details=["ok"] if health_ok else ["bad"])
+        self._send_result = send_result
+        self._no_model = no_model
+        self.sessions: list[str] = []
+        self.sent: list[str] = []
+        self.started = False
+        self.stopped = False
+
+    # lifecycle (used when patched into main)
+    def start(self) -> None:
+        self.started = True
+
+    def wait_ready(self, timeout=None) -> bool:
+        return True
+
+    def stop(self, timeout: float = 15.0) -> bool:
+        self.stopped = True
+        return True
+
+    def submit(self, fn):
+        from concurrent.futures import Future
+
+        fut: Future = Future()
+        try:
+            fut.set_result(fn())
+        except BaseException as exc:  # noqa: BLE001
+            fut.set_exception(exc)
+        return fut
+
+    def health(self):
+        return self._health
+
+    def new_conversation(self) -> str:
+        sid = f"session_{len(self.sessions):04d}"
+        self.sessions.append(sid)
+        return sid
+
+    def history(self, session_id):
+        return session_id or "session_0000", []
+
+    def send(self, text: str):
+        from src.backend.wire import MethodError
+
+        self.sent.append(text)
+        if self._no_model:
+            raise MethodError("no_model_active", "no model")
+        return (
+            self._send_result(text)
+            if callable(self._send_result)
+            else (self._send_result or _default_chat_result(text))
+        )
+
+
 @pytest.fixture
 def keyed_db(tmp_path: Path) -> str:
     path = str(tmp_path / "session.db")
@@ -91,7 +169,9 @@ def ctx_factory(keyed_db, tmp_path):
 
     conns: list = []
 
-    def _make(*, degraded: bool = False, ollama=None, models=None, app_config_path=None):
+    def _make(
+        *, degraded: bool = False, ollama=None, models=None, app_config_path=None, worker=None
+    ):
         conn = open_session_db(keyed_db)
         conns.append(conn)
         backups = BackupManager(
@@ -104,6 +184,7 @@ def ctx_factory(keyed_db, tmp_path):
             backups=backups,
             app_config_path=app_config_path,
             degraded=degraded,
+            worker=worker,
         )
 
     yield _make
@@ -133,7 +214,7 @@ def dispatcher_factory(ctx_factory):
     def _make(**ctx_kwargs) -> tuple[Dispatcher, CollectingTransport, HandlerContext]:
         transport = CollectingTransport()
         ctx = ctx_factory(**ctx_kwargs)
-        d = Dispatcher(transport, ctx, max_workers=2)
+        d = Dispatcher(transport, ctx, max_workers=2, worker=ctx_kwargs.get("worker"))
         made.append(d)
         return d, transport, ctx
 

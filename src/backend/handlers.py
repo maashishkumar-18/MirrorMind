@@ -14,7 +14,6 @@ from collections.abc import Callable
 
 from pydantic import BaseModel
 
-from db.health import check_quick
 from src.backend.wire import HandlerContext, MethodError
 from src.common.ipc.envelope import CURRENT_IPC_VERSION
 from src.common.ipc.methods import (
@@ -24,6 +23,13 @@ from src.common.ipc.methods import (
     BackupListResult,
     BackupRestoreResult,
     CatalogEntry,
+    ChatCitation,
+    ChatHistoryParams,
+    ChatHistoryResult,
+    ChatMessage,
+    ChatNewResult,
+    ChatSendParams,
+    ChatSendResult,
     HealthCheckResult,
     InstalledEntry,
     ModelActivateParams,
@@ -36,6 +42,13 @@ from src.common.ipc.methods import (
 )
 from src.models.app_config import AppConfig
 from src.models.types import DownloadProgress, ModelDownloadError
+
+
+def _require_worker(ctx: HandlerContext):
+    if ctx.worker is None:
+        raise MethodError("unavailable", "chat features are not available right now")
+    return ctx.worker
+
 
 Handler = Callable[[BaseModel, HandlerContext, str], BaseModel]
 
@@ -53,7 +66,9 @@ def _app_status(_p: BaseModel, ctx: HandlerContext, _rid: str) -> AppStatusResul
 
 
 def _health_check(_p: BaseModel, ctx: HandlerContext, _rid: str) -> HealthCheckResult:
-    res = check_quick(ctx.conn)
+    # Routed to the SessionWorker thread (contract worker=True) — the session
+    # connection is thread-affine and lives on that thread.
+    res = _require_worker(ctx).health()
     return HealthCheckResult(ok=res.ok, details=res.details)
 
 
@@ -172,6 +187,38 @@ def _app_shutdown(_p: BaseModel, ctx: HandlerContext, _rid: str) -> AppShutdownR
     return AppShutdownResult(stopping=True)
 
 
+def _chat_send(p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatSendResult:
+    assert isinstance(p, ChatSendParams)
+    r = _require_worker(ctx).send(p.text)  # runs on the worker thread (contract worker=True)
+    return ChatSendResult(
+        session_id=r.session_id,
+        turn_index=r.turn_index,
+        answer=r.answer,
+        confidence=r.confidence,
+        tier=r.tier,
+        action_type=r.action_type,
+        retrieve_needed=r.retrieve_needed,
+        retrieval_route=r.retrieval_route,
+        is_grounded=r.is_grounded,
+        grounding_confidence=r.grounding_confidence,
+        citations=[ChatCitation(**c) for c in r.citations],
+        warnings=r.warnings,
+    )
+
+
+def _chat_new(_p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatNewResult:
+    return ChatNewResult(session_id=_require_worker(ctx).new_conversation())
+
+
+def _chat_history(p: BaseModel, ctx: HandlerContext, _rid: str) -> ChatHistoryResult:
+    assert isinstance(p, ChatHistoryParams)
+    session_id, rows = _require_worker(ctx).history(p.session_id)
+    return ChatHistoryResult(
+        session_id=session_id,
+        messages=[ChatMessage(**row) for row in rows],  # type: ignore[arg-type]
+    )
+
+
 HANDLERS: dict[str, Handler] = {
     "app.status": _app_status,
     "health.check": _health_check,
@@ -182,4 +229,7 @@ HANDLERS: dict[str, Handler] = {
     "backup.list": _backup_list,
     "backup.restore": _backup_restore,
     "app.shutdown": _app_shutdown,
+    "chat.send": _chat_send,
+    "chat.new": _chat_new,
+    "chat.history": _chat_history,
 }

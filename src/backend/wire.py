@@ -12,12 +12,16 @@ import sqlite3
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from src.common.ipc.envelope import CURRENT_IPC_VERSION
 from src.features.backup_manager import BackupManager
 from src.features.base import now_iso
 from src.models.model_manager import ModelManager
 from src.models.ollama_manager import OllamaManager
+
+if TYPE_CHECKING:
+    from src.backend.session_worker import SessionWorker
 
 EventEmitter = Callable[[str, dict, str], None]  # (method, params, request_id)
 
@@ -38,12 +42,16 @@ class HandlerContext:
     process, shared across worker threads (each primitive is either read-only
     here or does its own locking / short-lived connections)."""
 
-    conn: sqlite3.Connection
     ollama: OllamaManager
     models: ModelManager
     backups: BackupManager
     app_config_path: str | None
     degraded: bool = False
+    #: only set in degraded mode (integrity failed, no worker); healthy-mode
+    #: DB access all goes through the worker's own connection
+    conn: sqlite3.Connection | None = None
+    #: the single-threaded chat/DB worker; None in degraded mode
+    worker: SessionWorker | None = None
     #: wired by the Dispatcher after construction (always set in real use;
     #: tests that exercise a streaming / lifecycle handler pass their own).
     emit_event: EventEmitter | None = None

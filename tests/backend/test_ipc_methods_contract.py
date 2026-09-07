@@ -30,3 +30,15 @@ def test_params_models_reject_unknown_fields(name):
 def test_degraded_whitelist_is_the_expected_set():
     degraded_ok = {n for n, c in METHOD_CONTRACTS.items() if c.degraded_ok}
     assert degraded_ok == {"app.status", "backup.list", "backup.restore", "app.shutdown"}
+
+
+def test_worker_methods_are_the_expected_set():
+    worker = {n for n, c in METHOD_CONTRACTS.items() if c.worker}
+    assert worker == {"health.check", "chat.send", "chat.new", "chat.history"}
+
+
+def test_worker_methods_are_never_degraded_ok():
+    # in degraded mode there is no worker — a worker method must be blocked, not attempted
+    for name, c in METHOD_CONTRACTS.items():
+        if c.worker:
+            assert not c.degraded_ok, name

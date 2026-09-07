@@ -35,6 +35,7 @@ from src.backend.dispatcher import Dispatcher
 from src.backend.keys import resolve_db_key
 from src.backend.lifecycle import ShutdownCoordinator
 from src.backend.paths import session_db_path, snapshot_dir
+from src.backend.session_worker import SessionWorker
 from src.backend.single_instance import SingleInstanceGuard
 from src.backend.transport import StdioTransport
 from src.backend.wire import HandlerContext, make_error, make_event
@@ -87,22 +88,44 @@ def _serve(transport: StdioTransport) -> int:
     models = ModelManager(ollama, active_downloads=active_downloads)
     backups = BackupManager(db_path, key=key)
 
-    ctx = HandlerContext(
-        conn=conn,
-        ollama=ollama,
-        models=models,
-        backups=backups,
-        app_config_path=None,
-        degraded=degraded,
-    )
-    dispatcher = Dispatcher(transport, ctx)
-
     coordinator = ShutdownCoordinator()
     coordinator.register("tracing", shutdown_tracing)
-    coordinator.register("session_db", conn.close)
 
+    worker: SessionWorker | None = None
     scheduler: SchedulerThread | None = None
-    if not degraded:
+
+    if degraded:
+        # keep `conn` for potential degraded-mode diagnostics; nothing writes it
+        ctx = HandlerContext(
+            ollama=ollama,
+            models=models,
+            backups=backups,
+            app_config_path=None,
+            degraded=True,
+            conn=conn,
+        )
+        coordinator.register("session_db", conn.close)
+    else:
+        # The SessionWorker owns the only long-lived session connection + the
+        # keyed SQLiteVectorStore (both sqlite3 thread-affine). Close ours now.
+        conn.close()
+        worker = SessionWorker(db_path, key=key, app_config_path=None)
+        worker.start()
+        the_worker = worker
+        ctx = HandlerContext(
+            ollama=ollama,
+            models=models,
+            backups=backups,
+            app_config_path=None,
+            degraded=False,
+            worker=worker,
+        )
+
+        def _stop_worker() -> None:
+            the_worker.stop(timeout=15.0)
+
+        coordinator.register("session_worker", _stop_worker)
+
         scheduler = SchedulerThread(db_path, NoOpToastBridge(), key=key)
         scheduler.start()
         sched = scheduler
@@ -111,6 +134,8 @@ def _serve(transport: StdioTransport) -> int:
             sched.stop(timeout=5.0)
 
         coordinator.register("scheduler", _stop_scheduler)
+
+    dispatcher = Dispatcher(transport, ctx, worker=worker)
 
     _install_signal_handlers(dispatcher)
 
