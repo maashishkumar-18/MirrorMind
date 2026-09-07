@@ -12,8 +12,8 @@ from src.security.errors import DatabaseKeyError
 pytestmark = pytest.mark.integration
 
 PLAIN_HEADER = b"SQLite format 3\x00"
-KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0"
-OTHER_KEY = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100f"
+KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+OTHER_KEY = "ffeeddccbbaa99887766554433221100ffeeddccbbaa998877665544332211ff"
 
 
 def _read_header(path) -> bytes:
@@ -63,6 +63,21 @@ def test_no_key_still_opens_plaintext(tmp_path):
     conn.commit()
     conn.close()
     assert _read_header(db) == PLAIN_HEADER
+
+
+@pytest.mark.parametrize(
+    "bad_key",
+    ["", "tooshort", "g" * 64, KEY + "0", 'ab"; DROP TABLE t; --' + "0" * 40],
+)
+def test_malformed_key_raises_database_key_error_not_a_leak(tmp_path, bad_key):
+    # Phase 2 audit finding: an unvalidated key was string-formatted into the
+    # PRAGMA — a stray quote broke the statement (raising an unwrapped Warning)
+    # and leaked the connection. Now every non-64-hex key is a clean
+    # DatabaseKeyError before any connection is opened.
+    db = tmp_path / "session.db"
+    with pytest.raises(DatabaseKeyError):
+        open_session_db(str(db), bad_key)
+    assert not db.exists()  # nothing was opened/created
 
 
 class TestMigrationsUnderCipher:

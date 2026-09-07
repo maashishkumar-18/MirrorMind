@@ -180,23 +180,37 @@ class BackupManager:
                 False, False, f"snapshot failed integrity_check: {integrity.details}"
             )
 
+        # The live DB and its sidecars must go together: unlink the stale
+        # -wal/-shm *before* the swap so a crash in the tiny window after
+        # os.replace can't pair the new file with the old WAL.
         incoming = Path(f"{self._db_path}.incoming")
-        shutil.copy2(snapshot_path, incoming)
-        os.replace(incoming, self._db_path)
-        Path(f"{self._db_path}-wal").unlink(missing_ok=True)
-        Path(f"{self._db_path}-shm").unlink(missing_ok=True)
+        try:
+            shutil.copy2(snapshot_path, incoming)
+            Path(f"{self._db_path}-wal").unlink(missing_ok=True)
+            Path(f"{self._db_path}-shm").unlink(missing_ok=True)
+            os.replace(incoming, self._db_path)
+        except OSError as exc:
+            incoming.unlink(missing_ok=True)
+            # A live connection to the DB (backend not fully stopped) trips
+            # this on Windows -- surface it, don't raise from the recovery path.
+            return RestoreResult(False, False, f"could not swap in the snapshot: {exc}")
         return RestoreResult(True, True, f"restored from {snapshot_path.name}")
 
     def run_due_backup(self, now: str) -> BackupSnapshot | None:
         """Scheduler entry point. Idempotent like
         ``SummaryHandler.generate_due_summaries``: at most one backup per
-        calendar day, and only once ``now`` is past ``daily_time``."""
-        due_at = f"{now[:10]}T{self._config.daily_time}:00"
-        if now < due_at:
-            return None
-        if any(snap.created_at[:10] == now[:10] for snap in self.list_backups()):
-            return None
+        **UTC** calendar day, and only once ``now`` is past ``daily_time``
+        (``daily_time`` is UTC -- see config/features/backup.yaml). ``now`` may
+        carry any offset or none; it is normalised to UTC here so the
+        once-per-day guard and the filename stamp always agree."""
         when = datetime.fromisoformat(now.replace("Z", "+00:00"))
         if when.tzinfo is None:
             when = when.replace(tzinfo=UTC)
-        return self.create_backup(when=when.astimezone(UTC))
+        when = when.astimezone(UTC)
+        today = when.date().isoformat()
+
+        if when.strftime("%Y-%m-%dT%H:%M:%S") < f"{today}T{self._config.daily_time}:00":
+            return None
+        if any(snap.created_at[:10] == today for snap in self.list_backups()):
+            return None
+        return self.create_backup(when=when)

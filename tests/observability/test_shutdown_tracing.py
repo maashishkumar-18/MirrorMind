@@ -36,6 +36,26 @@ def test_calls_client_shutdown_once():
     assert calls == ["shutdown"]
 
 
+def test_second_shutdown_tracing_is_a_no_op():
+    # Phase 2 audit finding: shutdown_tracing() must clear the dead client so
+    # a later get_langfuse()/flush() can't reuse it and a repeat call doesn't
+    # re-invoke client.shutdown().
+    calls: list[str] = []
+
+    class FakeClient:
+        def shutdown(self):
+            calls.append("shutdown")
+
+    tracing._client = FakeClient()
+    tracing._client_init_attempted = True
+
+    tracing.shutdown_tracing()
+    tracing.shutdown_tracing()  # second call
+    assert calls == ["shutdown"]
+    assert tracing._client is None
+    assert tracing.get_langfuse() is None  # stays disabled
+
+
 def test_swallows_a_raising_shutdown(caplog):
     class BoomClient:
         def shutdown(self):

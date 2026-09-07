@@ -9,7 +9,7 @@ from src.security.errors import DatabaseKeyError
 
 pytestmark = pytest.mark.integration
 
-KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0"
+KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 
 @pytest.fixture
@@ -97,3 +97,23 @@ def test_corrupted_encrypted_interior_page_is_detected(encrypted_db):
     result = check_integrity(conn)
     conn.close()
     assert not result.ok
+
+
+def test_sqlite_vector_store_reports_corrupt_encrypted_db_as_runtimeerror(encrypted_db):
+    # Phase 2 audit: the store's construction-time PRAGMA quick_check only
+    # handled the "returned a row" case — a damaged interior page of a
+    # correctly-keyed DB makes the pragma *raise* a driver error. That must
+    # still surface as the store's RuntimeError, not a raw sqlcipher exception.
+    from src.common.sqlite_vector_store import SQLiteVectorStore
+
+    conn = open_session_db(encrypted_db, KEY)
+    _fill_reminders(conn, 400)
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    conn.close()
+
+    raw = bytearray(open(encrypted_db, "rb").read())
+    raw[page_size * 3 + 100] ^= 0xFF
+    open(encrypted_db, "wb").write(raw)
+
+    with pytest.raises(RuntimeError, match="quick_check"):
+        SQLiteVectorStore(db_path=encrypted_db, key=KEY)

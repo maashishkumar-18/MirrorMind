@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 
 import numpy as np
 
-from db.connection import open_session_db, set_session_row_factory
+from db.connection import database_errors, open_session_db, set_session_row_factory
 from src.common.types import (
     SessionChunkRecord,
     SessionRetrievedChunk,
@@ -76,10 +76,17 @@ class SQLiteVectorStore(VectorStoreInterface):
         # enough to catch a truncated / corrupt DB file before we load every
         # embedding into memory. Phase 2 Step 2.1's on-launch PRAGMA integrity_check
         # is the thorough version; this is the store-local guard.
-        result = self._conn.execute("PRAGMA quick_check").fetchone()
-        if result is None or result[0] != "ok":
+        try:
+            result = self._conn.execute("PRAGMA quick_check").fetchone()
+            bad = result is None or result[0] != "ok"
+            detail = result[0] if result else "no result"
+        except database_errors() as exc:
+            # A damaged interior page of an otherwise-openable (correctly-keyed)
+            # DB makes the pragma itself raise rather than return a row.
+            bad, detail = True, f"{type(exc).__name__}: {exc}"
+        if bad:
             raise RuntimeError(
-                f"session database failed PRAGMA quick_check ({result[0] if result else 'no result'}) "
+                f"session database failed PRAGMA quick_check ({detail}) "
                 "— the file is corrupt; restore from a backup before continuing."
             )
 

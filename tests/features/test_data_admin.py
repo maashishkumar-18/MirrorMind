@@ -4,7 +4,15 @@ import json
 
 import pytest
 
-from src.features.data_admin import EXPORT_TABLES, WIPE_TABLES, DataManager
+from src.features import data_admin
+from src.features.data_admin import (
+    EXPORT_BLURB,
+    EXPORT_TABLES,
+    NEVER_EXPORTED_LINE,
+    UNINSTALL_WARNING,
+    WIPE_TABLES,
+    DataManager,
+)
 from src.features.toast_bridge import InMemoryToastBridge
 from src.models.app_config import AppConfig
 
@@ -97,6 +105,27 @@ def test_write_export_is_atomic_and_parses_equal_to_export_data(manager, tmp_pat
 def test_write_export_stamps_last_exported_at(manager, app_config, tmp_path):
     manager.write_export(tmp_path / "e.json", now="2026-03-02T12:00:00+00:00")
     assert AppConfig.load().last_exported_at == "2026-03-02T12:00:00+00:00"
+
+
+def test_write_export_removes_the_tmp_file_on_a_mid_stream_error(manager, tmp_path, monkeypatch):
+    # Phase 2 audit finding: a serialization error mid-stream orphaned <name>.tmp.
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(data_admin.json, "dumps", boom)
+    out = tmp_path / "export.json"
+    with pytest.raises(RuntimeError):
+        manager.write_export(out)
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert not out.exists()
+
+
+def test_settings_strings_are_exported_verbatim_from_spec():
+    # Phase 2 audit: co-locate all three Settings → Data & Privacy strings so
+    # the Phase 3 frontend imports them instead of re-transcribing spec text.
+    assert NEVER_EXPORTED_LINE.startswith("Never — your data cannot be recovered")
+    assert UNINSTALL_WARNING.startswith("Uninstalling this app will permanently delete")
+    assert "re-importing into the app is not yet supported" in EXPORT_BLURB
 
 
 # --- badge ---------------------------------------------------------------

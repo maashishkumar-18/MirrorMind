@@ -24,6 +24,7 @@ BEGIN/COMMIT/ROLLBACK; see that module).
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import Any
 
@@ -32,6 +33,7 @@ from src.security.errors import DatabaseKeyError
 # Raw-key form: the 64 hex chars ARE the AES key -- no PBKDF2, no salt.
 # Valid because the key is 32 bytes of os.urandom, not a user passphrase.
 _KEY_PRAGMA = "PRAGMA key = \"x'{hex_key}'\""
+_HEX64 = re.compile(r"\A[0-9a-fA-F]{64}\Z")
 
 
 def set_session_row_factory(conn: sqlite3.Connection) -> None:
@@ -55,6 +57,13 @@ def _sqlcipher_connect(path: str, key: str, *, isolation_level: Any = "") -> sql
     Import is local so a ``key=None`` caller never needs ``sqlcipher3``
     installed (keeps the plain-sqlite3 path dependency-free for now).
     """
+    # The key is interpolated into the PRAGMA text (PRAGMA args can't be
+    # bound), so it must be exactly 64 hex chars -- anything else is a
+    # composition-root bug, and a stray quote would break the statement and
+    # leak this connection. resolve_key() only ever yields this shape.
+    if not isinstance(key, str) or not _HEX64.match(key):
+        raise DatabaseKeyError("database key must be 64 hexadecimal characters (32 bytes)")
+
     from sqlcipher3 import dbapi2 as sqlcipher
 
     conn = sqlcipher.connect(path, timeout=30, isolation_level=isolation_level)
@@ -64,9 +73,11 @@ def _sqlcipher_connect(path: str, key: str, *, isolation_level: Any = "") -> sql
         # the following read is what rejects it.
         conn.execute(_KEY_PRAGMA.format(hex_key=key))
         conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
-    except sqlcipher.DatabaseError as exc:
+    except BaseException as exc:
         conn.close()
-        raise DatabaseKeyError(f"could not open encrypted database at {path!r}: {exc}") from exc
+        if isinstance(exc, sqlcipher.DatabaseError):
+            raise DatabaseKeyError(f"could not open encrypted database at {path!r}: {exc}") from exc
+        raise
     return conn
 
 

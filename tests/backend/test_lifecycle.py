@@ -65,6 +65,36 @@ def test_step_result_carries_timing():
     assert result.elapsed_ms >= 0.0
 
 
+def test_concurrent_register_and_shutdown_do_not_corrupt_the_step_list():
+    # Phase 2 audit: register()/shutdown() are called from different threads
+    # (a stop signal vs. main() still wiring) — a lock guards _steps/_done.
+    import threading
+
+    coord = ShutdownCoordinator()
+    ran: list[str] = []
+    errors: list[Exception] = []
+
+    def registrar(i: int):
+        try:
+            coord.register(f"r{i}", lambda i=i: ran.append(f"r{i}"))
+        except RuntimeError:
+            pass  # lost the race with shutdown() — acceptable
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=registrar, args=(i,)) for i in range(50)]
+    for t in threads:
+        t.start()
+    results = coord.shutdown()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    # every step that made it in ran exactly once; no partial/duplicate entries
+    assert sorted(ran) == sorted(r.name for r in results if r.ok)
+    assert len(ran) == len(set(ran))
+
+
 def test_a_real_scheduler_thread_is_joined(migrated_db_path):
     from src.features.scheduler import SchedulerConfig, SchedulerThread
     from src.features.toast_bridge import NoOpToastBridge
@@ -80,3 +110,4 @@ def test_a_real_scheduler_thread_is_joined(migrated_db_path):
 
     assert result.ok
     assert not sched.is_alive()
+    assert sched.stop() is True  # Phase 2 audit: stop() now returns a bool

@@ -28,6 +28,13 @@ class TestRun:
         snapshots = list(runner.snapshot_dir.glob("*.bak"))
         assert len(snapshots) == 1
 
+    def test_snapshot_leaves_no_partial_file(self, runner):
+        # Phase 2 audit: snapshot() writes *.bak.partial then os.replace, so a
+        # crash mid-backup leaves an orphan .partial, not a truncated .bak.
+        runner.run()
+        assert list(runner.snapshot_dir.glob("*.partial")) == []
+        assert len(list(runner.snapshot_dir.glob("*.bak"))) == 1
+
     def test_second_run_is_a_true_no_op(self, runner):
         runner.run()
         applied_again = runner.run()

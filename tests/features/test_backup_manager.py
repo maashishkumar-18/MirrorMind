@@ -1,7 +1,9 @@
 """Phase 2 Step 2.2 — BackupManager: create / list / prune / restore / run_due_backup."""
 
 import sqlite3
+import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -13,7 +15,7 @@ from src.features.backup_manager import BackupConfig, BackupManager
 pytestmark = pytest.mark.integration
 
 PLAIN_HEADER = b"SQLite format 3\x00"
-KEY = "2222333344445555666677778888999900001111aaaabbbbccccddddeeeeffff0"
+KEY = "2222333344445555666677778888999900001111aaaabbbbccccddddeeeeffff"
 
 
 @pytest.fixture(params=["plaintext", "encrypted"])
@@ -125,6 +127,24 @@ def test_restore_round_trips_and_clears_wal_shm(manager, db):
     reopened.close()
 
 
+def test_restore_with_the_live_db_still_open_never_raises_and_leaves_no_incoming(manager, db):
+    # Phase 2 audit finding: the file swap was unguarded — a still-open live
+    # connection made os.replace raise PermissionError on Windows instead of
+    # returning RestoreResult(ok=False), and left a *.incoming file behind.
+    snap = manager.create_backup()
+    held = open_session_db(db["path"], db["key"])  # backend "not fully stopped"
+    try:
+        result = manager.restore(snap.path)  # must not raise
+    finally:
+        held.close()
+
+    if sys.platform == "win32":
+        assert not result.ok and "could not swap in" in result.detail
+    else:  # POSIX lets you replace an open file; the restore just succeeds
+        assert result.ok
+    assert not Path(f"{db['path']}.incoming").exists()
+
+
 def test_restore_of_a_corrupt_snapshot_leaves_the_live_db_untouched(manager, db, tmp_path):
     snap = manager.create_backup()
     raw = bytearray(snap.path.read_bytes())
@@ -165,3 +185,14 @@ class TestRunDueBackup:
         snap = manager.run_due_backup("2026-03-02T02:05:00+00:00")
         assert snap is not None
         assert len(manager.list_backups()) == 2
+
+    def test_non_utc_now_does_not_double_backup_across_the_utc_day_boundary(self, manager):
+        # Phase 2 audit finding: the once-per-day guard compared the caller's
+        # local date against the UTC filename stamp — a -05:00 evening crossed
+        # into the next UTC day and a second backup was taken the same local day.
+        # now is normalised to UTC before both the guard and the stamp.
+        first = manager.run_due_backup("2026-03-01T23:00:00-05:00")  # = 03-02 04:00 UTC
+        assert first is not None
+        assert manager.run_due_backup("2026-03-01T23:30:00-05:00") is None
+        assert len(manager.list_backups()) == 1
+        assert manager.list_backups()[0].created_at[:10] == "2026-03-02"

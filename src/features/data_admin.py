@@ -56,8 +56,20 @@ _PRIVATE_COLUMNS = frozenset({"deleted_at", "sync_metadata"})
 
 _EXPORT_BADGE_DAYS = 30
 
-_NEVER_EXPORTED_LINE = (
+# The three Settings → Data & Privacy strings, verbatim from project_logic.md §12 /
+# production_roadmap.md Step 2.2. Co-located here so the Phase 3 frontend imports
+# them rather than re-transcribing spec text (and risking drift).
+NEVER_EXPORTED_LINE = (
     "Never — your data cannot be recovered if Windows is reinstalled without an export."
+)
+UNINSTALL_WARNING = (
+    "Uninstalling this app will permanently delete your encrypted database. "
+    "Export your data first."
+)
+EXPORT_BLURB = (
+    "Export your data — saves a backup copy of everything for safekeeping. "
+    "Note: re-importing into the app is not yet supported; this export preserves "
+    "your data for a future update."
 )
 
 
@@ -113,22 +125,26 @@ class DataManager:
         now = now or _now_iso()
         path = Path(path)
         tmp = path.with_name(path.name + ".tmp")
-        with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write("{\n")
-            fh.write(f'  "schema_version": {json.dumps(self._schema_version())},\n')
-            fh.write(f'  "exported_at": {json.dumps(now)},\n')
-            fh.write('  "tables": {\n')
-            for t_idx, table in enumerate(EXPORT_TABLES):
-                fh.write(f"    {json.dumps(table)}: [")
-                wrote_row = False
-                for row in self._select_live(table):
-                    fh.write(",\n" if wrote_row else "\n")
-                    fh.write("      " + json.dumps(_row_public(row), default=str))
-                    wrote_row = True
-                fh.write("\n    ]" if wrote_row else "]")
-                fh.write(",\n" if t_idx < len(EXPORT_TABLES) - 1 else "\n")
-            fh.write("  }\n}\n")
-        os.replace(tmp, path)
+        try:
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write("{\n")
+                fh.write(f'  "schema_version": {json.dumps(self._schema_version())},\n')
+                fh.write(f'  "exported_at": {json.dumps(now)},\n')
+                fh.write('  "tables": {\n')
+                for t_idx, table in enumerate(EXPORT_TABLES):
+                    fh.write(f"    {json.dumps(table)}: [")
+                    wrote_row = False
+                    for row in self._select_live(table):
+                        fh.write(",\n" if wrote_row else "\n")
+                        fh.write("      " + json.dumps(_row_public(row), default=str))
+                        wrote_row = True
+                    fh.write("\n    ]" if wrote_row else "]")
+                    fh.write(",\n" if t_idx < len(EXPORT_TABLES) - 1 else "\n")
+                fh.write("  }\n}\n")
+            os.replace(tmp, path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)  # no orphaned *.tmp on a mid-stream error
+            raise
         self._app_config.set_last_exported_at(now)
         return path
 
@@ -144,7 +160,7 @@ class DataManager:
                 needs_export=True,
                 last_exported_at=None,
                 days_since=None,
-                settings_line=_NEVER_EXPORTED_LINE,
+                settings_line=NEVER_EXPORTED_LINE,
             )
         days_since = (_parse(now) - _parse(last)).days
         return ExportBadgeState(

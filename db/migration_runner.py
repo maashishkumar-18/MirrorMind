@@ -10,6 +10,7 @@ migration here.
 """
 
 import hashlib
+import os
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -196,16 +197,22 @@ class MigrationRunner:
         db_stem = Path(self.db_path).stem
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         dest_path = self.snapshot_dir / f"{db_stem}-pre-migration-{timestamp}.bak"
+        # Write to *.bak.partial and os.replace to the final name only once the
+        # copy completes -- a crash mid-backup leaves an orphaned .partial, never
+        # a truncated .bak that looks like a usable snapshot (matches
+        # BackupManager.create_backup's crash-safety discipline).
+        partial_path = dest_path.with_name(dest_path.name + ".partial")
 
         # Both ends keyed with the same key: SQLCipher's online backup between
         # two same-key connections produces an encrypted .bak (spike-verified).
         source = connect_for_migrations(self.db_path, self.key)
-        dest = connect_for_migrations(str(dest_path), self.key)
+        dest = connect_for_migrations(str(partial_path), self.key)
         try:
             source.backup(dest)
         finally:
             dest.close()
             source.close()
+        os.replace(partial_path, dest_path)
 
         return dest_path
 

@@ -372,9 +372,10 @@ def flush() -> None:
 
 def shutdown_tracing() -> None:
     """Flush buffered spans and stop the Langfuse background worker thread.
-    No-op when tracing is disabled. Call once, from the backend's shutdown
-    path (Phase 2 Step 2.3 — wired via src.backend.lifecycle.ShutdownCoordinator
-    by the Phase 3 main())."""
+    No-op when tracing is disabled or already shut down. Call once, from the
+    backend's shutdown path (Phase 2 Step 2.3 — wired via
+    src.backend.lifecycle.ShutdownCoordinator by the Phase 3 main())."""
+    global _client, _client_init_attempted
     client = get_langfuse()
     if client is None:
         return
@@ -382,3 +383,9 @@ def shutdown_tracing() -> None:
         client.shutdown()  # flushes, then joins the worker thread
     except Exception:
         logger.exception("Langfuse shutdown failed.")
+    finally:
+        # Drop the dead client so a later get_langfuse()/flush() doesn't reuse
+        # it and a second shutdown_tracing() is a genuine no-op.
+        with _client_lock:
+            _client = None
+            _client_init_attempted = True

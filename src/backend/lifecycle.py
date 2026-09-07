@@ -32,6 +32,7 @@ Canonical registrations Phase 3 ``main()`` will make, in order::
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,24 +54,30 @@ class ShutdownCoordinator:
     def __init__(self) -> None:
         self._steps: list[tuple[str, Callable[[], None]]] = []
         self._done = False
+        # register() and shutdown() can race — a stop signal on one thread
+        # while main() is still wiring on another.
+        self._lock = threading.Lock()
 
     def register(self, name: str, close: Callable[[], None]) -> None:
         """Register a teardown callable. Teardown runs in reverse registration
         order, so register a resource *after* anything that depends on it."""
-        if self._done:
-            raise RuntimeError("ShutdownCoordinator has already shut down")
-        self._steps.append((name, close))
+        with self._lock:
+            if self._done:
+                raise RuntimeError("ShutdownCoordinator has already shut down")
+            self._steps.append((name, close))
 
     def shutdown(self) -> list[ShutdownStepResult]:
         """Tear down every registered resource, newest first. Each step is
         guarded — a raising ``close`` is logged and the rest still run.
         Idempotent: a second call is a no-op returning ``[]``."""
-        if self._done:
-            return []
-        self._done = True
+        with self._lock:
+            if self._done:
+                return []
+            self._done = True
+            steps = list(self._steps)
 
         results: list[ShutdownStepResult] = []
-        for name, close in reversed(self._steps):
+        for name, close in reversed(steps):
             start = time.monotonic()
             try:
                 close()

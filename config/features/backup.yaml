@@ -4,9 +4,11 @@
 # RAGPIPE_BACKUP_DAILY_TIME, RAGPIPE_BACKUP_RETENTION.
 
 backup:
-  # Local wall-clock time after which the day's backup is taken. The
-  # scheduler thread checks this every tick and takes at most one backup
-  # per calendar day (catch-up on next launch if the app was closed).
+  # UTC time-of-day after which the day's backup is taken. The scheduler
+  # thread checks this every tick and takes at most one backup per UTC
+  # calendar day (catch-up on next launch if the app was closed).
+  # (Local-time scheduling is a Phase 3 refinement once the backend has a
+  # user-timezone context.)
   daily_time: "02:00"
   # Rolling retention: keep the newest N snapshots, delete older ones.
   retention: 7

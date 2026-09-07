@@ -108,10 +108,18 @@ class SchedulerThread(threading.Thread):
         finally:
             conn.close()
 
-    def stop(self, timeout: float = 5.0) -> None:
+    def stop(self, timeout: float = 5.0) -> bool:
+        """Signal the thread to stop and wait up to ``timeout`` for it to
+        exit. Returns ``True`` if it exited, ``False`` if it is still running
+        (a wedged tick) — the caller / ShutdownCoordinator can log that rather
+        than assume a clean stop."""
         self._stop_event.set()
         if self.is_alive():
             self.join(timeout)
+        if self.is_alive():
+            logger.warning("scheduler thread did not stop within %.1fs", timeout)
+            return False
+        return True
 
     def _tick(self, now: str) -> None:
         assert self._reminders is not None and self._summaries is not None
