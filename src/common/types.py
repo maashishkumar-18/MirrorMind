@@ -338,13 +338,20 @@ class BackupSnapshot:
 
 @dataclass(frozen=True)
 class RestoreResult:
-    """Outcome of ``BackupManager.restore()``. ``needs_restart`` is the seam
-    the Phase 3 process supervisor acts on — 2.2 only swaps the file, it
-    cannot restart the backend itself."""
+    """Outcome of ``BackupManager.restore()`` / ``stage_restore()``.
+    ``needs_restart`` is the seam the Phase 3 process supervisor acts on — the
+    backend cannot restart itself.
+
+    ``validated_snapshot_path`` is set only by ``stage_restore()`` (validate,
+    do not swap): it is the absolute path of the snapshot the Rust supervisor
+    should ``fs::rename`` into place once the backend is fully down (Phase 3
+    Step 3.1 — resolves ``PHASE_2_AUDIT.md`` 2.3-C1). ``restore()`` (the
+    Python-side swap) leaves it ``None``."""
 
     ok: bool
     needs_restart: bool
     detail: str
+    validated_snapshot_path: str | None = None
 
 
 @dataclass(frozen=True)

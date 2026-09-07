@@ -156,12 +156,16 @@ class BackupManager:
             removed.append(snap.path)
         return removed
 
-    def restore(self, snapshot_path: str | Path) -> RestoreResult:
-        """Validate ``snapshot_path`` and swap it in for the live database.
+    def stage_restore(self, snapshot_path: str | Path) -> RestoreResult:
+        """Validate ``snapshot_path`` as a restore candidate **without touching
+        any files**.
 
-        The caller MUST ensure nothing else holds a connection to the live
-        database (the Phase 3 process supervisor stops the backend first);
-        this only replaces the file and signals ``needs_restart``.
+        This is the path the IPC layer and the Rust process supervisor use
+        (Phase 3 Step 3.1): the actual file swap runs in Rust with the backend
+        fully down, because ``os.replace`` onto the live database cannot
+        succeed on Windows while any connection is open. On success,
+        ``validated_snapshot_path`` carries the absolute path for the
+        supervisor to ``fs::rename`` into place.
         """
         snapshot_path = Path(snapshot_path)
         if not snapshot_path.exists():
@@ -179,6 +183,28 @@ class BackupManager:
             return RestoreResult(
                 False, False, f"snapshot failed integrity_check: {integrity.details}"
             )
+        return RestoreResult(
+            True,
+            True,
+            f"validated {snapshot_path.name}",
+            validated_snapshot_path=str(snapshot_path.resolve()),
+        )
+
+    def restore(self, snapshot_path: str | Path) -> RestoreResult:
+        """Validate ``snapshot_path`` and swap it in for the live database.
+
+        The caller MUST ensure nothing else holds a connection to the live
+        database (the Phase 3 process supervisor stops the backend first);
+        this only replaces the file and signals ``needs_restart``.
+
+        The IPC / supervisor path uses :meth:`stage_restore` + a Rust-side
+        rename instead; this Python-side swap is kept for tests and non-Windows
+        callers.
+        """
+        staged = self.stage_restore(snapshot_path)
+        if not staged.ok:
+            return staged
+        snapshot_path = Path(snapshot_path)
 
         # The live DB and its sidecars must go together: unlink the stale
         # -wal/-shm *before* the swap so a crash in the tiny window after
