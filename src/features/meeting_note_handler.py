@@ -9,9 +9,9 @@ MeetingNoteHandler (Phase 1 Step 1.5a).
 
 If extraction fails after retries, or comes back with neither ``decisions``
 nor ``action_items``, the row is stored with ``needs_review = 1`` so the
-frontend can flag it. The JSON-recovery idiom mirrors
-``src/retrieval/retrieval_agent.py::_parse_json`` (markdown-fence strip,
-``{...}`` regex, brace-balance repair for small local models).
+frontend can flag it. JSON recovery is the shared
+``src/common/json_recovery.py::recover_json`` (markdown-fence strip, ``{...}``
+regex, brace-balance repair for small local models) — Phase 3 Step 3.1d.
 
 ``searchable_text`` is flattened and written *here* — the ``meeting_notes``
 FTS5 triggers only index it, they never derive it from the JSON columns
@@ -20,9 +20,9 @@ FTS5 triggers only index it, they never derive it from the JSON columns
 
 import json
 import logging
-import re
 import sqlite3
 
+from src.common.json_recovery import recover_json
 from src.common.llm_client import simple_generate
 from src.common.types import ActionItem, MeetingNote
 from src.features.base import TableHandler, new_id, now_iso
@@ -141,30 +141,9 @@ class MeetingNoteHandler(TableHandler):
 
     @staticmethod
     def _parse_json(raw: str) -> dict:
-        text = raw.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as e:
-            match = re.search(r"\{.*\}", text, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-            start = text.find("{")
-            opened = text.count("{") - text.count("}")
-            if start != -1 and opened > 0:
-                repaired = text[start:].rstrip().rstrip(",") + "}" * opened
-                try:
-                    return json.loads(repaired)
-                except json.JSONDecodeError:
-                    pass
-            raise ValueError(f"could not parse meeting-note JSON: {raw[:200]}") from e
+        # Shared recovery (fence strip / {...} regex / brace-balance repair) —
+        # src/common/json_recovery.py. Same sequence this handler used to inline.
+        return recover_json(raw)
 
     @staticmethod
     def _row_to_note(row: sqlite3.Row) -> MeetingNote:

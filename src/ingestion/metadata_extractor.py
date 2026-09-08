@@ -8,10 +8,9 @@ denormalized onto every chunk of the session by the chunker, so retrieval
 and generation never have to re-derive it.
 """
 
-import json
-import re
 from dataclasses import dataclass, field
 
+from src.common.json_recovery import recover_json
 from src.common.llm_client import ProviderRegistry, simple_generate
 from src.common.types import AgenticActionType, SessionMessage
 
@@ -81,21 +80,10 @@ Rules:
 Transcript:
 {sample}
 """
-        response_text = simple_generate(
-            prompt, model_name=self._model, registry=self._registry
-        ).strip()
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-        try:
-            return json.loads(response_text)
-        except json.JSONDecodeError as e:
-            match = re.search(r"\{.*\}", response_text, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-            raise ValueError(f"Could not parse session metadata JSON: {response_text[:200]}") from e
+        response_text = simple_generate(prompt, model_name=self._model, registry=self._registry)
+        # Shared recovery (fence strip / {...} regex / brace-balance repair) —
+        # src/common/json_recovery.py (Phase 3 Step 3.1d).
+        return recover_json(response_text)
 
     def _parse_response(self, raw: dict, session_id: str, timestamp: str) -> SessionMetadata:
         def _str_list(value: object) -> list[str]:
