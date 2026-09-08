@@ -1,9 +1,9 @@
 # Phase 3 Step 3.1 — Frontend Architecture and IPC Client
 
-**Status:** the Step 3.1 **backend** (3.1a–3.1d) is complete. The Rust/React scaffold is
-split into **fe.1–fe.7**; **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)** +
-**fe.4 (`198d493`)** + **fe.5 (`2198a65`)** + **fe.6 (`b2f7936`, + backend fix `f330e84`)** have
-landed. Next: fe.7 (Tauri shell hardening).
+**Status:** Step 3.1 is **COMPLETE** — backend 3.1a–3.1d + Rust/React scaffold fe.1–fe.7:
+**fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)** + **fe.4 (`198d493`)** +
+**fe.5 (`2198a65`)** + **fe.6 (`b2f7936`, + backend fix `f330e84`)** + **fe.7 (`fb084df`)** all
+landed. Next: Step 3.2 (Chat Interface).
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -37,7 +37,7 @@ sequenced after the backend spine is solid and tested.
 | Typed **zod IPC client** (`desktop/src/ipc/client.ts` `call<M>()`) wrapping `@ipc/methods` + `bridge.ts` — zod-validates params + result, `IpcCallError { kind }` + `describeIpcError`, `version_mismatch` → store flag → "please restart" screen, per-method timeouts; `subscribe()` typed event demux; `useBackendStore`/`useModelStore`/`useReminderStore` | React frontend | **fe.4 ✅** (`198d493`) |
 | Degraded-mode **banner** (`RootLayout` + `selectBanner`/`selectAppGate` pure selectors) — recovery-mode / reconnecting / unavailable / restoring / "Reconnected" flash; full-screen **gate** for `version_mismatch` + `previous_data_unrecoverable` | React frontend | **fe.5 ✅** (`2198a65`) |
 | First-launch model **flow** (`/first-run`: `model.catalog` / `model.status` / `model.download` streaming / `model.activate`) + `<RequireModel>` route guard + Loading → /first-run \| /chat redirect + `no_model_active` → first-run | React frontend | **fe.6 ✅** (`b2f7936`) |
-| Tauri **shell hardening** — process supervisor (backoff 1s/2s/4s, **3 restarts after the initial launch = 4 total**) → degraded banner + the "Restart app" action fe.5's banner/gate refer to; single-instance **enforcement** + window focus; **restore file swap** (Rust `fs::rename` of `validated_snapshot_path`, backend down, then relaunch — pairs with 3.1a `stage_restore` + exit 5; resolves `PHASE_2_AUDIT.md` 2.3-C1). `bundle.externalBin` for the PyInstaller sidecar is Phase 5. | Rust shell | **fe.7** |
+| Tauri **shell hardening** — process supervisor (backoff 1s/2s/4s, **3 restarts after the initial launch = 4 total**) → degraded banner + the "Restart app" action fe.5's banner/gate refer to; single-instance **enforcement** + window focus; **restore file swap** (Rust `fs::rename` of `validated_snapshot_path`, backend down, then relaunch — pairs with 3.1a `stage_restore` + exit 5; resolves `PHASE_2_AUDIT.md` 2.3-C1). `bundle.externalBin` for the PyInstaller sidecar is Phase 5. | Rust shell | **fe.7 ✅** (`fb084df`) |
 | Real **WinRT `ToastBridge`** — `cancel_all()` must iterate `RemoveFromSchedule` **per id** (Windows has no bulk-cancel API); the notifier that removes a scheduled toast must be the **same `ToastNotifier` instance** that scheduled it | Rust (called from Python via IPC) | **later** |
 | Subprocess-kill **fuzzing test** — 100 iterations on `windows-latest`, kills during **IPC message processing**, **DB write**, and **Ollama inference** (not just idle) → assert detect → restart → banner → recover, zero data loss | Rust + test runner | **later (roadmap Step 4.4)** |
 | Step 2.4 **accessibility** (WCAG 2.1 AA / axe-core / Narrator / string externalization) | React frontend | **later Phase 3** |
@@ -47,6 +47,111 @@ sequenced after the backend spine is solid and tested.
 supervisor relaunches (backoff). A **restore** → supervisor stops the backend (quiescing every
 DB connection), *then* `fs::rename`, *then* relaunches. 3.1a delivers the backend half: exit
 code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
+
+---
+
+## What landed in fe.7 (`fb084df`) — Step 3.1 scaffold COMPLETE
+
+The last scaffold sub-step. The Rust shell now *recovers* the backend instead of
+leaving the app permanently dead on a crash, enforces a single instance, and
+performs the restore file swap (resolves `PHASE_2_AUDIT.md` 2.3-C1).
+
+**Supervisor (`desktop/src-tauri/src/backend.rs`).**
+
+- `decide_on_exit(reason, code, clean, restart_count) -> ExitAction` — pure,
+  unit-tested. Deliberate exits **first**: `restore_staged` / code 5 → `Restore`;
+  `previous_data_unrecoverable` / code 3 → `PreviousDataUnrecoverable` (the fe.5
+  gate covers it, no restart); `clean` → `CleanExit`; else a crash →
+  `Retry(BACKOFF_MS[restart_count])` (`[1000, 2000, 4000]`) for `MAX_RESTARTS = 3`
+  respawns after the initial launch, then `GaveUp`.
+- `BackendBridge` gained a 5th per-field `Mutex<Supervisor>` (`restart_count` /
+  `clean_shutdown` / `gave_up`). `respawn()` swaps the child + reader thread,
+  `pending.clear()`, `exit_hint = default()`, but **keeps** `supervisor`.
+  `restart_count` + `gave_up` reset on the next `app.ready` (a backend that can't
+  reach ready is genuinely broken — a fast crash-loop *should* hit the ceiling).
+- Bounded post-EOF reap: `try_wait()` loop ≤ `REAP_BOUND` (2s), then `kill()` —
+  a wedged pipe can't block the supervisor.
+- `#[tauri::command] restart_backend` — **gated on `gave_up`** (only reachable
+  from the give-up banner, never races a mid-backoff retry). Resets the
+  supervisor, `kill()`, emits `backend:exit { reason: "manual_restart",
+  will_retry: true }` (so the UI leaves the terminal phase), then `respawn()`; on
+  respawn failure sets `gave_up` + emits `respawn_failed` (re-reds the banner).
+- `perform_restore_swap(snapshot)` — `fs::rename(snapshot, data_dir()/session.db)`;
+  on **any** error → `fs::copy` + best-effort `remove_file`; then best-effort
+  `remove_file` of `session.db-wal` / `-shm`. The `Restore` exit is emitted with
+  `will_retry: true` so `app.ready` from the relaunched backend clears the banner.
+- `build_child()` / `data_dir()` factored out of `spawn()` so `respawn` and
+  `perform_restore_swap` share one definition of the interpreter/cwd/data dir.
+
+**Single instance (`lib.rs`).** `tauri-plugin-single-instance = "2"` registered
+as the **first** builder plugin; its callback does
+`unminimize().ok(); show().ok(); set_focus().ok()` on the `main` window. The
+Python `SingleInstanceGuard` stays as defense-in-depth (covers
+`python -m src.backend.main` run directly). `restart_backend` added to
+`invoke_handler`.
+
+**Backend (`src/backend/dispatcher.py`).** `backup.restore` joins `app.shutdown`
+in a new `_INLINE_METHODS` frozenset — it runs **synchronously on the read
+thread** instead of the executor, so the serve loop in `main._serve` sees
+`dispatcher.shutdown_requested` set the instant `handle_raw` returns.
+
+> **Bug this fixed.** The old code did `self._executor.submit(self._run, …)` for
+> `backup.restore`. `handle_raw` returned before the handler ran, the loop's
+> `if dispatcher.shutdown_requested.is_set()` check saw `False`, and the loop
+> went back to `transport.read_messages()` — a **blocking `stdin` read**. The
+> real Tauri shell keeps the child's stdin pipe open, so exit 5 never fired and
+> the restore hung forever. `test_backup_restore_stages_and_exits_5` only passed
+> because its `BytesIO` input hit EOF immediately and `dispatcher.close(wait=True)`
+> in the `finally` drained the executor. New regression:
+> `test_backup_restore_runs_inline_so_the_serve_loop_sees_exit_5` asserts the
+> flags are set before `handle_raw` returns, with no executor drain.
+
+**Frontend.**
+
+- `ipc/events.ts`: `BackendExit` gained `will_retry: boolean`.
+- `store/backend.ts`: `restarting` flag + `setRestarting(v)`. `setRestarting(true)`
+  **supersedes a terminal exit** — drops `phase` back to `"starting"` and clears
+  `exit`, so the next `app.ready` recovers. `setReady` also clears `restarting`
+  and any pending `lifecycle` / `lifecycleMessage`.
+- `bootstrap.ts`: `backend:exit { will_retry: true }` → `setRestarting(true)`
+  (stay on route, amber banner); `will_retry: false` → `setExited` (terminal).
+- `ui/bannerState.ts`: `restarting && lifecycle === "restore_staged"` →
+  `restoring` ("Applying your backup — MirrorMind will restart…"); a terminal
+  `phase === "exited"` → `unavailable` (checked before the plain `restarting`
+  case, so a give-up beats a stale flag).
+- `ui/Banner.tsx`: the `unavailable` banner renders a real **"Restart"** button
+  (`invoke("restart_backend")`, disabled + "Restarting…" while in flight).
+
+**Known follow-up (documented in the commit + status memory).** `stage_restore`
+returns the user's *backup file* as `validated_snapshot_path`, so `fs::rename`
+**consumes it**. The migration runner's automatic pre-migration snapshot
+repopulates `backups/` on the relaunch, so the directory isn't left empty, but a
+dedicated staging copy (so the restored-from backup survives) belongs in a later
+backup / Settings step.
+
+**Verification.** `cargo fmt` / `clippy --all-targets -D warnings` / `cargo test`
+(7); `desktop` typecheck / lint / test (71) / build; `ipc` (79); Python
+`black` / `ruff` / `mypy` + `pytest` (774, +1). E2e via `tauri dev` with a model
+active (lands on `/chat`), driven over a WebView2 `--remote-debugging-port=9222`
+CDP seam:
+
+- **crash → restart**: `Stop-Process python` → `Retry(1000)` → respawn →
+  `app.ready` clears the amber banner, user stays on `/chat`.
+- **give up → Restart**: rename `python.exe` aside → respawn fails → `gave_up` →
+  red "MirrorMind's AI backend stopped." banner + a visible, working **Restart**
+  button (CDP `Page.captureScreenshot` confirms it; the OS screenshot helper
+  mis-crops the DPR-1.25 webview). Restore `python.exe`, click → respawn →
+  `app.ready`, banner clears.
+- **single instance**: launching a 2nd `target/debug/mirrormind.exe` exits
+  immediately; the first stays up.
+- **restore swap**: `backup.restore` over IPC → backend exits **code 5**
+  (`reason=Some("restore_staged")`, Rust `action=Restore`) → `fs::rename` →
+  respawn → `app.ready` with integrity passing. `session.db` is byte-identical
+  to the backup afterward; the "Applying your backup…" banner shows during the
+  swap and clears on ready.
+- **clean close**: WM_CLOSE → `graceful_shutdown` (`ShutdownCoordinator` teardown
+  in the log) → `app.exit(0)`; zero orphan `mirrormind` / `python` / `node`. No
+  supervisor restart fires (`clean_shutdown` suppresses it).
 
 ---
 
@@ -208,8 +313,9 @@ managed state — `child` / `stdin` / `pending` (`request_id` → `tokio::sync::
   `backend:error`; everything else still → `backend:message`. On EOF: `drain_pending()` (drops
   every sender → pending calls get `backend_exited`), then `backend:exit { code, reason,
   snapshot_path }` — `reason`/`snapshot_path` from an `ExitHint` set when the reader sees
-  `app.previous_data_unrecoverable` / `app.restore_staged` (**exit 3 / exit 5 surfaced, not
-  acted on** — fe.5/fe.6/fe.7).
+  `app.previous_data_unrecoverable` / `app.restore_staged` (in fe.3 exit 3 / exit 5 were
+  surfaced but not acted on; **fe.7's supervisor now acts on both** — exit 3 → the fe.5 gate,
+  exit 5 → `perform_restore_swap` + respawn).
 - **`lib.rs` `on_window_event(CloseRequested)`**: `api.prevent_close()` → `window.hide()` →
   spawn `graceful_shutdown`: send a **full `IPCEnvelope`** `app.shutdown` frame, poll
   `child.try_wait()` up to **10 s**, then `child.kill()`, then `app.exit(0)`. The
