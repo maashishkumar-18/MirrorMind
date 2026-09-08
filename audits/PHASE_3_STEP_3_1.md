@@ -1,8 +1,8 @@
 # Phase 3 Step 3.1 — Frontend Architecture and IPC Client
 
 **Status:** the Step 3.1 **backend** (3.1a–3.1d) is complete. The Rust/React scaffold is
-split into **fe.1–fe.7**; **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** have landed. Next: fe.3
-(Rust stdio↔invoke bridge).
+split into **fe.1–fe.7**; **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)**
+have landed. Next: fe.4 (typed zod IPC client + Zustand stores).
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -32,8 +32,8 @@ sequenced after the backend spine is solid and tested.
 | idle-session auto-close (§13): lazy check at `chat.send` entry (`RAGPIPE_SESSION_IDLE_MINUTES`, default 45) + `run()`-prologue finalize of dangling sessions + on-launch `ReminderHandler.reconcile_on_launch()` surfaced via `app.reminders_pending` event + `reminders.reconciliation` method | Python backend | **3.1c ✅** |
 | `desktop/` Vite + React 19 + TS + Zustand + React Router skeleton; `desktop/src-tauri/` Tauri v2 shell that spawns `python -m src.backend.main` and forwards stdout envelopes to the webview as `backend:message` events | Rust + React | **fe.1 ✅** (`4291182`) |
 | `ipc/schema/methods.ts` — zod mirror of `METHOD_CONTRACTS` + the 6 events, `.strict()` throughout; `validate_methods_stdin.ts` + `methods_examples.json` + `tests/common/test_ipc_methods_roundtrip.py` cross-language round-trip | React tooling | **fe.2 ✅** (`72ba144`) |
-| Rust **stdio↔invoke bridge** — `ipc_request(envelope)` command, `request_id` correlation (oneshot map), `response`/`error` → waiters, `event` frames → Tauri events; exit codes 3 → "starting fresh" / 5 → "restore staged" surfaced; `app.shutdown` on window close | Rust shell | **fe.3** |
-| Typed **zod IPC client** (TS) wrapping `invoke` from `@tauri-apps/api/core` + zod validation; `version_mismatch` → "please restart"; per-call timeout → "temporarily unavailable"; event subscriptions → Zustand | React frontend | **fe.4** |
+| Rust **stdio↔invoke bridge** — `ipc_request(envelope, timeoutMs)` command, `request_id` correlation (`tokio::sync::oneshot` map), `response`/`error` → waiters, `event` frames → Tauri events; exit codes 3 → "starting fresh" / 5 → "restore staged" surfaced; `app.shutdown` handshake on window close | Rust shell | **fe.3 ✅** (`e678ec4`) |
+| Typed **zod IPC client** (TS) wrapping `ipc/schema/methods.ts` + `desktop/src/ipc/bridge.ts` + zod validation; `version_mismatch` → "please restart"; per-call timeout → "temporarily unavailable"; event subscriptions → Zustand | React frontend | **fe.4** |
 | Degraded-mode **banner UI** ("AI features temporarily unavailable — restarting…" → "Ready"), version-mismatch → "please restart" UI, IPC timeout → "temporarily unavailable" | React frontend | **fe.5** |
 | First-launch model **flow UI** (`model.catalog` / `model.status` / `model.download` streaming progress / `model.activate`; route guard until a model is active) | React frontend | **fe.6** |
 | Tauri **shell hardening** — process supervisor (backoff 1s/2s/4s, **3 restarts after the initial launch = 4 total**) → degraded banner; single-instance **enforcement** + window focus; **restore file swap** (Rust `fs::rename` of `validated_snapshot_path`, backend down, then relaunch — pairs with 3.1a `stage_restore` + exit 5; resolves `PHASE_2_AUDIT.md` 2.3-C1). `bundle.externalBin` for the PyInstaller sidecar is Phase 5. | Rust shell | **fe.7** |
@@ -46,6 +46,56 @@ sequenced after the backend spine is solid and tested.
 supervisor relaunches (backoff). A **restore** → supervisor stops the backend (quiescing every
 DB connection), *then* `fs::rename`, *then* relaunches. 3.1a delivers the backend half: exit
 code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
+
+---
+
+## What landed in fe.3 (`e678ec4`)
+
+The request/response transport + the graceful shutdown fe.1 lacked.
+
+**Rust (`desktop/src-tauri/src/backend.rs`):** `BackendProcess` → **`BackendBridge`**
+managed state — `child` / `stdin` / `pending` (`request_id` → `tokio::sync::oneshot::Sender`)
+/ `exit_hint`, per-field `Mutex`.
+
+- **`#[tauri::command] ipc_request(envelope, timeoutMs)`** — registers a oneshot keyed by
+  `envelope.request_id` **before** writing the line to stdin, then awaits the correlated reply
+  under `tokio::time::timeout` (`timeoutMs == 0` → no timeout; hard **15-min** ceiling always).
+  A well-formed backend `error` frame resolves as `Ok(<envelope>)`; only transport failures
+  reject, with a serializable **`BridgeError { kind, message }`**, `kind` ∈ `timeout` /
+  `backend_exited` (drained on EOF) / `backend_unavailable` (stdin closed) / `transport`.
+- **stdout reader** extended in place: `classify_frame(&Value) -> FrameKind` routes by
+  `message_type` **only** (never `request_id` — `model.download.progress` events carry one).
+  `response`/`error` with a matching pending id → complete the oneshot; unmatched `error` →
+  `backend:error`; everything else still → `backend:message`. On EOF: `drain_pending()` (drops
+  every sender → pending calls get `backend_exited`), then `backend:exit { code, reason,
+  snapshot_path }` — `reason`/`snapshot_path` from an `ExitHint` set when the reader sees
+  `app.previous_data_unrecoverable` / `app.restore_staged` (**exit 3 / exit 5 surfaced, not
+  acted on** — fe.5/fe.6/fe.7).
+- **`lib.rs` `on_window_event(CloseRequested)`**: `api.prevent_close()` → `window.hide()` →
+  spawn `graceful_shutdown`: send a **full `IPCEnvelope`** `app.shutdown` frame, poll
+  `child.try_wait()` up to **10 s**, then `child.kill()`, then `app.exit(0)`. The
+  `RunEvent::ExitRequested | Exit` → `bridge.kill()` stays as an idempotent safety net.
+- `#[cfg(test)]` (4): `classify_frame` by message_type, `ExitHint` transitions, the
+  `app.shutdown` envelope shape, `now_rfc3339` parseable.
+
+**Frontend:** `desktop/src/ipc/bridge.ts` — thin `ipcRequest(method, params, timeoutMs)`
+building a v1 envelope with a **monotonic** `request_id` (not `crypto.randomUUID()` —
+`http://tauri.localhost` is not a guaranteed secure context on Windows). `backend:exit` is now
+an object (`store/backend.ts` `exit: BackendExit`); `backend:error` recorded on `lastError`.
+`startBackendBridge()` moved into an `App` `useEffect` and `vite.config.ts`
+`optimizeDeps.include` pins `@tauri-apps/api/{core,event}` — **together these fix a Vite
+optimize-deps full-reload race** that surfaced (caught in the e2e) as *"Cannot read properties
+of undefined (reading 'transformCallback')"*. `Loading.tsx` runs one `ipcRequest('app.status')`
+probe as the fe.3 acceptance surface.
+
+**CI:** `desktop-rust` also runs `cargo test`. **Python untouched** — `app.shutdown` already
+works end-to-end (dispatcher inline → `ShutdownCoordinator` → exit 0). New Rust deps: `tokio`
+(`sync`, `time`), `time` (`formatting`, `parsing`).
+
+**Verified** on a clean `tauri dev`: the window renders `app.ready` **and** the
+`ipc_request(app.status)` round-trip; a window close makes the backend exit **code 0** via its
+`ShutdownCoordinator` (not a kill), zero orphan `python.exe`. `cargo fmt`/`clippy`/`check`/
+`test` (4) clean; `npm typecheck`/`lint`/`test` (10)/`build` green.
 
 ---
 
