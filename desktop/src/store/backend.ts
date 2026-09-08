@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { AppReadyPayload, RawEnvelope } from "../ipc/events";
+import type { AppReadyPayload, BackendExit, RawEnvelope } from "../ipc/events";
 
 export type BackendPhase = "starting" | "ready" | "degraded" | "exited";
 
@@ -10,20 +10,24 @@ export interface BackendState {
   ready: AppReadyPayload | null;
   /** Details from `app.integrity_failed`, if the backend came up degraded. */
   integrityDetails: string[];
-  /** Exit code from `backend://exit` (null = unknown / signalled). */
-  exitCode: number | null;
+  /** The `backend:exit` payload, once the sidecar exits. */
+  exit: BackendExit | null;
+  /** The most recent unattributed backend `error` frame (`backend:error`). */
+  lastError: RawEnvelope | null;
   /** The most recent raw envelope forwarded by the shell — fe.1 debug aid. */
   lastEnvelope: RawEnvelope | null;
 
   applyEnvelope: (envelope: RawEnvelope) => void;
-  setExited: (code: number | null) => void;
+  setExited: (exit: BackendExit) => void;
+  setBackendError: (envelope: RawEnvelope) => void;
 }
 
 export const useBackendStore = create<BackendState>((set) => ({
   phase: "starting",
   ready: null,
   integrityDetails: [],
-  exitCode: null,
+  exit: null,
+  lastError: null,
   lastEnvelope: null,
 
   applyEnvelope: (envelope) =>
@@ -43,5 +47,6 @@ export const useBackendStore = create<BackendState>((set) => ({
       return next;
     }),
 
-  setExited: (code) => set({ phase: "exited", exitCode: code }),
+  setExited: (exit) => set({ phase: "exited", exit }),
+  setBackendError: (envelope) => set({ lastError: envelope }),
 }));

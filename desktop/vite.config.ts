@@ -9,6 +9,14 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
 
+  // Pre-bundle the Tauri API entrypoints so Vite never discovers them
+  // mid-session and forces a full-page reload — that reload races Tauri's
+  // IPC init and surfaces as "Cannot read properties of undefined (reading
+  // 'transformCallback')".
+  optimizeDeps: {
+    include: ["@tauri-apps/api/core", "@tauri-apps/api/event"],
+  },
+
   // Vite options tailored for Tauri development, applied in `tauri dev` / `tauri build`.
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,

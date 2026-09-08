@@ -64,6 +64,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo check
+      - run: cargo test
 
   test:
     runs-on: windows-latest

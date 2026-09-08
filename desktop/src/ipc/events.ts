@@ -18,8 +18,10 @@ export interface AppIntegrityFailedPayload {
 }
 
 /**
- * A raw IPC envelope as forwarded by the Rust shell over the `backend://message`
- * Tauri event. Only the fields fe.1 inspects are typed.
+ * A raw IPC envelope as forwarded by the Rust shell over the `backend:message`
+ * Tauri event, or returned by the `ipc_request` command. Only the fields the
+ * fe.1/fe.3 glue inspects are typed; fe.4's client parses against the zod
+ * schemas in `ipc/schema/methods.ts`.
  */
 export interface RawEnvelope {
   version: number;
@@ -33,4 +35,23 @@ export interface RawEnvelope {
     code?: string;
     message?: string;
   };
+}
+
+/** Payload of the `backend:exit` Tauri event (fe.3). */
+export interface BackendExit {
+  code: number | null;
+  /** "previous_data_unrecoverable" | "restore_staged" | null (from exit 3 / 5). */
+  reason: string | null;
+  /** Set only when `reason === "restore_staged"`. */
+  snapshot_path: string | null;
+}
+
+/**
+ * The rejection value of the `ipc_request` command on a transport failure
+ * (`Err(BridgeError)` in Rust). A well-formed backend `error` frame resolves as
+ * a normal `RawEnvelope` instead.
+ */
+export interface BridgeError {
+  kind: "timeout" | "backend_exited" | "backend_unavailable" | "transport";
+  message: string;
 }
