@@ -2,7 +2,7 @@
 
 **Status:** the Step 3.1 **backend** (3.1a–3.1d) is complete. The Rust/React scaffold is
 split into **fe.1–fe.7**; **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)** +
-**fe.4 (`198d493`)** have landed. Next: fe.5 (degraded-mode banner + lifecycle UI).
+**fe.4 (`198d493`)** + **fe.5 (`2198a65`)** have landed. Next: fe.6 (first-launch model flow).
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -34,7 +34,7 @@ sequenced after the backend spine is solid and tested.
 | `ipc/schema/methods.ts` — zod mirror of `METHOD_CONTRACTS` + the 6 events, `.strict()` throughout; `validate_methods_stdin.ts` + `methods_examples.json` + `tests/common/test_ipc_methods_roundtrip.py` cross-language round-trip | React tooling | **fe.2 ✅** (`72ba144`) |
 | Rust **stdio↔invoke bridge** — `ipc_request(envelope, timeoutMs)` command, `request_id` correlation (`tokio::sync::oneshot` map), `response`/`error` → waiters, `event` frames → Tauri events; exit codes 3 → "starting fresh" / 5 → "restore staged" surfaced; `app.shutdown` handshake on window close | Rust shell | **fe.3 ✅** (`e678ec4`) |
 | Typed **zod IPC client** (`desktop/src/ipc/client.ts` `call<M>()`) wrapping `@ipc/methods` + `bridge.ts` — zod-validates params + result, `IpcCallError { kind }` + `describeIpcError`, `version_mismatch` → store flag → "please restart" screen, per-method timeouts; `subscribe()` typed event demux; `useBackendStore`/`useModelStore`/`useReminderStore` | React frontend | **fe.4 ✅** (`198d493`) |
-| Degraded-mode **banner UI** ("AI features temporarily unavailable — restarting…" → "Ready") driven by `useBackendStore.ipcError` / `phase` + `describeIpcError`; IPC-timeout / version-mismatch surfaces | React frontend | **fe.5** |
+| Degraded-mode **banner** (`RootLayout` + `selectBanner`/`selectAppGate` pure selectors) — recovery-mode / reconnecting / unavailable / restoring / "Reconnected" flash; full-screen **gate** for `version_mismatch` + `previous_data_unrecoverable` | React frontend | **fe.5 ✅** (`2198a65`) |
 | First-launch model **flow UI** (`model.catalog` / `model.status` / `model.download` streaming progress / `model.activate`; the `useModelStore` `catalog`/`statuses` fields; Loading → /first-run \| /chat route guard; `no_model_active` → first-run) | React frontend | **fe.6** |
 | Tauri **shell hardening** — process supervisor (backoff 1s/2s/4s, **3 restarts after the initial launch = 4 total**) → degraded banner; single-instance **enforcement** + window focus; **restore file swap** (Rust `fs::rename` of `validated_snapshot_path`, backend down, then relaunch — pairs with 3.1a `stage_restore` + exit 5; resolves `PHASE_2_AUDIT.md` 2.3-C1). `bundle.externalBin` for the PyInstaller sidecar is Phase 5. | Rust shell | **fe.7** |
 | Real **WinRT `ToastBridge`** — `cancel_all()` must iterate `RemoveFromSchedule` **per id** (Windows has no bulk-cancel API); the notifier that removes a scheduled toast must be the **same `ToastNotifier` instance** that scheduled it | Rust (called from Python via IPC) | **later** |
@@ -46,6 +46,49 @@ sequenced after the backend spine is solid and tested.
 supervisor relaunches (backoff). A **restore** → supervisor stops the backend (quiescing every
 DB connection), *then* `fs::rename`, *then* relaunches. 3.1a delivers the backend half: exit
 code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
+
+---
+
+## What landed in fe.5 (`2198a65`)
+
+Renders the failure state fe.4 records (`project_logic §7` / deferred Step 2.3).
+
+**`desktop/src/ui/RootLayout.tsx`** — a layout route (`<Route element={<RootLayout/>}>`),
+a `height:100vh` flex column: `<Banner>` (flex child, `height` 0 ↔ 2.25rem `transition`) →
+`<main class="app-main">` (`flex:1; overflow:auto`) with `<Outlet>` → `<AppGate>`. The banner
+**pushes** content — never `position:fixed` over it, no jump. (`Loading`/`FirstRun`/`Chat`
+lost their `<main className="screen">` → `<div>`; one `<main>` per page.)
+
+**Pure selectors (exhaustively unit-tested, no RTL — settled decision):**
+`selectBanner(BackendState)` → `{ variant, message } | null`
+(`recovery-mode` on `phase:"degraded"` → `restore_staged` exit → plain `exited` →
+`ipcError`), `selectAppGate(BackendState)` → `{ kind, title, message } | null`
+(`version_mismatch` wins over `previous_data_unrecoverable`; the gate **suppresses** the
+banner). Order matters: `exit.reason === "restore_staged"` is checked **before**
+`phase === "exited"` so a restore shows the blue "Applying your backup…" strip, not the red
+"stopped" one.
+
+**`desktop/src/ui/Banner.tsx`** — `useBackendStore(useShallow(selectBanner))`; `data-variant`
+CSS colours (reconnecting amber + animated `…`, unavailable/recovery-mode red, restoring blue,
+ready green); `role="status"|"alert"` by variant. The **"Reconnected" flash**: a `useEffect`
+on `ipcError` (with `clearTimeout` cleanup) shows a 2.5 s green strip on the non-null → null
+edge. **`AppGate.tsx`** — `position:fixed; inset:0; z-index:9999`, `role="alertdialog"`,
+renders the backend's verbatim `AppPreviousDataUnrecoverableEvent.message` (TS
+`PREVIOUS_DATA_FALLBACK` only if the event was missed).
+
+**`client.ts`** — `ipcErrorUi(kind, phase)` extracted (shared by `describeIpcError` +
+`selectBanner`; `backend_exited` is `unavailable` only once `phase === "exited"`).
+**`store/backend.ts`** — `setLifecycle(reason, message?)` + `lifecycleMessage`;
+`phase:"degraded"` stays integrity-failed-only. **`bootstrap.ts`** forwards the
+`previous_data_unrecoverable` message and, if the `app.status` probe reports `degraded:true`,
+calls `setDegraded([])` (recovers a missed `app.integrity_failed`).
+
+**No `ci.yml` / Rust / Python change.** New: `ui/{RootLayout,Banner,AppGate}.tsx` +
+`ui/{bannerState,gateState}.ts` + tests (`bannerState.test.ts` 8, `gateState.test.ts` 5,
+`ipcErrorUi` cases). `npm typecheck`/`lint`/`test` (**46**)/`build` green; `ipc` suite 79.
+**Verified on `tauri dev`:** healthy → no banner; a corrupted dev `session.db` (HMAC fail on
+page 30) → backend `degraded=True` → the red "recovery mode — restore a backup" banner with
+content pushed below it; window close still exits code 0, no orphan `python.exe`.
 
 ---
 
