@@ -1,6 +1,8 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
+
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
@@ -8,6 +10,12 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react()],
+
+  // The zod method contract lives in the repo-root `ipc/` package (source-only,
+  // no build step); import it as `@ipc/methods`. tsconfig.json mirrors this path.
+  resolve: {
+    alias: { "@ipc": fileURLToPath(new URL("../ipc/schema", import.meta.url)) },
+  },
 
   // Pre-bundle the Tauri API entrypoints so Vite never discovers them
   // mid-session and forces a full-page reload — that reload races Tauri's

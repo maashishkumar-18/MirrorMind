@@ -8,9 +8,18 @@ import { Loading } from "./routes/Loading";
 
 export default function App() {
   useEffect(() => {
-    // Wire the backend:* Tauri event listeners once, after mount — running
-    // Tauri IPC calls at module-eval time races the webview's IPC init.
-    void startBackendBridge();
+    // Wire the backend event listeners once, after mount. Running Tauri IPC at
+    // module-eval time races the webview's IPC init.
+    let teardown: (() => void) | undefined;
+    let cancelled = false;
+    void startBackendBridge().then((fn) => {
+      if (cancelled) fn();
+      else teardown = fn;
+    });
+    return () => {
+      cancelled = true;
+      teardown?.();
+    };
   }, []);
 
   return (

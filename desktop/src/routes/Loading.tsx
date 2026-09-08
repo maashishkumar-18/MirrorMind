@@ -1,36 +1,51 @@
 import { useEffect, useState } from "react";
 
-import { ipcRequest } from "../ipc/bridge";
+import { call } from "../ipc/client";
 import { useBackendStore } from "../store/backend";
+import { useModelStore } from "../store/model";
 
 /**
- * fe.1/fe.3 acceptance surface: renders the backend connection phase, the raw
- * `app.ready` payload, and one `ipc_request` round-trip (`app.status`) — proving
- * both the event stream and the request/response bridge end to end. fe.5
- * replaces this with the real loading / degraded-mode UI; fe.6 routes to the
- * first-launch model flow when `model_setup_required` is true.
+ * fe.1/fe.3/fe.4 acceptance surface: the backend connection phase, the
+ * zod-validated `app.status`, and the `version_mismatch` "please restart"
+ * screen (roadmap 3.1). fe.5 replaces this with the real loading / degraded-mode
+ * UI; fe.6 routes to the first-launch model flow.
  */
 export function Loading() {
   const phase = useBackendStore((s) => s.phase);
   const ready = useBackendStore((s) => s.ready);
   const integrityDetails = useBackendStore((s) => s.integrityDetails);
   const exit = useBackendStore((s) => s.exit);
-  const lastEnvelope = useBackendStore((s) => s.lastEnvelope);
+  const ipcError = useBackendStore((s) => s.ipcError);
+  const versionMismatch = useBackendStore((s) => s.versionMismatch);
+  const activeModel = useModelStore((s) => s.activeModel);
+  const modelSetupRequired = useModelStore((s) => s.modelSetupRequired);
 
-  const [probe, setProbe] = useState("…");
+  const [status, setStatus] = useState("…");
   useEffect(() => {
     let alive = true;
-    ipcRequest("app.status", {}, 5000)
-      .then((env) => {
-        if (alive) setProbe(`ok — ${JSON.stringify(env.payload.result)}`);
+    call("app.status", {})
+      .then((s) => {
+        if (alive) setStatus(`degraded=${s.degraded} ready=${s.ready}`);
       })
-      .catch((err) => {
-        if (alive) setProbe(`error — ${JSON.stringify(err)}`);
+      .catch(() => {
+        if (alive) setStatus("failed (see banner)");
       });
     return () => {
       alive = false;
     };
   }, []);
+
+  if (versionMismatch) {
+    return (
+      <main className="screen">
+        <h1>Please restart MirrorMind</h1>
+        <p>
+          The app and its backend are running different versions. Close and reopen MirrorMind to
+          reconnect.
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="screen">
@@ -47,18 +62,20 @@ export function Loading() {
           </div>
           <div>
             <dt>Model setup required</dt>
-            <dd>{String(ready.model_setup_required)}</dd>
+            <dd>{String(modelSetupRequired)}</dd>
           </div>
           <div>
             <dt>Active model</dt>
-            <dd>{ready.active_model ?? "(none)"}</dd>
+            <dd>{activeModel ?? "(none)"}</dd>
           </div>
         </dl>
       )}
 
       <p className="probe">
-        <code>ipc_request(app.status)</code>: {probe}
+        <code>call(app.status)</code>: {status}
       </p>
+
+      {ipcError && <p className="ipc-error">IPC error: {ipcError}</p>}
 
       {phase === "degraded" && (
         <ul className="integrity">
@@ -72,13 +89,6 @@ export function Loading() {
         <p className="exited">
           Backend exited ({exit?.reason ?? `code ${exit?.code ?? "unknown"}`}).
         </p>
-      )}
-
-      {lastEnvelope && (
-        <details className="raw">
-          <summary>Last envelope</summary>
-          <pre>{JSON.stringify(lastEnvelope, null, 2)}</pre>
-        </details>
       )}
     </main>
   );

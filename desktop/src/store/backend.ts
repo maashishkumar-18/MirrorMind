@@ -1,52 +1,60 @@
+import type { AppReadyEvent } from "@ipc/methods";
 import { create } from "zustand";
+import type { z } from "zod";
 
-import type { AppReadyPayload, BackendExit, RawEnvelope } from "../ipc/events";
+import type { BackendExit, BridgeError, RawEnvelope } from "../ipc/events";
 
 export type BackendPhase = "starting" | "ready" | "degraded" | "exited";
+export type AppReady = z.infer<typeof AppReadyEvent>;
 
 export interface BackendState {
   phase: BackendPhase;
   /** Payload of the last `app.ready` event, once seen. */
-  ready: AppReadyPayload | null;
+  ready: AppReady | null;
   /** Details from `app.integrity_failed`, if the backend came up degraded. */
   integrityDetails: string[];
+  /** Last lifecycle reason (`previous_data_unrecoverable` / `restore_staged`). */
+  lifecycle: string | null;
   /** The `backend:exit` payload, once the sidecar exits. */
   exit: BackendExit | null;
   /** The most recent unattributed backend `error` frame (`backend:error`). */
   lastError: RawEnvelope | null;
-  /** The most recent raw envelope forwarded by the shell — fe.1 debug aid. */
-  lastEnvelope: RawEnvelope | null;
 
-  applyEnvelope: (envelope: RawEnvelope) => void;
+  /** IPC version disagreement — only a restart clears it. */
+  versionMismatch: boolean;
+  /** Transient transport failure from the last `call()` — cleared on success. */
+  ipcError: BridgeError["kind"] | null;
+
+  setReady: (payload: AppReady) => void;
+  setDegraded: (details: string[]) => void;
+  setLifecycle: (reason: string) => void;
   setExited: (exit: BackendExit) => void;
   setBackendError: (envelope: RawEnvelope) => void;
+  setVersionMismatch: () => void;
+  setIpcError: (kind: BridgeError["kind"]) => void;
+  clearIpcError: () => void;
 }
 
 export const useBackendStore = create<BackendState>((set) => ({
   phase: "starting",
   ready: null,
   integrityDetails: [],
+  lifecycle: null,
   exit: null,
   lastError: null,
-  lastEnvelope: null,
+  versionMismatch: false,
+  ipcError: null,
 
-  applyEnvelope: (envelope) =>
-    set((state) => {
-      const next: Partial<BackendState> = { lastEnvelope: envelope };
-      if (envelope.message_type === "event") {
-        const method = envelope.payload.method;
-        const params = envelope.payload.params ?? {};
-        if (method === "app.ready") {
-          next.phase = state.phase === "exited" ? state.phase : "ready";
-          next.ready = params as unknown as AppReadyPayload;
-        } else if (method === "app.integrity_failed") {
-          next.phase = "degraded";
-          next.integrityDetails = (params.details as string[]) ?? [];
-        }
-      }
-      return next;
-    }),
-
+  setReady: (payload) =>
+    set((state) => ({
+      ready: payload,
+      phase: state.phase === "exited" || state.phase === "degraded" ? state.phase : "ready",
+    })),
+  setDegraded: (details) => set({ phase: "degraded", integrityDetails: details }),
+  setLifecycle: (reason) => set({ lifecycle: reason }),
   setExited: (exit) => set({ phase: "exited", exit }),
   setBackendError: (envelope) => set({ lastError: envelope }),
+  setVersionMismatch: () => set({ versionMismatch: true }),
+  setIpcError: (kind) => set({ ipcError: kind }),
+  clearIpcError: () => set({ ipcError: null }),
 }));

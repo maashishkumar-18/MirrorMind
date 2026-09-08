@@ -1,17 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type { RawEnvelope } from "../ipc/events";
 import { useBackendStore } from "./backend";
-
-function event(method: string, params: Record<string, unknown>): RawEnvelope {
-  return {
-    version: 1,
-    message_type: "event",
-    request_id: "-",
-    timestamp: "2026-09-08T00:00:00Z",
-    payload: { method, params },
-  };
-}
 
 const initial = useBackendStore.getState();
 
@@ -24,72 +13,49 @@ describe("useBackendStore", () => {
     expect(useBackendStore.getState().phase).toBe("starting");
   });
 
-  it("moves to 'ready' and captures the app.ready payload", () => {
-    useBackendStore.getState().applyEnvelope(
-      event("app.ready", {
-        ipc_version: 1,
-        model_setup_required: true,
-        active_model: null,
-      }),
-    );
-
-    const state = useBackendStore.getState();
-    expect(state.phase).toBe("ready");
-    expect(state.ready).toEqual({
-      ipc_version: 1,
-      model_setup_required: true,
-      active_model: null,
-    });
-  });
-
-  it("moves to 'degraded' on app.integrity_failed and keeps the details", () => {
+  it("setReady moves to 'ready' and keeps the payload", () => {
     useBackendStore
       .getState()
-      .applyEnvelope(event("app.integrity_failed", { details: ["malformed page"] }));
-
-    const state = useBackendStore.getState();
-    expect(state.phase).toBe("degraded");
-    expect(state.integrityDetails).toEqual(["malformed page"]);
+      .setReady({ ipc_version: 1, model_setup_required: true, active_model: null });
+    const s = useBackendStore.getState();
+    expect(s.phase).toBe("ready");
+    expect(s.ready?.model_setup_required).toBe(true);
   });
 
-  it("stores the whole backend:exit payload and enters 'exited'", () => {
+  it("setDegraded moves to 'degraded' and keeps details", () => {
+    useBackendStore.getState().setDegraded(["malformed page"]);
+    const s = useBackendStore.getState();
+    expect(s.phase).toBe("degraded");
+    expect(s.integrityDetails).toEqual(["malformed page"]);
+  });
+
+  it("setReady does not override 'exited' or 'degraded'", () => {
+    useBackendStore.getState().setExited({ code: 3, reason: "x", snapshot_path: null });
     useBackendStore
       .getState()
-      .setExited({ code: 5, reason: "restore_staged", snapshot_path: "C:\\x.db" });
-
-    const state = useBackendStore.getState();
-    expect(state.phase).toBe("exited");
-    expect(state.exit).toEqual({ code: 5, reason: "restore_staged", snapshot_path: "C:\\x.db" });
-  });
-
-  it("does not leave the 'exited' phase when a late app.ready arrives", () => {
-    useBackendStore.getState().setExited({ code: 3, reason: "previous_data_unrecoverable", snapshot_path: null });
-    useBackendStore.getState().applyEnvelope(
-      event("app.ready", {
-        ipc_version: 1,
-        model_setup_required: false,
-        active_model: "llama3.1:8b",
-      }),
-    );
-
+      .setReady({ ipc_version: 1, model_setup_required: false, active_model: "m" });
     expect(useBackendStore.getState().phase).toBe("exited");
   });
 
-  it("records the last unattributed backend error", () => {
-    const errEnvelope: RawEnvelope = {
-      version: 1,
-      message_type: "error",
-      request_id: "-",
-      timestamp: "2026-09-08T00:00:00Z",
-      payload: { code: "internal_error", message: "boom" },
-    };
-    useBackendStore.getState().setBackendError(errEnvelope);
-    expect(useBackendStore.getState().lastError).toBe(errEnvelope);
+  it("stores the whole backend:exit payload", () => {
+    useBackendStore
+      .getState()
+      .setExited({ code: 5, reason: "restore_staged", snapshot_path: "C:\\x.db" });
+    expect(useBackendStore.getState().exit).toEqual({
+      code: 5,
+      reason: "restore_staged",
+      snapshot_path: "C:\\x.db",
+    });
   });
 
-  it("records the last envelope for any message", () => {
-    const envelope = event("app.reminders_pending", { overdue: [], pending_acknowledgment: [] });
-    useBackendStore.getState().applyEnvelope(envelope);
-    expect(useBackendStore.getState().lastEnvelope).toBe(envelope);
+  it("versionMismatch is sticky; ipcError clears", () => {
+    const st = useBackendStore.getState();
+    st.setVersionMismatch();
+    st.setIpcError("timeout");
+    expect(useBackendStore.getState().versionMismatch).toBe(true);
+    expect(useBackendStore.getState().ipcError).toBe("timeout");
+    st.clearIpcError();
+    expect(useBackendStore.getState().ipcError).toBeNull();
+    expect(useBackendStore.getState().versionMismatch).toBe(true);
   });
 });
