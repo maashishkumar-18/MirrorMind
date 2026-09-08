@@ -48,6 +48,14 @@ describe("useBackendStore", () => {
     });
   });
 
+  it("setLifecycle stores the reason and the optional message", () => {
+    useBackendStore.getState().setLifecycle("previous_data_unrecoverable", "starting fresh");
+    expect(useBackendStore.getState().lifecycle).toBe("previous_data_unrecoverable");
+    expect(useBackendStore.getState().lifecycleMessage).toBe("starting fresh");
+    useBackendStore.getState().setLifecycle("restore_staged");
+    expect(useBackendStore.getState().lifecycleMessage).toBeNull();
+  });
+
   it("versionMismatch is sticky; ipcError clears", () => {
     const st = useBackendStore.getState();
     st.setVersionMismatch();

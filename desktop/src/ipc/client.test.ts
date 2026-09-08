@@ -5,7 +5,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 
 import { useBackendStore } from "../store/backend";
-import { call, describeIpcError, IpcCallError } from "./client";
+import { call, describeIpcError, ipcErrorUi, IpcCallError } from "./client";
 
 const invokeMock = vi.mocked(invoke);
 const backendInitial = useBackendStore.getState();
@@ -143,5 +143,17 @@ describe("describeIpcError()", () => {
   it("a params schema error is not a banner", () => {
     const e = new IpcCallError("schema", "x", { phase: "params" });
     expect(describeIpcError(e, "ready")).toBeNull();
+  });
+});
+
+describe("ipcErrorUi()", () => {
+  it("backend_exited is only 'unavailable' once the phase is 'exited'", () => {
+    expect(ipcErrorUi("backend_exited", "exited")).toBe("unavailable");
+    expect(ipcErrorUi("backend_exited", "starting")).toBe("temporarily_unavailable");
+  });
+  it("every other kind is transient", () => {
+    for (const k of ["timeout", "backend_unavailable", "transport"] as const) {
+      expect(ipcErrorUi(k, "ready")).toBe("temporarily_unavailable");
+    }
   });
 });

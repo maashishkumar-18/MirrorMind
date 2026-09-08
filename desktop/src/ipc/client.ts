@@ -124,6 +124,19 @@ export async function call<M extends CallableMethod>(
 export type IpcErrorUi = "please_restart" | "temporarily_unavailable" | "unavailable";
 
 /**
+ * A transport-class failure's severity, given the current backend phase. Shared
+ * by `describeIpcError` (a caught error) and `selectBanner` (the stored
+ * `ipcError` kind) so the two agree.
+ */
+export function ipcErrorUi(
+  kind: BridgeError["kind"],
+  phase: string,
+): "temporarily_unavailable" | "unavailable" {
+  if (kind === "backend_exited" && phase === "exited") return "unavailable";
+  return "temporarily_unavailable";
+}
+
+/**
  * Map an `IpcCallError` to a global UI state, given the current backend phase.
  * Returns `null` for a method-specific backend error the caller should handle
  * itself (e.g. `no_model_active`).
@@ -143,8 +156,8 @@ export function describeIpcError(
     return { ui: "temporarily_unavailable", message: "AI features are temporarily unavailable." };
   }
   // transport
-  if (err.detail.transportKind === "backend_exited" && phase === "exited") {
-    return { ui: "unavailable", message: "AI features are unavailable." };
-  }
-  return { ui: "temporarily_unavailable", message: "AI features are temporarily unavailable — reconnecting…" };
+  const ui = ipcErrorUi(err.detail.transportKind ?? "transport", phase);
+  return ui === "unavailable"
+    ? { ui, message: "AI features are unavailable." }
+    : { ui, message: "AI features are temporarily unavailable — reconnecting…" };
 }

@@ -5,6 +5,7 @@ import { startBackendBridge } from "./bootstrap";
 import { Chat } from "./routes/Chat";
 import { FirstRun } from "./routes/FirstRun";
 import { Loading } from "./routes/Loading";
+import { RootLayout } from "./ui/RootLayout";
 
 export default function App() {
   useEffect(() => {
@@ -24,10 +25,12 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<Loading />} />
-      <Route path="/first-run" element={<FirstRun />} />
-      <Route path="/chat" element={<Chat />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route element={<RootLayout />}>
+        <Route path="/" element={<Loading />} />
+        <Route path="/first-run" element={<FirstRun />} />
+        <Route path="/chat" element={<Chat />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
     </Routes>
   );
 }

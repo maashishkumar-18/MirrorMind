@@ -8,10 +8,110 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
 }
 
+/* --- app shell (fe.5) --- */
+.root-layout {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main {
+  flex: 1;
+  overflow: auto;
+}
+
+.banner {
+  flex: 0 0 auto;
+  height: 0;
+  overflow: hidden;
+  transition: height 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 1rem;
+  font-size: 0.875rem;
+  color: #fff;
+}
+
+.banner[data-variant]:not([data-variant="none"]) {
+  height: 2.25rem;
+}
+
+.banner[data-variant="reconnecting"] {
+  background: #8a6d1a;
+}
+.banner[data-variant="unavailable"],
+.banner[data-variant="recovery-mode"] {
+  background: #a12a2a;
+}
+.banner[data-variant="restoring"] {
+  background: #2a5aa1;
+}
+.banner[data-variant="ready"] {
+  background: #2a7d46;
+}
+
+.banner-dots::after {
+  content: "";
+  animation: banner-ellipsis 1.2s steps(4, end) infinite;
+}
+
+@keyframes banner-ellipsis {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+}
+
+.app-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(10, 10, 12, 0.72);
+}
+
+.app-gate-card {
+  max-width: 30rem;
+  padding: 1.75rem 2rem;
+  border-radius: 10px;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+.app-gate-card h1 {
+  margin-top: 0;
+}
+
+.app-gate-hint {
+  margin-bottom: 0;
+  opacity: 0.65;
+  font-size: 0.875rem;
+}
+
+/* --- route content --- */
 .screen {
   max-width: 640px;
   margin: 0 auto;
@@ -45,12 +145,4 @@ h1 {
 
 .ready dd {
   margin: 0;
-}
-
-.raw pre {
-  overflow-x: auto;
-  padding: 0.75rem;
-  border-radius: 6px;
-  background: rgba(127, 127, 127, 0.12);
-  font-size: 0.8rem;
 }

@@ -22,8 +22,8 @@ export async function startBackendBridge(): Promise<() => void> {
       model().hydrateFromReady(p);
     }),
     subscribe("app.integrity_failed", (p) => backend().setDegraded(p.details)),
-    subscribe("app.previous_data_unrecoverable", () =>
-      backend().setLifecycle("previous_data_unrecoverable"),
+    subscribe("app.previous_data_unrecoverable", (p) =>
+      backend().setLifecycle("previous_data_unrecoverable", p.message),
     ),
     subscribe("app.restore_staged", () => backend().setLifecycle("restore_staged")),
     subscribe("app.reminders_pending", (p) => reminders().setReconciliation(p)),
@@ -36,7 +36,8 @@ export async function startBackendBridge(): Promise<() => void> {
     backend().setBackendError(e.payload),
   );
 
-  // Recover a missed `app.ready` (event fired before the listener attached).
+  // Recover a missed `app.ready` / `app.integrity_failed` (event fired before
+  // the listener attached).
   call("app.status", {})
     .then((status) => {
       backend().setReady({
@@ -45,6 +46,7 @@ export async function startBackendBridge(): Promise<() => void> {
         active_model: status.active_model,
       });
       model().hydrateFromStatus(status);
+      if (status.degraded) backend().setDegraded([]);
     })
     .catch((err: unknown) => {
       if (!(err instanceof IpcCallError)) throw err; // client already recorded store state

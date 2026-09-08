@@ -15,6 +15,8 @@ export interface BackendState {
   integrityDetails: string[];
   /** Last lifecycle reason (`previous_data_unrecoverable` / `restore_staged`). */
   lifecycle: string | null;
+  /** The verbatim message from the last lifecycle event, if it carried one. */
+  lifecycleMessage: string | null;
   /** The `backend:exit` payload, once the sidecar exits. */
   exit: BackendExit | null;
   /** The most recent unattributed backend `error` frame (`backend:error`). */
@@ -27,7 +29,7 @@ export interface BackendState {
 
   setReady: (payload: AppReady) => void;
   setDegraded: (details: string[]) => void;
-  setLifecycle: (reason: string) => void;
+  setLifecycle: (reason: string, message?: string) => void;
   setExited: (exit: BackendExit) => void;
   setBackendError: (envelope: RawEnvelope) => void;
   setVersionMismatch: () => void;
@@ -40,6 +42,7 @@ export const useBackendStore = create<BackendState>((set) => ({
   ready: null,
   integrityDetails: [],
   lifecycle: null,
+  lifecycleMessage: null,
   exit: null,
   lastError: null,
   versionMismatch: false,
@@ -51,7 +54,7 @@ export const useBackendStore = create<BackendState>((set) => ({
       phase: state.phase === "exited" || state.phase === "degraded" ? state.phase : "ready",
     })),
   setDegraded: (details) => set({ phase: "degraded", integrityDetails: details }),
-  setLifecycle: (reason) => set({ lifecycle: reason }),
+  setLifecycle: (reason, message) => set({ lifecycle: reason, lifecycleMessage: message ?? null }),
   setExited: (exit) => set({ phase: "exited", exit }),
   setBackendError: (envelope) => set({ lastError: envelope }),
   setVersionMismatch: () => set({ versionMismatch: true }),
