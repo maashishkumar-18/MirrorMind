@@ -1,0 +1,36 @@
+{
+  "name": "mirrormind-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MirrorMind desktop frontend (React + TypeScript + Vite) — runs inside the Tauri v2 shell. Phase 3 Step 3.1.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.1.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.19.0",
+    "vite": "^8.0.16",
+    "vitest": "^3.2.4"
+  }
+}

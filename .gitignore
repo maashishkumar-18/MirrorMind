@@ -36,5 +36,13 @@ db/**/*.bak
 ipc/node_modules/
 ipc/dist/
 
+# desktop/ (Phase 3 Step 3.1-fe.1) — Vite/React frontend + Tauri v2 Rust shell
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+# dev-only isolated backend state dir spawned by the Tauri shell
+desktop/.dev-data/
+
 # Local tooling state, not project source
 .claude/

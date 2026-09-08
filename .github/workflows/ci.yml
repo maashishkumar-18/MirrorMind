@@ -32,6 +32,39 @@ jobs:
       - run: npm run lint --prefix ipc
       - run: npm test --prefix ipc
 
+  build-frontend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm ci --prefix desktop
+      - run: npm run typecheck --prefix desktop
+      - run: npm run lint --prefix desktop
+      - run: npm test --prefix desktop
+      - run: npm run build --prefix desktop # vite build only — `tauri build` (MSIX) is Phase 5
+
+  desktop-rust:
+    runs-on: windows-latest
+    defaults:
+      run: { working-directory: desktop/src-tauri }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "rustfmt, clippy" }
+      # First run compiles ~400 Tauri crates (~10 min); Swatinem/rust-cache makes
+      # every subsequent run a few minutes. If `cargo check` stays flaky/slow on
+      # the runner, drop it to fmt + clippy — the local `cargo check` gate stands.
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "desktop/src-tauri" }
+      # tauri-build reads frontendDist (../dist); a stub keeps `cargo check`
+      # independent of the frontend build (that is build-frontend's job).
+      - run: mkdir dist && echo "<!doctype html>" > dist/index.html
+        working-directory: desktop
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo check
+
   test:
     runs-on: windows-latest
     steps:
@@ -89,7 +122,7 @@ jobs:
   # Gates structurally on push+release only (never pull_request) so signing
   # secrets are never reachable from PR-level CI.
   sign:
-    needs: [lint-python, lint-ipc-schema, test]
+    needs: [lint-python, lint-ipc-schema, test, build-frontend, desktop-rust]
     if: github.ref == 'refs/heads/release' && github.event_name == 'push'
     runs-on: windows-latest
     environment: production-signing
