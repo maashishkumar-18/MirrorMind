@@ -48,6 +48,7 @@ from src.common.ipc.methods import (
     ReminderWire,
 )
 from src.models.app_config import AppConfig
+from src.models.ollama_manager import normalize_model_name
 from src.models.types import DownloadProgress, ModelDownloadError
 
 
@@ -106,7 +107,13 @@ def _model_status(p: BaseModel, ctx: HandlerContext, _rid: str) -> ModelStatusRe
         names = sorted(
             {e.name for e in ctx.models.get_model_catalog()} | {m.name for m in installed}
         )
-    statuses = {n: ctx.ollama.get_model_status(n, active_model=active).value for n in names}
+    installed_norm = {normalize_model_name(m.name) for m in installed}
+    statuses = {
+        n: s.value
+        for n, s in ctx.ollama.get_model_statuses(
+            names, active_model=active, installed=installed_norm
+        ).items()
+    }
     return ModelStatusResult(
         ollama_running=running,
         installed=[InstalledEntry(name=m.name, size_bytes=m.size_bytes) for m in installed],

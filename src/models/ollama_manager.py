@@ -83,23 +83,42 @@ class OllamaManager:
             )
         return out
 
-    def get_model_status(self, model_name: str, *, active_model: str | None = None) -> ModelStatus:
-        """Resolve one model's lifecycle state. ``active_model`` defaults to the
-        app-config value."""
-        target = normalize_model_name(model_name)
-
-        if model_name in self._active_downloads or target in self._active_downloads:
-            return ModelStatus.DOWNLOADING
-
-        installed = {normalize_model_name(m.name) for m in self.get_installed_models()}
-        if target not in installed:
-            return ModelStatus.NOT_INSTALLED
-
+    def get_model_statuses(
+        self,
+        names: list[str],
+        *,
+        active_model: str | None = None,
+        installed: set[str] | None = None,
+    ) -> dict[str, ModelStatus]:
+        """Resolve several models' lifecycle states with a **single**
+        ``/api/tags`` call (pass ``installed`` — the normalized name set — to skip
+        even that). ``active_model`` defaults to the app-config value."""
+        installed_norm = (
+            installed
+            if installed is not None
+            else {normalize_model_name(m.name) for m in self.get_installed_models()}
+        )
         if active_model is None:
             active_model = AppConfig.load().active_model
-        if active_model and normalize_model_name(active_model) == target:
-            return ModelStatus.ACTIVE
-        return ModelStatus.AVAILABLE
+        active_norm = normalize_model_name(active_model) if active_model else None
+
+        out: dict[str, ModelStatus] = {}
+        for name in names:
+            target = normalize_model_name(name)
+            if name in self._active_downloads or target in self._active_downloads:
+                out[name] = ModelStatus.DOWNLOADING
+            elif target not in installed_norm:
+                out[name] = ModelStatus.NOT_INSTALLED
+            elif active_norm is not None and active_norm == target:
+                out[name] = ModelStatus.ACTIVE
+            else:
+                out[name] = ModelStatus.AVAILABLE
+        return out
+
+    def get_model_status(self, model_name: str, *, active_model: str | None = None) -> ModelStatus:
+        """Resolve one model's lifecycle state. ``active_model`` defaults to the
+        app-config value. (Thin wrapper over :meth:`get_model_statuses`.)"""
+        return self.get_model_statuses([model_name], active_model=active_model)[model_name]
 
     def delete_model(self, model_name: str) -> bool:
         """``DELETE /api/delete``. True if something was removed, False on 404

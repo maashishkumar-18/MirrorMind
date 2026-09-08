@@ -36,6 +36,15 @@ class FakeOllama:
             return ModelStatus.ACTIVE
         return ModelStatus.AVAILABLE
 
+    def get_model_statuses(
+        self,
+        names: list[str],
+        *,
+        active_model: str | None = None,
+        installed: set[str] | None = None,
+    ) -> dict[str, ModelStatus]:
+        return {n: self.get_model_status(n, active_model=active_model) for n in names}
+
     def show_model(self, name: str) -> dict | None:
         return {"details": {}} if name in self._installed else None
 

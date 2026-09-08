@@ -145,6 +145,36 @@ def test_get_model_status_downloading_from_tracker(server):
     assert mgr.get_model_status("gemma2:9b", active_model="llama3.1:8b") == ModelStatus.DOWNLOADING
 
 
+def test_get_model_statuses_makes_one_tags_call(server):
+    """Regression: `_model_status` used to call `get_model_status` per name,
+    each re-fetching `/api/tags` — ~16s for the catalog on a slow localhost."""
+    calls: list[str] = []
+    base = _default_responder
+
+    def counting(method, path):
+        if method == "GET" and path == "/api/tags":
+            calls.append(path)
+        return base(method, path)
+
+    server.responder = counting  # type: ignore[attr-defined]
+    mgr = OllamaManager(host=f"http://127.0.0.1:{server.server_address[1]}", timeout_seconds=5)
+
+    result = mgr.get_model_statuses(
+        ["llama3.1:8b", "mistral:latest", "gemma2:9b", "qwen2.5:7b"],
+        active_model="llama3.1:8b",
+    )
+    assert result["llama3.1:8b"] == ModelStatus.ACTIVE
+    assert result["mistral:latest"] == ModelStatus.AVAILABLE
+    assert result["gemma2:9b"] == ModelStatus.NOT_INSTALLED
+    assert result["qwen2.5:7b"] == ModelStatus.NOT_INSTALLED
+    assert len(calls) == 1
+
+    # and none at all when the caller supplies the installed set
+    calls.clear()
+    mgr.get_model_statuses(["llama3.1:8b"], active_model="llama3.1:8b", installed={"llama3.1:8b"})
+    assert calls == []
+
+
 def test_delete_model_200_and_404(manager, server):
     assert manager.delete_model("llama3.1:8b") is True
     server.responder = lambda m, p: (404, "{}")  # type: ignore[attr-defined]
