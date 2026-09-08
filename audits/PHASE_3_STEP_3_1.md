@@ -1,7 +1,8 @@
 # Phase 3 Step 3.1 — Frontend Architecture and IPC Client
 
-**Status:** sub-steps **3.1a** + **3.1b** + **3.1c** + **3.1d** landed — **the Step 3.1
-backend is complete.** Next: the Rust/React scaffold sub-step.
+**Status:** the Step 3.1 **backend** (3.1a–3.1d) is complete. The Rust/React scaffold is
+split into **fe.1–fe.7**; **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** have landed. Next: fe.3
+(Rust stdio↔invoke bridge).
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -29,11 +30,13 @@ sequenced after the backend spine is solid and tested.
 | generation routed through the app-config active model (gate: `model_setup_required()` → `no_model_active`; `RetrievalAgent(model=)` / `MetadataExtractor(model=)` / `GenerationOrchestrator(model_name=)`) | Python backend | **3.1b ✅** |
 | `SQLiteVectorStore` key wiring — the `SessionWorker` opens `SQLiteVectorStore(db_path, key=key)` on its own thread; `SQLiteVectorStore.close()` added; `coordinator.register("session_worker", …)` teardown (scheduler → session_worker → tracing) | Python backend | **3.1b ✅** |
 | idle-session auto-close (§13): lazy check at `chat.send` entry (`RAGPIPE_SESSION_IDLE_MINUTES`, default 45) + `run()`-prologue finalize of dangling sessions + on-launch `ReminderHandler.reconcile_on_launch()` surfaced via `app.reminders_pending` event + `reminders.reconciliation` method | Python backend | **3.1c ✅** |
-| `src-tauri/` Rust shell, `tauri.conf.json` (**`bundle.externalBin` for the Python sidecar** + `shell:sidecar` allowlist — a missing `externalBin` is the classic "works in dev, broken in MSIX"), Vite + React + TS + Zustand + React Router, typed **zod IPC client**, `ipc/schema/methods.ts` mirror + round-trip test | Rust + React | **scaffold sub-step** |
-| Degraded-mode **banner UI** ("AI features temporarily unavailable — restarting…" → "Ready"), first-launch model **flow UI**, version-mismatch → "please restart" UI, IPC timeout → "temporarily unavailable" | React frontend | **scaffold sub-step** |
-| Tauri **process supervisor** — restart with exponential backoff 1s/2s/4s, **3 restarts after the initial launch (4 total launches)**, then degraded banner + "Restart app" | Rust shell | **later** |
-| **Restore file swap** — Rust `fs::rename` of `validated_snapshot_path` with the backend fully down, then relaunch (pairs with 3.1a's `stage_restore` + exit code 5; `os.replace` onto the live DB cannot succeed on Windows with connections open — resolves `PHASE_2_AUDIT.md` 2.3-C1) | Rust shell | **later** |
-| Single-instance **enforcement** + bring-first-window-to-foreground | Rust shell | **later** |
+| `desktop/` Vite + React 19 + TS + Zustand + React Router skeleton; `desktop/src-tauri/` Tauri v2 shell that spawns `python -m src.backend.main` and forwards stdout envelopes to the webview as `backend:message` events | Rust + React | **fe.1 ✅** (`4291182`) |
+| `ipc/schema/methods.ts` — zod mirror of `METHOD_CONTRACTS` + the 6 events, `.strict()` throughout; `validate_methods_stdin.ts` + `methods_examples.json` + `tests/common/test_ipc_methods_roundtrip.py` cross-language round-trip | React tooling | **fe.2 ✅** (`72ba144`) |
+| Rust **stdio↔invoke bridge** — `ipc_request(envelope)` command, `request_id` correlation (oneshot map), `response`/`error` → waiters, `event` frames → Tauri events; exit codes 3 → "starting fresh" / 5 → "restore staged" surfaced; `app.shutdown` on window close | Rust shell | **fe.3** |
+| Typed **zod IPC client** (TS) wrapping `invoke` from `@tauri-apps/api/core` + zod validation; `version_mismatch` → "please restart"; per-call timeout → "temporarily unavailable"; event subscriptions → Zustand | React frontend | **fe.4** |
+| Degraded-mode **banner UI** ("AI features temporarily unavailable — restarting…" → "Ready"), version-mismatch → "please restart" UI, IPC timeout → "temporarily unavailable" | React frontend | **fe.5** |
+| First-launch model **flow UI** (`model.catalog` / `model.status` / `model.download` streaming progress / `model.activate`; route guard until a model is active) | React frontend | **fe.6** |
+| Tauri **shell hardening** — process supervisor (backoff 1s/2s/4s, **3 restarts after the initial launch = 4 total**) → degraded banner; single-instance **enforcement** + window focus; **restore file swap** (Rust `fs::rename` of `validated_snapshot_path`, backend down, then relaunch — pairs with 3.1a `stage_restore` + exit 5; resolves `PHASE_2_AUDIT.md` 2.3-C1). `bundle.externalBin` for the PyInstaller sidecar is Phase 5. | Rust shell | **fe.7** |
 | Real **WinRT `ToastBridge`** — `cancel_all()` must iterate `RemoveFromSchedule` **per id** (Windows has no bulk-cancel API); the notifier that removes a scheduled toast must be the **same `ToastNotifier` instance** that scheduled it | Rust (called from Python via IPC) | **later** |
 | Subprocess-kill **fuzzing test** — 100 iterations on `windows-latest`, kills during **IPC message processing**, **DB write**, and **Ollama inference** (not just idle) → assert detect → restart → banner → recover, zero data loss | Rust + test runner | **later (roadmap Step 4.4)** |
 | Step 2.4 **accessibility** (WCAG 2.1 AA / axe-core / Narrator / string externalization) | React frontend | **later Phase 3** |
@@ -43,6 +46,72 @@ sequenced after the backend spine is solid and tested.
 supervisor relaunches (backoff). A **restore** → supervisor stops the backend (quiescing every
 DB connection), *then* `fs::rename`, *then* relaunches. 3.1a delivers the backend half: exit
 code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
+
+---
+
+## What landed in fe.1 (`4291182`)
+
+`desktop/` — a Vite + React 19 + TypeScript project (React Router, Zustand). Scripts:
+`dev` / `build` (`tsc && vite build`) / `typecheck` / `lint` (flat eslint + typescript-eslint) /
+`test` (vitest). Routes `/` (Loading), `/first-run`, `/chat` (the last two placeholders for
+fe.6 / Step 3.2).
+
+`desktop/src-tauri/` — Tauri v2 (`npm create tauri-app` React-TS template, adapted).
+`identifier` `com.mirrormind.companion`, `withGlobalTauri: true`, window 900×680.
+`src/backend.rs`: on `setup`, `std::process::Command` spawns the backend child —
+interpreter / cwd / repo-root derived from `env!("CARGO_MANIFEST_DIR")` (`<root>/.venv/
+Scripts/python.exe`, cwd `<root>`), both overridable via `MIRRORMIND_BACKEND_PYTHON` /
+`MIRRORMIND_BACKEND_CWD`; `RAGPIPE_DATA_DIR` passed as an **absolute** `<root>/desktop/
+.dev-data` (git-ignored, `create_dir_all`'d before spawn); `LANGFUSE_*` blanked. A reader
+thread parses each stdout line as JSON and `app.emit("backend:message", value)`; on child
+exit it emits `backend:exit` with the code. `RunEvent::ExitRequested | Exit` → `child.kill()`.
+`bootstrap.ts` listens for both events; `useBackendStore` (Zustand) turns `app.ready` /
+`app.integrity_failed` into a `phase` the Loading route renders (the fe.1 acceptance surface).
+
+**Known gap (closed in fe.3):** window close does `child.kill()` with **no `app.shutdown`
+handshake**, so the backend's `ShutdownCoordinator` teardown does not run in dev — but the
+child gets stdin EOF when the shell dies and exits its read loop cleanly (verified: no orphan
+`python.exe` after killing the shell). No request/response correlation and no supervisor yet.
+
+CI: `build-frontend` (windows-latest, Node 20 — `npm ci` → typecheck → lint → test → vite
+build) and `desktop-rust` (`Swatinem/rust-cache` → `cargo fmt --check` + `clippy -D warnings`
++ `cargo check`, with a stub `dist/index.html` so the check is frontend-build-independent).
+Both gate `sign`. `.gitignore` += `desktop/{node_modules,dist,src-tauri/target,src-tauri/gen,
+.dev-data}/`.
+
+Verified locally: `cargo fmt`/`check`/`clippy` clean; `npm run tauri dev` opens the window,
+the shell spawns the venv backend (cwd + data dir correct), and the webview renders the live
+`app.ready` payload (`Backend: Ready`, IPC v1, `model_setup_required: true`, no active model);
+killing the shell leaves no orphan process.
+
+## What landed in fe.2 (`72ba144`)
+
+`ipc/schema/methods.ts` — the zod mirror of `src/common/ipc/methods.py`, field-for-field:
+all 14 methods' `*Params`/`*Result` + the 6 lifecycle/streaming events
+(`app.ready` / `app.integrity_failed` / `app.previous_data_unrecoverable` /
+`app.restore_staged` / `app.reminders_pending` / `model.download.progress`). **Every object —
+nested DTOs (`ChatCitation`, `ChatConflictItem`, `ReminderWire`, …) included — is `.strict()`**
+(matches Pydantic `extra="forbid"`); nullable-with-default fields mirror the Python defaults.
+Exports `METHOD_CONTRACTS` (`{params, result, degradedOk, worker}`) + `EVENT_SCHEMAS` for
+fe.4's typed client. `methods.py` is the contract source — no reference to internal dataclass
+field names.
+
+`ipc/schema/validate_methods_stdin.ts` — CLI validator; `target` is `"<kind>:<name>"`
+(`params:` / `result:` / `event:`) split on the **first** `:` so dotted method names never
+ambiguate. `ipc/fixtures/methods_examples.json` — one canonical example per params/result/
+event, plus extra Tier-1/Tier-2/conflict `chat.send` cases.
+
+`ipc/schema/methods.test.ts` (vitest, 65 cases) — every contract/event has a fixture; each
+parses; `.strict()` rejects an extra key incl. a nested one.
+`tests/common/test_ipc_methods_roundtrip.py` — the sibling of
+`test_ipc_envelope_roundtrip.py`: each fixture is Pydantic-validated + `model_dump`ed, piped
+through the zod validator in a real Node subprocess, and the canonical outputs compared;
+`skipif` when Node is missing. Imports **only** `src.common.ipc.methods` (pydantic-only) — the
+`conftest.py` Langfuse-creds guard is untouched.
+
+`lint-ipc-schema` picks up `methods.ts` + `methods.test.ts` automatically; the `test` job's
+`pytest` picks up the round-trip — **no `ci.yml` change**. Verified: `npm typecheck/lint/test
+--prefix ipc` green (79 tests); `pytest` 772 passed / 1 skipped (was 728); black/ruff clean.
 
 ---
 
