@@ -2,7 +2,8 @@
 
 **Status:** the Step 3.1 **backend** (3.1a–3.1d) is complete. The Rust/React scaffold is
 split into **fe.1–fe.7**; **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)** +
-**fe.4 (`198d493`)** + **fe.5 (`2198a65`)** have landed. Next: fe.6 (first-launch model flow).
+**fe.4 (`198d493`)** + **fe.5 (`2198a65`)** + **fe.6 (`b2f7936`, + backend fix `f330e84`)** have
+landed. Next: fe.7 (Tauri shell hardening).
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -35,8 +36,8 @@ sequenced after the backend spine is solid and tested.
 | Rust **stdio↔invoke bridge** — `ipc_request(envelope, timeoutMs)` command, `request_id` correlation (`tokio::sync::oneshot` map), `response`/`error` → waiters, `event` frames → Tauri events; exit codes 3 → "starting fresh" / 5 → "restore staged" surfaced; `app.shutdown` handshake on window close | Rust shell | **fe.3 ✅** (`e678ec4`) |
 | Typed **zod IPC client** (`desktop/src/ipc/client.ts` `call<M>()`) wrapping `@ipc/methods` + `bridge.ts` — zod-validates params + result, `IpcCallError { kind }` + `describeIpcError`, `version_mismatch` → store flag → "please restart" screen, per-method timeouts; `subscribe()` typed event demux; `useBackendStore`/`useModelStore`/`useReminderStore` | React frontend | **fe.4 ✅** (`198d493`) |
 | Degraded-mode **banner** (`RootLayout` + `selectBanner`/`selectAppGate` pure selectors) — recovery-mode / reconnecting / unavailable / restoring / "Reconnected" flash; full-screen **gate** for `version_mismatch` + `previous_data_unrecoverable` | React frontend | **fe.5 ✅** (`2198a65`) |
-| First-launch model **flow UI** (`model.catalog` / `model.status` / `model.download` streaming progress / `model.activate`; the `useModelStore` `catalog`/`statuses` fields; Loading → /first-run \| /chat route guard; `no_model_active` → first-run) | React frontend | **fe.6** |
-| Tauri **shell hardening** — process supervisor (backoff 1s/2s/4s, **3 restarts after the initial launch = 4 total**) → degraded banner; single-instance **enforcement** + window focus; **restore file swap** (Rust `fs::rename` of `validated_snapshot_path`, backend down, then relaunch — pairs with 3.1a `stage_restore` + exit 5; resolves `PHASE_2_AUDIT.md` 2.3-C1). `bundle.externalBin` for the PyInstaller sidecar is Phase 5. | Rust shell | **fe.7** |
+| First-launch model **flow** (`/first-run`: `model.catalog` / `model.status` / `model.download` streaming / `model.activate`) + `<RequireModel>` route guard + Loading → /first-run \| /chat redirect + `no_model_active` → first-run | React frontend | **fe.6 ✅** (`b2f7936`) |
+| Tauri **shell hardening** — process supervisor (backoff 1s/2s/4s, **3 restarts after the initial launch = 4 total**) → degraded banner + the "Restart app" action fe.5's banner/gate refer to; single-instance **enforcement** + window focus; **restore file swap** (Rust `fs::rename` of `validated_snapshot_path`, backend down, then relaunch — pairs with 3.1a `stage_restore` + exit 5; resolves `PHASE_2_AUDIT.md` 2.3-C1). `bundle.externalBin` for the PyInstaller sidecar is Phase 5. | Rust shell | **fe.7** |
 | Real **WinRT `ToastBridge`** — `cancel_all()` must iterate `RemoveFromSchedule` **per id** (Windows has no bulk-cancel API); the notifier that removes a scheduled toast must be the **same `ToastNotifier` instance** that scheduled it | Rust (called from Python via IPC) | **later** |
 | Subprocess-kill **fuzzing test** — 100 iterations on `windows-latest`, kills during **IPC message processing**, **DB write**, and **Ollama inference** (not just idle) → assert detect → restart → banner → recover, zero data loss | Rust + test runner | **later (roadmap Step 4.4)** |
 | Step 2.4 **accessibility** (WCAG 2.1 AA / axe-core / Narrator / string externalization) | React frontend | **later Phase 3** |
@@ -46,6 +47,52 @@ sequenced after the backend spine is solid and tested.
 supervisor relaunches (backoff). A **restore** → supervisor stops the backend (quiescing every
 DB connection), *then* `fs::rename`, *then* relaunches. 3.1a delivers the backend half: exit
 code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
+
+---
+
+## What landed in fe.6 (`b2f7936`; backend fix `f330e84`)
+
+The first-launch model flow (`project_logic §8`, roadmap Step 3.1's last deliverable).
+
+**Backend fix (`f330e84`, separate commit):** `_model_status` (3.1a) called
+`OllamaManager.get_model_status(n)` per name, each re-fetching `GET /api/tags` — ~10 HTTP
+round-trips (~16 s on a slow-localhost box), past the frontend timeout. New
+`OllamaManager.get_model_statuses(names, *, active_model, installed=None)` resolves the whole
+list from **one** `/api/tags` (or zero when the caller passes `installed`); `get_model_status`
+(singular) is now a thin wrapper (behaviour + tests unchanged). **773 pass** (+1 regression
+test); black/ruff/mypy clean.
+
+**Routing.** `Loading` (`/`) is now a splash + redirect: `phase === "starting"` → `<Starting>`;
+else → `/first-run` (no active model) \| `/chat`. `<RequireModel>` wraps `/chat` (a nested
+layout route). Pure `guardDecision(phase, modelSetupRequired)` → `"starting"` → splash,
+`"degraded"`/`"exited"` → **pass** (the fe.5 banner covers it; `model.*` fail in degraded mode
+anyway), else `modelSetupRequired ? "first-run" : "pass"`. `client.ts`: a `no_model_active`
+error frame flips `useModelStore.modelSetupRequired` → the guard bounces to `/first-run`.
+
+**`/first-run` (`FirstRun.tsx`).** Mount → `Promise.allSettled([call("model.catalog", {}),
+call("model.status", {})])` (**independent** — a flaky status must not hide the catalog).
+Rows (recommended first, then by size): `display_name` · `formatBytes` · `min_ram_gb` GB RAM
+· `description` · a Recommended pill; then by `rowAction(statuses[name])`:
+**Download** (disabled while any download runs or `ollama_running === false`) →
+`call("model.download", { name }, { timeoutMs: 0 })` with a live progress bar from
+`useModelStore.downloadProgress` (the app-lifetime `subscribe`, fe.4); **Activate** →
+`call("model.activate", { name })` → `useModelStore.activate` + `navigate("/chat", {replace})`;
+**"Currently active"** for an active row. Retry on a catalog-load failure; dismissible
+outcome / error lines.
+
+**`useModelStore`** grows `catalog` / `catalogError` / `statuses` / `ollamaRunning` + the
+**download lifecycle** (`downloadingModel` / `downloadError` / `downloadOutcome` — in the
+store so it survives navigating away from `/first-run` and back). `firstRunReducer` holds
+only the transient `activating` / `activateError`.
+
+**Pure logic** — `modelRow.ts` (`rowAction`, `guardDecision`, `formatBytes` / `formatEta` /
+`formatSpeed`), `firstRunReducer`, and the store actions — unit-tested; no RTL (settled
+decision). New: `routes/{FirstRun.tsx (rewrite), firstRunReducer.ts, modelRow.ts}` + tests,
+`ui/{RequireModel,Starting}.tsx`. `npm typecheck`/`lint`/`test` (**65**)/`build` green; `ipc`
+suite 79; Rust unchanged. **Verified on `tauri dev`:** `/` → `/first-run`, the 6-model
+catalog (installed models show **Activate** — the `model.status` fix), Activate Llama 3.1 8B
+→ `app_config.json` `active_model` persisted → navigate to `/chat`; a direct `/chat` nav is
+bounced while no model is active; window close still exits code 0, no orphan `python.exe`.
 
 ---
 
