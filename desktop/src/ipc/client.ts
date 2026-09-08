@@ -17,6 +17,7 @@ import { METHOD_CONTRACTS, type MethodName } from "@ipc/methods";
 import type { z, ZodTypeAny } from "zod";
 
 import { useBackendStore } from "../store/backend";
+import { useModelStore } from "../store/model";
 import { ipcRequest } from "./bridge";
 import type { BridgeError, RawEnvelope } from "./events";
 
@@ -29,7 +30,7 @@ const TIMEOUT_MS: Record<CallableMethod, number> = {
   "health.check": 5000,
   "reminders.reconciliation": 5000,
   "model.catalog": 10000,
-  "model.status": 10000,
+  "model.status": 15000, // hits Ollama's HTTP API a couple of times; slow-localhost margin
   "model.activate": 10000,
   "model.download": 0,
   "backup.list": 30000,
@@ -104,6 +105,7 @@ export async function call<M extends CallableMethod>(
   if (envelope.message_type === "error") {
     const code = envelope.payload.code ?? "unknown";
     if (code === "version_mismatch") useBackendStore.getState().setVersionMismatch();
+    if (code === "no_model_active") useModelStore.setState({ modelSetupRequired: true });
     throw new IpcCallError("backend", envelope.payload.message ?? code, { code });
   }
 

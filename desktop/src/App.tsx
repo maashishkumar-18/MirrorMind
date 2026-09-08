@@ -5,6 +5,7 @@ import { startBackendBridge } from "./bootstrap";
 import { Chat } from "./routes/Chat";
 import { FirstRun } from "./routes/FirstRun";
 import { Loading } from "./routes/Loading";
+import { RequireModel } from "./ui/RequireModel";
 import { RootLayout } from "./ui/RootLayout";
 
 export default function App() {
@@ -28,7 +29,9 @@ export default function App() {
       <Route element={<RootLayout />}>
         <Route path="/" element={<Loading />} />
         <Route path="/first-run" element={<FirstRun />} />
-        <Route path="/chat" element={<Chat />} />
+        <Route element={<RequireModel />}>
+          <Route path="/chat" element={<Chat />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

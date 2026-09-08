@@ -5,6 +5,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 
 import { useBackendStore } from "../store/backend";
+import { useModelStore } from "../store/model";
 import { call, describeIpcError, ipcErrorUi, IpcCallError } from "./client";
 
 const invokeMock = vi.mocked(invoke);
@@ -84,12 +85,14 @@ describe("call()", () => {
     expect(useBackendStore.getState().versionMismatch).toBe(true);
   });
 
-  it("surfaces a non-version-mismatch error frame as a backend IpcCallError", async () => {
+  it("a no_model_active error frame flips useModelStore.modelSetupRequired (and still throws)", async () => {
+    useModelStore.setState({ modelSetupRequired: false });
     invokeMock.mockResolvedValue(errorEnvelope("no_model_active"));
     await expect(call("chat.send", { text: "hi" })).rejects.toMatchObject({
       kind: "backend",
       detail: { code: "no_model_active" },
     });
+    expect(useModelStore.getState().modelSetupRequired).toBe(true);
     expect(useBackendStore.getState().versionMismatch).toBe(false);
   });
 
