@@ -14,6 +14,7 @@ function state(over: Partial<BackendState>): BackendState {
     lastError: null,
     versionMismatch: false,
     ipcError: null,
+    restarting: false,
     ...over,
   } as BackendState;
 }
@@ -30,7 +31,7 @@ describe("selectAppGate", () => {
   it("gates on a previous_data_unrecoverable exit and shows the backend message", () => {
     const g = selectAppGate(
       state({
-        exit: { code: 3, reason: "previous_data_unrecoverable", snapshot_path: null },
+        exit: { code: 3, reason: "previous_data_unrecoverable", snapshot_path: null, will_retry: false },
         lifecycleMessage: "backend copy of the message",
       }),
     );

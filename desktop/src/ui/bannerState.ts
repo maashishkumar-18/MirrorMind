@@ -26,12 +26,19 @@ export function selectBanner(s: BackendState): BannerState | null {
     };
   }
 
-  if (s.exit?.reason === "restore_staged") {
+  // A restore relaunch is in flight (Rust emitted `restore_staged` with
+  // will_retry, so `restarting` is set and `phase` has left "exited").
+  if (s.restarting && s.lifecycle === "restore_staged") {
     return { variant: "restoring", message: "Applying your backup — MirrorMind will restart…" };
   }
 
+  // A terminal exit wins over `restarting` — the supervisor gave up.
   if (s.phase === "exited") {
-    return { variant: "unavailable", message: "MirrorMind's AI backend stopped. Restart the app." };
+    return { variant: "unavailable", message: "MirrorMind's AI backend stopped." };
+  }
+
+  if (s.restarting) {
+    return { variant: "reconnecting", message: "MirrorMind's backend stopped — restarting…" };
   }
 
   if (s.ipcError) {

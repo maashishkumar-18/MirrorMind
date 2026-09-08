@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
@@ -23,6 +24,15 @@ export function Banner() {
     }
   }, [ipcError]);
 
+  // fe.7: the supervisor gave up — offer a manual restart.
+  const [restarting, setRestarting] = useState(false);
+  const restart = () => {
+    setRestarting(true);
+    void invoke("restart_backend")
+      .catch(() => {})
+      .finally(() => setRestarting(false));
+  };
+
   let variant: BannerVariant | "ready" | "none" = "none";
   let message = "";
   if (state) {
@@ -39,6 +49,11 @@ export function Banner() {
     <div className="banner" data-variant={variant} role={role} aria-live="polite">
       <span className="banner-msg">{message}</span>
       {variant === "reconnecting" && <span className="banner-dots" aria-hidden="true" />}
+      {variant === "unavailable" && (
+        <button type="button" className="banner-action" onClick={restart} disabled={restarting}>
+          {restarting ? "Restarting…" : "Restart"}
+        </button>
+      )}
     </div>
   );
 }

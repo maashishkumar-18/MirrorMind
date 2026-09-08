@@ -6,7 +6,11 @@ into an ``error`` envelope so the loop in ``main`` never has to.
 
 Threading: each request is run on a small pool so a slow call (a model
 download, later a chat generation) does not block reading the next message.
-``app.shutdown`` is handled inline — its ack must precede the drain.
+The lifecycle-ending methods in ``_INLINE_METHODS`` are handled inline on the
+read thread — ``app.shutdown``'s ack must precede the drain, and
+``backup.restore`` sets ``restart_snapshot`` + ``shutdown_requested``, which the
+serve loop must observe the instant ``handle_raw`` returns (an executor handoff
+would let it block on the next stdin read first, so exit 5 would never fire).
 """
 
 from __future__ import annotations
@@ -25,6 +29,10 @@ from src.common.ipc.methods import METHOD_CONTRACTS
 from src.common.ipc.middleware import IPCVersionMismatchError, check_version
 
 logger = logging.getLogger(__name__)
+
+#: Methods run synchronously on the read thread instead of the executor — see the
+#: module docstring. Both end the process, so blocking the reader briefly is fine.
+_INLINE_METHODS = frozenset({"app.shutdown", "backup.restore"})
 
 
 def _summarize(exc: ValidationError) -> str:
@@ -130,8 +138,8 @@ class Dispatcher:
             )
             return
 
-        if method == "app.shutdown":
-            self._run(method, params, request_id)  # inline: ack before the drain
+        if method in _INLINE_METHODS:
+            self._run(method, params, request_id)  # inline — see _INLINE_METHODS
             return
 
         if contract.worker:

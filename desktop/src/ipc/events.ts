@@ -32,11 +32,18 @@ export interface RawEnvelope {
   };
 }
 
-/** Payload of the `backend:exit` Tauri event (fe.3). */
+/**
+ * Payload of the `backend:exit` Tauri event (fe.3 / fe.7). `will_retry` is true
+ * while the supervisor is backing off toward a respawn — the UI shows a
+ * "restarting…" banner and stays on the current route. `reason` is one of
+ * `clean` / `crash` / `supervisor_gave_up` / `respawn_failed` /
+ * `previous_data_unrecoverable` / `restore_staged` / `restore_failed`.
+ */
 export interface BackendExit {
   code: number | null;
   reason: string | null;
   snapshot_path: string | null;
+  will_retry: boolean;
 }
 
 /** Rejection value of `ipc_request` on a transport failure (`Err(BridgeError)` in Rust). */

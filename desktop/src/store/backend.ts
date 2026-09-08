@@ -26,6 +26,8 @@ export interface BackendState {
   versionMismatch: boolean;
   /** Transient transport failure from the last `call()` — cleared on success. */
   ipcError: BridgeError["kind"] | null;
+  /** The supervisor is backing off toward a respawn (fe.7). Cleared by `app.ready`. */
+  restarting: boolean;
 
   setReady: (payload: AppReady) => void;
   setDegraded: (details: string[]) => void;
@@ -35,6 +37,7 @@ export interface BackendState {
   setVersionMismatch: () => void;
   setIpcError: (kind: BridgeError["kind"]) => void;
   clearIpcError: () => void;
+  setRestarting: (v: boolean) => void;
 }
 
 export const useBackendStore = create<BackendState>((set) => ({
@@ -47,17 +50,30 @@ export const useBackendStore = create<BackendState>((set) => ({
   lastError: null,
   versionMismatch: false,
   ipcError: null,
+  restarting: false,
 
   setReady: (payload) =>
     set((state) => ({
       ready: payload,
+      restarting: false,
+      // a backend that reached `app.ready` has no pending lifecycle transition
+      lifecycle: null,
+      lifecycleMessage: null,
       phase: state.phase === "exited" || state.phase === "degraded" ? state.phase : "ready",
     })),
   setDegraded: (details) => set({ phase: "degraded", integrityDetails: details }),
   setLifecycle: (reason, message) => set({ lifecycle: reason, lifecycleMessage: message ?? null }),
-  setExited: (exit) => set({ phase: "exited", exit }),
+  setExited: (exit) => set({ phase: "exited", exit, restarting: false }),
   setBackendError: (envelope) => set({ lastError: envelope }),
   setVersionMismatch: () => set({ versionMismatch: true }),
   setIpcError: (kind) => set({ ipcError: kind }),
   clearIpcError: () => set({ ipcError: null }),
+  // A relaunch supersedes a prior terminal exit — drop back to "starting" so the
+  // next `app.ready` is allowed to promote `phase` to "ready" and clear the banner.
+  setRestarting: (v) =>
+    set((s) =>
+      v
+        ? { restarting: true, exit: null, phase: s.phase === "exited" ? "starting" : s.phase }
+        : { restarting: false },
+    ),
 }));

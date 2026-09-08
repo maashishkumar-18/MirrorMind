@@ -14,6 +14,7 @@ function state(over: Partial<BackendState>): BackendState {
     lastError: null,
     versionMismatch: false,
     ipcError: null,
+    restarting: false,
     ...over,
   } as BackendState;
 }
@@ -27,21 +28,51 @@ describe("selectBanner", () => {
     expect(selectBanner(state({ phase: "degraded" }))?.variant).toBe("recovery-mode");
   });
 
-  it("restoring on a restore_staged exit — even though phase is 'exited'", () => {
+  it("restoring while a restore relaunch is in flight", () => {
+    const b = selectBanner(state({ restarting: true, lifecycle: "restore_staged" }));
+    expect(b?.variant).toBe("restoring");
+    expect(b?.message).toMatch(/backup/i);
+  });
+
+  it("a failed restore swap (phase 'exited') shows 'unavailable', not a stuck 'restoring'", () => {
     expect(
       selectBanner(
         state({
           phase: "exited",
-          exit: { code: 5, reason: "restore_staged", snapshot_path: "C:\\x.db" },
+          restarting: false,
+          lifecycle: "restore_staged", // stale — the swap failed
+          exit: { code: null, reason: "restore_failed", snapshot_path: null, will_retry: false },
         }),
       )?.variant,
-    ).toBe("restoring");
+    ).toBe("unavailable");
+  });
+
+  it("reconnecting 'restarting…' while the supervisor backs off", () => {
+    const b = selectBanner(state({ restarting: true }));
+    expect(b?.variant).toBe("reconnecting");
+    expect(b?.message).toMatch(/restarting/i);
+  });
+
+  it("a give-up (phase 'exited') beats a lingering 'restarting' flag", () => {
+    expect(
+      selectBanner(
+        state({
+          phase: "exited",
+          restarting: true, // even if this wasn't cleared
+          exit: { code: null, reason: "supervisor_gave_up", snapshot_path: null, will_retry: false },
+        }),
+      )?.variant,
+    ).toBe("unavailable");
   });
 
   it("unavailable on a plain exit", () => {
     expect(
-      selectBanner(state({ phase: "exited", exit: { code: 1, reason: null, snapshot_path: null } }))
-        ?.variant,
+      selectBanner(
+        state({
+          phase: "exited",
+          exit: { code: 1, reason: null, snapshot_path: null, will_retry: false },
+        }),
+      )?.variant,
     ).toBe("unavailable");
   });
 

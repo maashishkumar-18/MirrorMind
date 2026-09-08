@@ -100,6 +100,26 @@ def test_app_shutdown_acks_and_sets_flag(dispatcher_factory):
     assert resp["payload"]["result"] == {"stopping": True}
 
 
+def test_backup_restore_runs_inline_so_the_serve_loop_sees_exit_5(dispatcher_factory):
+    """`backup.restore` must set the flags *before* `handle_raw` returns — an
+    executor handoff would let the serve loop block on the next stdin read and
+    exit 5 would never fire (the real shell keeps stdin open)."""
+    d, transport, ctx = dispatcher_factory()
+    snap = ctx.backups.create_backup()
+
+    d.handle_raw(envelope("backup.restore", "r1", {"path": str(snap.path)}))
+
+    # No d.close() / executor drain — the flags are set synchronously.
+    assert d.shutdown_requested.is_set()
+    assert d.restart_snapshot == str(snap.path)
+    staged = [
+        e for e in transport.by_type("event") if e["payload"]["method"] == "app.restore_staged"
+    ]
+    assert staged and staged[0]["payload"]["params"]["validated_snapshot_path"]
+    resp = transport.by_type("response")[0]["payload"]
+    assert resp["method"] == "backup.restore" and resp["result"]["needs_restart"] is True
+
+
 def test_worker_method_is_routed_to_the_worker(dispatcher_factory):
     from tests.backend.conftest import FakeSessionWorker
 

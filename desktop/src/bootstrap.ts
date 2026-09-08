@@ -31,7 +31,12 @@ export async function startBackendBridge(): Promise<() => void> {
   ];
 
   // `backend:exit` / `backend:error` are distinct Tauri events, not `backend:message` frames.
-  const unlistenExit = await listen<BackendExit>("backend:exit", (e) => backend().setExited(e.payload));
+  const unlistenExit = await listen<BackendExit>("backend:exit", (e) => {
+    // fe.7: the supervisor is backing off toward a respawn — keep the user on
+    // their route, just show a "restarting…" banner. `app.ready` clears it.
+    if (e.payload.will_retry) backend().setRestarting(true);
+    else backend().setExited(e.payload);
+  });
   const unlistenError = await listen<RawEnvelope>("backend:error", (e) =>
     backend().setBackendError(e.payload),
   );
