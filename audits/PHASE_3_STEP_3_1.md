@@ -70,10 +70,11 @@ New modules: `src/backend/slot_extractor.py`, `src/backend/action_dispatch.py`
 (`_coerce_iso`: `datetime.fromisoformat` → `dateutil.parser.parse` fallback → `None` →
 "missing slot" nudge; **`ScheduleConflict` surfaced, entity not created** — the overwrite/keep
 resolution is a documented gap for the Schedule view; **never raises** into `send()`),
-`src/common/json_recovery.py` (lifts `RetrievalAgent._parse_json` — the agent now delegates;
-`MetadataExtractor` / `MeetingNoteHandler` left as-is with a note). `MeetingNoteHandler` gains
-a `model=` ctor (mirrors `MetadataExtractor`). `_pending_action` is cleared on
-`new_conversation()` and the idle `_close_session` path.
+`src/common/json_recovery.py::recover_json` (lifts `RetrievalAgent._parse_json`; the agent
+delegates. Follow-up `bef8492` repointed `MeetingNoteHandler._parse_json` +
+`MetadataExtractor._call_llm` too — **the Step 1.4a "copied 3×" tracking note is closed**).
+`MeetingNoteHandler` gains a `model=` ctor (mirrors `MetadataExtractor`). `_pending_action`
+is cleared on `new_conversation()` and the idle `_close_session` path.
 
 `ChatSendResult` gains `feature` / `disambiguation` / `conflict` / `dismissed_pending` (all
 optional, additive under IPC v1). `requirements.txt` += `python-dateutil` (was transitive,
@@ -84,6 +85,13 @@ new; tier + `confirm_action` cases across `test_session_worker` / `test_handlers
 `test_main`). **699 → 728 tests**, black/ruff/mypy clean. Verified end-to-end in-process:
 Tier-1 creates a real `reminders` row; Tier-2 returns `disambiguation` with a
 `pending_action_id` and no row.
+
+**Open item carried to Phase 3 Step 3.3 (Schedule view):** the `ScheduleConflict` overwrite /
+keep *resolution* is not wired. `create_schedule_item` returns the conflict and 3.1d surfaces
+it on `ChatSendResult.conflict`, but nothing acts on an "overwrite" choice. Step 3.3 (or a
+small backend step before it) adds the path — on "overwrite", **soft-delete** the conflicting
+item(s) then create the new one (project_logic soft-delete-only; **no** `force_create` helper
+exists on `ScheduleHandler` today).
 
 ---
 
