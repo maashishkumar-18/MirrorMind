@@ -1,0 +1,335 @@
+[
+  { "target": "params:app.status", "payload": {} },
+  {
+    "target": "result:app.status",
+    "payload": {
+      "ipc_version": 1,
+      "model_setup_required": true,
+      "active_model": null,
+      "last_exported_at": null,
+      "degraded": false,
+      "ready": true
+    }
+  },
+  {
+    "target": "result:app.status",
+    "payload": {
+      "ipc_version": 1,
+      "model_setup_required": false,
+      "active_model": "llama3.1:8b",
+      "last_exported_at": "2026-09-01T12:00:00+00:00",
+      "degraded": true,
+      "ready": false
+    }
+  },
+  { "target": "params:health.check", "payload": {} },
+  { "target": "result:health.check", "payload": { "ok": true, "details": [] } },
+  {
+    "target": "result:health.check",
+    "payload": { "ok": false, "details": ["database disk image is malformed"] }
+  },
+  { "target": "params:model.catalog", "payload": {} },
+  {
+    "target": "result:model.catalog",
+    "payload": {
+      "models": [
+        {
+          "name": "llama3.1:8b",
+          "display_name": "Llama 3.1 8B",
+          "size_bytes": 4920000000,
+          "description": "Meta's balanced 8B model.",
+          "min_ram_gb": 8.0,
+          "recommended": true
+        }
+      ]
+    }
+  },
+  { "target": "params:model.status", "payload": { "names": null } },
+  { "target": "params:model.status", "payload": { "names": ["llama3.1:8b", "mistral:latest"] } },
+  {
+    "target": "result:model.status",
+    "payload": {
+      "ollama_running": true,
+      "installed": [{ "name": "llama3.1:8b", "size_bytes": 4920000000 }],
+      "statuses": { "llama3.1:8b": "active", "mistral:latest": "not_installed" }
+    }
+  },
+  { "target": "params:model.download", "payload": { "name": "mistral:latest" } },
+  {
+    "target": "result:model.download",
+    "payload": {
+      "model_name": "mistral:latest",
+      "status": "success",
+      "restarts": 0,
+      "resumes": 1,
+      "verified": true
+    }
+  },
+  { "target": "params:model.activate", "payload": { "name": "llama3.1:8b" } },
+  {
+    "target": "result:model.activate",
+    "payload": { "active_model": "llama3.1:8b", "verified": true }
+  },
+  { "target": "params:backup.list", "payload": {} },
+  {
+    "target": "result:backup.list",
+    "payload": {
+      "backups": [
+        {
+          "path": "C:\\Users\\x\\AppData\\backups\\session-2026-09-01.db",
+          "created_at": "2026-09-01T03:00:00+00:00",
+          "size_bytes": 1048576
+        }
+      ]
+    }
+  },
+  { "target": "params:backup.restore", "payload": { "path": "C:\\backups\\session.db" } },
+  {
+    "target": "result:backup.restore",
+    "payload": {
+      "ok": true,
+      "needs_restart": true,
+      "detail": "snapshot validated",
+      "validated_snapshot_path": "C:\\backups\\session.db"
+    }
+  },
+  { "target": "params:app.shutdown", "payload": {} },
+  { "target": "result:app.shutdown", "payload": { "stopping": true } },
+  { "target": "params:chat.send", "payload": { "text": "what did I say about the roadmap?" } },
+  {
+    "target": "result:chat.send",
+    "payload": {
+      "session_id": "sess_abc123",
+      "turn_index": 2,
+      "answer": "You mentioned the Phase 3 milestone.",
+      "confidence": 0.91,
+      "tier": 4,
+      "action_type": "retrieval_query",
+      "retrieve_needed": true,
+      "retrieval_route": "semantic",
+      "is_grounded": true,
+      "grounding_confidence": 0.88,
+      "citations": [
+        {
+          "chunk_id": "sess_abc123:0",
+          "session_id": "sess_abc123",
+          "approximate_timestamp": "2026-09-01T10:00:00+00:00"
+        }
+      ],
+      "warnings": [],
+      "feature": null,
+      "disambiguation": null,
+      "conflict": null,
+      "dismissed_pending": false
+    }
+  },
+  {
+    "target": "result:chat.send",
+    "payload": {
+      "session_id": "sess_abc123",
+      "turn_index": 3,
+      "answer": "Reminder set for tomorrow at 9am.",
+      "confidence": 0.95,
+      "tier": 1,
+      "action_type": "reminder",
+      "retrieve_needed": false,
+      "retrieval_route": null,
+      "is_grounded": false,
+      "grounding_confidence": 0.0,
+      "citations": [],
+      "warnings": ["scheduled_time was inferred"],
+      "feature": { "kind": "reminder", "id": "reminder_9f2a1c", "summary": "Call the dentist" },
+      "disambiguation": null,
+      "conflict": null,
+      "dismissed_pending": false
+    }
+  },
+  {
+    "target": "result:chat.send",
+    "payload": {
+      "session_id": "sess_abc123",
+      "turn_index": 4,
+      "answer": "Did you want a reminder or a todo?",
+      "confidence": 0.78,
+      "tier": 2,
+      "action_type": "reminder",
+      "retrieve_needed": false,
+      "retrieval_route": null,
+      "is_grounded": false,
+      "grounding_confidence": 0.0,
+      "citations": [],
+      "warnings": [],
+      "feature": null,
+      "disambiguation": {
+        "pending_action_id": "pending_1a2b3c",
+        "options": ["reminder", "todo", "conversation"]
+      },
+      "conflict": null,
+      "dismissed_pending": false
+    }
+  },
+  {
+    "target": "result:chat.send",
+    "payload": {
+      "session_id": "sess_abc123",
+      "turn_index": 5,
+      "answer": "That overlaps an existing block.",
+      "confidence": 0.9,
+      "tier": 1,
+      "action_type": "schedule",
+      "retrieve_needed": false,
+      "retrieval_route": null,
+      "is_grounded": false,
+      "grounding_confidence": 0.0,
+      "citations": [],
+      "warnings": [],
+      "feature": null,
+      "disambiguation": null,
+      "conflict": {
+        "attempted": {
+          "id": "",
+          "title": "Dentist",
+          "start_time": "2026-09-02T09:00:00+00:00",
+          "end_time": "2026-09-02T10:00:00+00:00",
+          "location": ""
+        },
+        "conflicts_with": [
+          {
+            "id": "sched_item_77",
+            "title": "Standup",
+            "start_time": "2026-09-02T09:30:00+00:00",
+            "end_time": "2026-09-02T10:00:00+00:00",
+            "location": "Zoom"
+          }
+        ]
+      },
+      "dismissed_pending": false
+    }
+  },
+  { "target": "params:chat.new", "payload": {} },
+  { "target": "result:chat.new", "payload": { "session_id": "sess_def456" } },
+  { "target": "params:chat.history", "payload": { "session_id": null } },
+  { "target": "params:chat.history", "payload": { "session_id": "sess_abc123" } },
+  {
+    "target": "result:chat.history",
+    "payload": {
+      "session_id": "sess_abc123",
+      "messages": [
+        {
+          "turn_index": 0,
+          "role": "user",
+          "content": "hello",
+          "created_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "turn_index": 1,
+          "role": "assistant",
+          "content": "hi there",
+          "created_at": "2026-09-01T10:00:01+00:00"
+        }
+      ]
+    }
+  },
+  {
+    "target": "params:chat.confirm_action",
+    "payload": { "pending_action_id": "pending_1a2b3c", "choice": "todo" }
+  },
+  {
+    "target": "result:chat.confirm_action",
+    "payload": {
+      "session_id": "sess_abc123",
+      "turn_index": 6,
+      "answer": "Added to your todos.",
+      "confidence": 0.78,
+      "tier": 1,
+      "action_type": "todo",
+      "retrieve_needed": false,
+      "retrieval_route": null,
+      "is_grounded": false,
+      "grounding_confidence": 0.0,
+      "citations": [],
+      "warnings": [],
+      "feature": { "kind": "todo", "id": "todo_5c4d3e", "summary": "Buy milk" },
+      "disambiguation": null,
+      "conflict": null,
+      "dismissed_pending": false
+    }
+  },
+  { "target": "params:reminders.reconciliation", "payload": {} },
+  {
+    "target": "result:reminders.reconciliation",
+    "payload": {
+      "overdue": [
+        {
+          "id": "reminder_1",
+          "title": "Water the plants",
+          "scheduled_time": "2026-09-01T08:00:00+00:00",
+          "notes": "",
+          "fired_at": null,
+          "completed_at": null,
+          "dismissed_at": null,
+          "created_at": "2026-08-31T20:00:00+00:00"
+        }
+      ],
+      "pending_acknowledgment": []
+    }
+  },
+  {
+    "target": "event:app.ready",
+    "payload": { "ipc_version": 1, "model_setup_required": true, "active_model": null }
+  },
+  {
+    "target": "event:app.integrity_failed",
+    "payload": { "details": ["database disk image is malformed"] }
+  },
+  {
+    "target": "event:app.previous_data_unrecoverable",
+    "payload": {
+      "message": "Your previous data is protected by your Windows account and cannot be recovered after a Windows reinstall. Starting fresh."
+    }
+  },
+  {
+    "target": "event:app.restore_staged",
+    "payload": { "validated_snapshot_path": "C:\\backups\\session-2026-09-01.db" }
+  },
+  {
+    "target": "event:app.reminders_pending",
+    "payload": {
+      "overdue": [],
+      "pending_acknowledgment": [
+        {
+          "id": "reminder_2",
+          "title": "Take medication",
+          "scheduled_time": "2026-09-01T07:00:00+00:00",
+          "notes": "with food",
+          "fired_at": "2026-09-01T07:00:05+00:00",
+          "completed_at": null,
+          "dismissed_at": null,
+          "created_at": "2026-08-30T18:00:00+00:00"
+        }
+      ]
+    }
+  },
+  {
+    "target": "event:model.download.progress",
+    "payload": {
+      "name": "mistral:latest",
+      "phase": "downloading",
+      "percent": 42.5,
+      "speed_mbps": 12.3,
+      "eta_seconds": 120.0,
+      "message": null
+    }
+  },
+  {
+    "target": "event:model.download.progress",
+    "payload": {
+      "name": "mistral:latest",
+      "phase": "verifying",
+      "percent": 100.0,
+      "speed_mbps": 0.0,
+      "eta_seconds": null,
+      "message": "verifying sha256"
+    }
+  }
+]
