@@ -1,8 +1,8 @@
 # Phase 3 Step 3.1 — Frontend Architecture and IPC Client
 
 **Status:** the Step 3.1 **backend** (3.1a–3.1d) is complete. The Rust/React scaffold is
-split into **fe.1–fe.7**; **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)**
-have landed. Next: fe.4 (typed zod IPC client + Zustand stores).
+split into **fe.1–fe.7**; **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)** +
+**fe.4 (`198d493`)** have landed. Next: fe.5 (degraded-mode banner + lifecycle UI).
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -33,9 +33,9 @@ sequenced after the backend spine is solid and tested.
 | `desktop/` Vite + React 19 + TS + Zustand + React Router skeleton; `desktop/src-tauri/` Tauri v2 shell that spawns `python -m src.backend.main` and forwards stdout envelopes to the webview as `backend:message` events | Rust + React | **fe.1 ✅** (`4291182`) |
 | `ipc/schema/methods.ts` — zod mirror of `METHOD_CONTRACTS` + the 6 events, `.strict()` throughout; `validate_methods_stdin.ts` + `methods_examples.json` + `tests/common/test_ipc_methods_roundtrip.py` cross-language round-trip | React tooling | **fe.2 ✅** (`72ba144`) |
 | Rust **stdio↔invoke bridge** — `ipc_request(envelope, timeoutMs)` command, `request_id` correlation (`tokio::sync::oneshot` map), `response`/`error` → waiters, `event` frames → Tauri events; exit codes 3 → "starting fresh" / 5 → "restore staged" surfaced; `app.shutdown` handshake on window close | Rust shell | **fe.3 ✅** (`e678ec4`) |
-| Typed **zod IPC client** (TS) wrapping `ipc/schema/methods.ts` + `desktop/src/ipc/bridge.ts` + zod validation; `version_mismatch` → "please restart"; per-call timeout → "temporarily unavailable"; event subscriptions → Zustand | React frontend | **fe.4** |
-| Degraded-mode **banner UI** ("AI features temporarily unavailable — restarting…" → "Ready"), version-mismatch → "please restart" UI, IPC timeout → "temporarily unavailable" | React frontend | **fe.5** |
-| First-launch model **flow UI** (`model.catalog` / `model.status` / `model.download` streaming progress / `model.activate`; route guard until a model is active) | React frontend | **fe.6** |
+| Typed **zod IPC client** (`desktop/src/ipc/client.ts` `call<M>()`) wrapping `@ipc/methods` + `bridge.ts` — zod-validates params + result, `IpcCallError { kind }` + `describeIpcError`, `version_mismatch` → store flag → "please restart" screen, per-method timeouts; `subscribe()` typed event demux; `useBackendStore`/`useModelStore`/`useReminderStore` | React frontend | **fe.4 ✅** (`198d493`) |
+| Degraded-mode **banner UI** ("AI features temporarily unavailable — restarting…" → "Ready") driven by `useBackendStore.ipcError` / `phase` + `describeIpcError`; IPC-timeout / version-mismatch surfaces | React frontend | **fe.5** |
+| First-launch model **flow UI** (`model.catalog` / `model.status` / `model.download` streaming progress / `model.activate`; the `useModelStore` `catalog`/`statuses` fields; Loading → /first-run \| /chat route guard; `no_model_active` → first-run) | React frontend | **fe.6** |
 | Tauri **shell hardening** — process supervisor (backoff 1s/2s/4s, **3 restarts after the initial launch = 4 total**) → degraded banner; single-instance **enforcement** + window focus; **restore file swap** (Rust `fs::rename` of `validated_snapshot_path`, backend down, then relaunch — pairs with 3.1a `stage_restore` + exit 5; resolves `PHASE_2_AUDIT.md` 2.3-C1). `bundle.externalBin` for the PyInstaller sidecar is Phase 5. | Rust shell | **fe.7** |
 | Real **WinRT `ToastBridge`** — `cancel_all()` must iterate `RemoveFromSchedule` **per id** (Windows has no bulk-cancel API); the notifier that removes a scheduled toast must be the **same `ToastNotifier` instance** that scheduled it | Rust (called from Python via IPC) | **later** |
 | Subprocess-kill **fuzzing test** — 100 iterations on `windows-latest`, kills during **IPC message processing**, **DB write**, and **Ollama inference** (not just idle) → assert detect → restart → banner → recover, zero data loss | Rust + test runner | **later (roadmap Step 4.4)** |
@@ -46,6 +46,55 @@ sequenced after the backend spine is solid and tested.
 supervisor relaunches (backoff). A **restore** → supervisor stops the backend (quiescing every
 DB connection), *then* `fs::rename`, *then* relaunches. 3.1a delivers the backend half: exit
 code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
+
+---
+
+## What landed in fe.4 (`198d493`)
+
+The typed layer every feature view (3.2–3.4) calls.
+
+**`desktop/src/ipc/client.ts`** — `call<M extends CallableMethod>(method, params, { timeoutMs? })`
+(`CallableMethod` = `MethodName` minus `app.shutdown` — the Rust shell owns that). Flow:
+zod-validate `params` against `METHOD_CONTRACTS[m].params` → `ipcRequest` (fe.3 bridge) →
+on `invoke` rejection, `isBridgeError` → `IpcCallError { kind: "transport", transportKind }`
+→ on a `message_type: "error"` frame, `payload.code === "version_mismatch"` sets
+`useBackendStore.versionMismatch`, then `IpcCallError { kind: "backend", code }` (**before**
+result validation) → zod-validate the result → `IpcCallError { kind: "schema", phase: "result" }`
+on drift (logged under `import.meta.env.DEV`). Every failure **also** records
+`useBackendStore.ipcError` (or `versionMismatch`); a **success clears `ipcError`**.
+`describeIpcError(err, phase)` → `{ ui: "please_restart" | "temporarily_unavailable" |
+"unavailable" }` or **`null`** for a method-specific backend code the caller handles
+(`no_model_active` etc.). Per-method timeout table (`chat.send` 120 s, `model.download` 0 =
+stream to the Rust ceiling, status/health 5 s, …).
+
+**`desktop/src/ipc/events.ts`** — `subscribe<E extends EventName>(name, handler)`: a
+**JS-side demux** over the single `backend:message` stream, keyed by `payload.method`,
+`safeParse` against `EVENT_SCHEMAS[name]` — unknown name → `console.warn` + drop; invalid
+payload → `console.error` + drop (**never reaches a handler**). One lazily-installed raw
+`listen`. Returns an unsubscribe; `_resetSubscriptions()` test seam.
+
+**Stores** — `useBackendStore`: typed `setReady` / `setDegraded` / `setLifecycle` replace the
+fe.1 `applyEnvelope`; new `versionMismatch` (sticky) + `ipcError` (`BridgeError["kind"] | null`,
+transient). New **`useModelStore`** (`activeModel` / `modelSetupRequired` from `app.ready` +
+`app.status`; `downloadProgress` from the event — `catalog`/`statuses` are fe.6) and
+**`useReminderStore`** (`overdue` / `pendingAcknowledgment` from `app.reminders_pending`).
+`useSessionStore` is Step 3.2's.
+
+**`bootstrap.ts`** reworked onto `subscribe()`; `startBackendBridge()` returns a teardown
+`App`'s `useEffect` calls on cleanup (no HMR double-subscribe); it also fires one
+`call("app.status")` to recover a missed `app.ready`. **`Loading.tsx`** renders a
+**"Please restart MirrorMind"** screen when `versionMismatch` is set (roadmap 3.1 acceptance,
+unit-tested) + a zod-validated `call("app.status")` probe.
+
+**Cross-package:** `desktop/` adds `zod` + a `@ipc` alias (`vite.config.ts` `resolve.alias` +
+`tsconfig.json` `paths`) → `../ipc/schema`; `ipc/` stays source-only, its `lint-ipc-schema`
+job still owns `methods.ts`. **No `ci.yml` change** — `build-frontend` `typecheck` now
+compiles `methods.ts` through the alias. **Rust + Python untouched.**
+
+New: `client.ts` + `client.test.ts` (13), `events.test.ts` (5), `store/model.ts` +
+`reminders.ts` (+ tests). `npm typecheck`/`lint`/`test` (**30**)/`build` green; `ipc` suite
+still 79; `cargo` unchanged. Verified on `tauri dev`: Loading renders the **zod-validated**
+`app.status` + typed `app.ready`; window close still exits code 0, no orphan `python.exe`.
 
 ---
 
