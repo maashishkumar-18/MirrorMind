@@ -519,3 +519,178 @@ h1 {
     content: "…";
   }
 }
+
+/* --- feature views + nav rail (3.3) --- */
+.root-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.nav-rail {
+  flex: 0 0 auto;
+  width: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.75rem 0.5rem;
+  border-right: 1px solid rgba(127, 127, 127, 0.25);
+  overflow-y: auto;
+}
+
+.nav-rail-link {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.nav-rail-link:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.nav-rail-link[aria-current="page"] {
+  background: rgba(42, 90, 161, 0.16);
+  font-weight: 600;
+}
+
+.nav-rail-glyph {
+  width: 1.2rem;
+  text-align: center;
+}
+
+.feature-view {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 2rem;
+}
+
+.feature-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.feature-header h1 {
+  margin: 0 0 0.5rem;
+}
+
+.feature-create {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.feature-create input {
+  flex: 1;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+}
+
+.feature-create-fallback {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.9rem;
+}
+
+.feature-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.35rem 0;
+}
+
+.feature-dismiss,
+.feature-delete {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.feature-error {
+  color: #c94b4b;
+  font-size: 0.88rem;
+}
+
+.feature-loading,
+.feature-empty {
+  opacity: 0.65;
+  font-size: 0.9rem;
+}
+
+.feature-group h2 {
+  font-size: 0.95rem;
+  margin: 1rem 0 0.4rem;
+  opacity: 0.8;
+}
+
+.feature-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.feature-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 10px;
+}
+
+.feature-row.reminder-overdue {
+  border-color: #c94b4b;
+  background: rgba(201, 75, 75, 0.08);
+}
+
+.feature-row-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.feature-row-title {
+  font-weight: 600;
+}
+
+.feature-row-meta {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.reminder-pending {
+  color: #8a6d1a;
+  font-style: normal;
+}
+
+.feature-row-notes {
+  font-size: 0.82rem;
+  opacity: 0.8;
+}
+
+.feature-row-reschedule input {
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.visually-hidden,
+.feature-row-reschedule .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

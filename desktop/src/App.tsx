@@ -5,6 +5,10 @@ import { startBackendBridge } from "./bootstrap";
 import { Chat } from "./routes/Chat";
 import { FirstRun } from "./routes/FirstRun";
 import { Loading } from "./routes/Loading";
+import { Meetings } from "./routes/Meetings";
+import { Reminders } from "./routes/Reminders";
+import { Schedule } from "./routes/Schedule";
+import { Todos } from "./routes/Todos";
 import { RequireModel } from "./ui/RequireModel";
 import { RootLayout } from "./ui/RootLayout";
 
@@ -31,6 +35,10 @@ export default function App() {
         <Route path="/first-run" element={<FirstRun />} />
         <Route element={<RequireModel />}>
           <Route path="/chat" element={<Chat />} />
+          <Route path="/reminders" element={<Reminders />} />
+          <Route path="/todos" element={<Todos />} />
+          <Route path="/meetings" element={<Meetings />} />
+          <Route path="/schedule" element={<Schedule />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -39,6 +39,26 @@ const TIMEOUT_MS: Record<CallableMethod, number> = {
   "chat.history": 10000,
   "chat.confirm_action": 10000,
   "chat.send": 120000,
+  // feature views (Step 3.3) — plain SQLite CRUD on the worker thread
+  "reminders.list": 10000,
+  "reminders.complete": 10000,
+  "reminders.dismiss": 10000,
+  "reminders.reschedule": 10000,
+  "reminders.update": 10000,
+  "reminders.delete": 10000,
+  "todos.list": 10000,
+  "todos.complete": 10000,
+  "todos.update": 10000,
+  "todos.delete": 10000,
+  "meetings.list": 10000,
+  "meetings.get": 10000,
+  "meetings.capture": 120000, // one local-LLM extraction pass
+  "meetings.delete": 10000,
+  "schedule.day": 10000,
+  "schedule.week": 10000,
+  "schedule.create_item": 10000,
+  "schedule.update": 10000,
+  "schedule.delete": 10000,
 };
 
 export type IpcErrorKind = "transport" | "backend" | "schema";
