@@ -34,6 +34,7 @@ from observability.tracing import shutdown_tracing
 from src.backend.dispatcher import Dispatcher
 from src.backend.keys import resolve_db_key
 from src.backend.lifecycle import ShutdownCoordinator
+from src.backend.logging_setup import configure_logging
 from src.backend.paths import session_db_path, snapshot_dir
 from src.backend.reminders_wire import reconciliation_payload
 from src.backend.session_worker import SessionWorker
@@ -50,11 +51,6 @@ from src.models.model_manager import ModelManager
 from src.models.ollama_manager import OllamaManager
 from src.security.errors import PreviousDataUnrecoverableError
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    stream=sys.stderr,  # stdout is the IPC channel — logs go to stderr only
-)
 logger = logging.getLogger("backend")
 
 
@@ -188,6 +184,7 @@ def main(
     in_stream: BinaryIO | None = None,
     out_stream: BinaryIO | None = None,
 ) -> int:
+    configure_logging()
     transport = StdioTransport(in_stream, out_stream)
     guard = SingleInstanceGuard()
     if not guard.acquire():

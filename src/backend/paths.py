@@ -29,3 +29,15 @@ def session_db_path() -> str:
 def snapshot_dir() -> Path:
     """Where ``MigrationRunner`` drops pre-migration ``.bak`` files."""
     return data_dir() / "snapshots"
+
+
+def log_dir() -> Path:
+    """Where the rotating backend log file lives (Phase 3 Step 3.4a). One
+    definition shared by ``logging_setup`` (the ``RotatingFileHandler``) and the
+    ``diagnostics.logs`` / ``diagnostics.report`` handlers."""
+    return data_dir() / "logs"
+
+
+def log_file() -> Path:
+    """The active rotating log file; its rotations are ``backend.log.1`` … ``.3``."""
+    return log_dir() / "backend.log"
