@@ -2,6 +2,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { SettingsBackup } from "./SettingsBackup";
 import { SettingsData } from "./SettingsData";
+import { SettingsDiagnostics } from "./SettingsDiagnostics";
 import { SettingsGeneral } from "./SettingsGeneral";
 import { SettingsModels } from "./SettingsModels";
 import { activeTab, SETTINGS_TAB_LABELS, SETTINGS_TABS, type SettingsTab } from "./settingsView";
@@ -38,16 +39,7 @@ export function Settings() {
       {tab === "models" && <SettingsModels />}
       {tab === "data" && <SettingsData />}
       {tab === "backup" && <SettingsBackup />}
-      {tab === "diagnostics" && <ComingSoon name="Diagnostics" />}
+      {tab === "diagnostics" && <SettingsDiagnostics />}
     </div>
-  );
-}
-
-function ComingSoon({ name }: { name: string }) {
-  return (
-    <section className="settings-panel">
-      <h2>{name}</h2>
-      <p className="settings-hint">Coming soon.</p>
-    </section>
   );
 }

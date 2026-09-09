@@ -21,9 +21,11 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }))
-        // Settings → Data & Privacy (Step 3.4): the native save dialog for the
-        // "Export all data" flow (and the redacted report in 3.4e).
+        // Settings → Data & Privacy / Diagnostics (Step 3.4): the native save
+        // dialog for exports + the redacted report, and reveal-in-folder /
+        // open-mailto for "Report a problem".
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle().clone();
             match backend::spawn(&handle) {
