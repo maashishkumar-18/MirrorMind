@@ -1,11 +1,65 @@
-# Phase 3 Step 3.1 — Frontend Architecture and IPC Client
+# Phase 3 — Frontend Implementation: consolidated as-built reference
 
-**Status:** Step 3.1 is **COMPLETE** — backend 3.1a–3.1d + Rust/React scaffold fe.1–fe.7:
-**fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)** + **fe.4 (`198d493`)** +
-**fe.5 (`2198a65`)** + **fe.6 (`b2f7936`, + backend fix `f330e84`)** + **fe.7 (`fb084df`)** all
-landed. **Step 3.2 (Chat Interface) is also COMPLETE** — see `audits/PHASE_3_STEP_3_2.md`.
-Next: Step 3.3 (feature views — Reminders / Todos / Meetings / Schedule; the 3.1d
-`ScheduleConflict` overwrite/keep OPEN ITEM below still stands).
+**Status:** Phase 3 is **COMPLETE** — Steps 3.1, 3.2, 3.3, 3.4 all landed on
+`main` (HEAD `44b0cbe`). **939 py + 7 Rust + 149 vitest (desktop) + 160 (ipc)**;
+`black` / `ruff` / `mypy src observability db` clean; desktop + `cargo` builds
+green.
+
+**What this file is.** The merged as-built scope map for every Phase 3 sub-step
+(it replaces the former per-step files `PHASE_3_STEP_3_{1,2,3,4}.md`). Each
+`## Step 3.x` section below is that step's original write-up, lightly
+de-duplicated; sub-headings within a step were demoted one level.
+
+**What this file is *not* — yet.** Unlike `PHASE_0_AUDIT.md` / `PHASE_1_AUDIT.md`
+/ `PHASE_2_AUDIT.md`, the **independent comprehensive audit of Phase 3 has not
+been performed**. That is the next task: fresh-context agents (one per step / per
+concern, no access to the implementation's reasoning) that run the suites, drive
+`tauri dev` over the WebView2 CDP seam, corrupt state, and try to falsify the
+claims below — then a written findings report with PASS / CONCERN / FINDING
+tiers and a remediation commit. Per the `PHASE_2_AUDIT.md` model, those findings
+get appended to *this* file when they exist.
+
+**Commits:**
+
+| Step | Commits |
+|---|---|
+| 3.1 backend | `f4e6f7e` (3.1a) / `c410983` (3.1b) / `596c0a4` (3.1c) / `388aadc` (3.1d) |
+| 3.1 scaffold | `4291182` (fe.1) / `72ba144` (fe.2) / `e678ec4` (fe.3) / `198d493` (fe.4) / `2198a65` (fe.5) / `b2f7936` + `f330e84` (fe.6) / `fb084df` (fe.7) |
+| 3.2 | `31fc72e` |
+| 3.3 | `f6474c5` (3.3a) / `ad3d9ad` (3.3b) / `5de2234` (3.3c) / `53dd07d` (3.3d) / `93d560c` (3.3e) |
+| 3.4 | `84414b5` (3.4a) / `a823891` (3.4b) / `12a0a1c` (3.4c) / `5bbc649` (3.4d) / `0a6ab4a` (3.4e) / `44b0cbe` (AppConfig concurrency fix) |
+
+---
+
+## Carried forward — for the Phase 3 audit and Phase 4
+
+- **Real WinRT `ToastBridge`** — still stubbed (`NoOpToastBridge` everywhere). No
+  OS toast is ever scheduled yet, so the `action_dispatch` / feature-CRUD create
+  paths and `data.wipe`'s `cancel_all()` are all inert on the toast side. When it
+  lands, `cancel_all()` must iterate `RemoveFromSchedule` per id (no bulk API)
+  from the *same* `ToastNotifier` instance that scheduled each toast.
+- **`diagnostics.metrics` `error_rate` / `compute_ms`** — reported as `null`
+  ("not tracked yet, v1.1"). `SessionWorker._record_metrics` would need to also
+  write `refused` / `total_time_ms` / `compute_ms`.
+- **WCAG 2.1 AA / Narrator accessibility pass** (former roadmap Step 2.4) — not
+  started; a whole-frontend item folded forward into Phase 3's tail / Phase 4.
+- **Subprocess-kill fuzzing test** (roadmap Step 4.4) — 100 iterations on
+  `windows-latest`, kills during IPC processing / DB write / Ollama inference.
+- **`tauri dev` live coverage gaps** — the native save dialog, `data.wipe` ->
+  `window.location.reload`, the `backup.restore` -> exit 5 -> supervisor swap
+  round-trip from the Settings panel, and the `opener` reveal / `mailto` scope
+  behaviour were not exercised live (this box runs Settings but can't load
+  `llama3.1:8b`); covered by unit tests + `ipc` fixtures + an in-process e2e.
+- **Step 2.5 performance benchmarking** — deferred to pre-Phase-5 (reference
+  hardware). See the status memory's deferral note.
+- **`stage_restore` consumes the user's backup file** (fe.7 known follow-up) —
+  `fs::rename` moves it; the pre-migration snapshot repopulates `backups/` on
+  relaunch, but a dedicated staging copy belongs in a later step.
+
+
+---
+
+## Step 3.1 — Frontend Architecture and IPC Client
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a
@@ -16,7 +70,7 @@ sequenced after the backend spine is solid and tested.
 
 ---
 
-## Scope split
+### Scope split
 
 | Concern | Owner | Status |
 |---|---|---|
@@ -52,7 +106,7 @@ code 5 + an `app.restore_staged` event carrying `validated_snapshot_path`.
 
 ---
 
-## What landed in fe.7 (`fb084df`) — Step 3.1 scaffold COMPLETE
+### What landed in fe.7 (`fb084df`) — Step 3.1 scaffold COMPLETE
 
 The last scaffold sub-step. The Rust shell now *recovers* the backend instead of
 leaving the app permanently dead on a crash, enforces a single instance, and
@@ -157,7 +211,7 @@ CDP seam:
 
 ---
 
-## What landed in fe.6 (`b2f7936`; backend fix `f330e84`)
+### What landed in fe.6 (`b2f7936`; backend fix `f330e84`)
 
 The first-launch model flow (`project_logic §8`, roadmap Step 3.1's last deliverable).
 
@@ -203,7 +257,7 @@ bounced while no model is active; window close still exits code 0, no orphan `py
 
 ---
 
-## What landed in fe.5 (`2198a65`)
+### What landed in fe.5 (`2198a65`)
 
 Renders the failure state fe.4 records (`project_logic §7` / deferred Step 2.3).
 
@@ -246,7 +300,7 @@ content pushed below it; window close still exits code 0, no orphan `python.exe`
 
 ---
 
-## What landed in fe.4 (`198d493`)
+### What landed in fe.4 (`198d493`)
 
 The typed layer every feature view (3.2–3.4) calls.
 
@@ -295,7 +349,7 @@ still 79; `cargo` unchanged. Verified on `tauri dev`: Loading renders the **zod-
 
 ---
 
-## What landed in fe.3 (`e678ec4`)
+### What landed in fe.3 (`e678ec4`)
 
 The request/response transport + the graceful shutdown fe.1 lacked.
 
@@ -346,7 +400,7 @@ works end-to-end (dispatcher inline → `ShutdownCoordinator` → exit 0). New R
 
 ---
 
-## What landed in fe.1 (`4291182`)
+### What landed in fe.1 (`4291182`)
 
 `desktop/` — a Vite + React 19 + TypeScript project (React Router, Zustand). Scripts:
 `dev` / `build` (`tsc && vite build`) / `typecheck` / `lint` (flat eslint + typescript-eslint) /
@@ -381,7 +435,7 @@ the shell spawns the venv backend (cwd + data dir correct), and the webview rend
 `app.ready` payload (`Backend: Ready`, IPC v1, `model_setup_required: true`, no active model);
 killing the shell leaves no orphan process.
 
-## What landed in fe.2 (`72ba144`)
+### What landed in fe.2 (`72ba144`)
 
 `ipc/schema/methods.ts` — the zod mirror of `src/common/ipc/methods.py`, field-for-field:
 all 14 methods' `*Params`/`*Result` + the 6 lifecycle/streaming events
@@ -412,7 +466,7 @@ through the zod validator in a real Node subprocess, and the canonical outputs c
 
 ---
 
-## What landed in 3.1d
+### What landed in 3.1d
 
 **Four-tier routing** in `SessionWorker.send()` (project_logic §3), for an actionable
 `action_type` (`reminder` / `todo` / `schedule` / `meeting_note` / `summary_request`):
@@ -461,7 +515,7 @@ exists on `ScheduleHandler` today).
 
 ---
 
-## What landed in 3.1c
+### What landed in 3.1c
 
 **Idle auto-close** (project_logic §13): `SessionWorker.send()` checks
 `now - _last_activity > RAGPIPE_SESSION_IDLE_MINUTES` (default 45, env-overridable — no YAML)
@@ -503,7 +557,7 @@ prologue closes a dangling session, `app.reminders_pending` carries a seeded ove
 
 ---
 
-## What landed in 3.1b
+### What landed in 3.1b
 
 `src/backend/session_repository.py` — `SessionRepository(TableHandler)`, the first writer to
 `sessions` / `messages` (`create_session` / `finalize_session` / `append_message` [assigns
@@ -549,7 +603,7 @@ existing `tests/generation/test_prompt_builder_session.py::test_conversation_his
 
 ---
 
-## What landed in 3.1a (commit `f4e6f7e`)
+### What landed in 3.1a (commit `f4e6f7e`)
 
 New modules under `src/backend/`: `paths.py` (`RAGPIPE_DATA_DIR` → `session_db_path()` /
 `snapshot_dir()`), `keys.py` (`resolve_db_key` — Credential Manager via `resolve_key`, with a
@@ -579,3 +633,618 @@ the existing `test` job.
 Tests: `tests/backend/test_{transport,dispatcher,handlers,ipc_methods_contract,main}.py`
 (+56; **652 passing**, was 596; 1 skip = the pre-existing non-Windows single-instance
 fallback). `black --check`, `ruff check`, `mypy src observability db` clean.
+
+---
+
+## Step 3.2 — Chat Interface
+
+Roadmap Step 3.2 = the primary chat surface on top of the fe.1–fe.7 scaffold: the
+`/chat` view, `useSessionStore` (deferred from fe.4), the Tier-2 disambiguation popup
+resolved via `chat.confirm_action`, the Tier-3 clarification (a normal assistant
+message, no modal), and the schedule-conflict notice surfaced inline.
+
+Settled design decisions built to:
+- **Schedule conflict** — 3.2 only *surfaces* `ChatSendResult.conflict` as an inline
+  block under the assistant turn. The overwrite/keep flow + backend resolution +
+  `ScheduleHandler` overwrite helper are Step 3.3.
+- **Non-streaming** — `chat.send` resolves with the full answer; the typing indicator
+  is a plain "awaiting response" state (client timeout already 120 000 ms). No
+  `chat.send.progress` event.
+- **No virtualization** — the full transcript for the current mount is rendered.
+- **Citations** — inline `[Session <short> · approx. <ts>]` markers with a
+  hover/focus tooltip built from the `ChatCitation` payload. No
+  `chat.citation_context` backend method in 3.2 (a real "jump to session context"
+  click-through waits for a later step).
+
+---
+
+### What landed
+
+#### Backend — `src/backend/session_repository.py`
+
+`SessionRepository.history()` now returns the **newest `_HISTORY_MAX` (200) turns**,
+oldest-first (`ORDER BY turn_index DESC LIMIT 200` then `reversed`). A defensive
+ceiling on the un-virtualized transcript — sessions are already bounded by
+idle-close + `chat.new`, so this rarely bites. `all_messages()` (the re-ingest
+input) is **untouched and uncapped**. No IPC contract / `methods.py` / `methods.ts`
+change — an internal server-side constant, not a parameter. `session_worker.history()`
+and `_chat_history` pass the list straight through, unchanged.
+
+`tests/backend/test_session_repository.py` +1
+(`test_history_caps_at_the_newest_history_max_turns`: seed 250, assert 200 returned
+oldest-first starting at `turn_index == 50`, `all_messages` still 250). **774 → 775
+py**, black / ruff / mypy clean.
+
+#### Frontend — `desktop/`
+
+Vitest runs in the `node` environment — **no RTL** (fe.5/fe.6 settled decision).
+All logic is a Zustand store + pure helpers, unit-tested directly; the `.tsx`
+components are thin wrappers (untested, like `FirstRun.tsx`).
+
+**`desktop/src/store/session.ts` — `useSessionStore`** (new; deferred from fe.4).
+Client-owned, driven by `Chat.tsx`. `messages` is **append-only for the lifetime of
+a `/chat` mount** — each `SessionMessage` carries its own `sessionId`, and the render
+layer draws a boundary wherever two adjacent turns disagree. State:
+`sessionId` / `messages` / `sending` / `historyLoading` / `hydrated` /
+`pendingDisambiguation` (bound to the assistant message id via `forMessageId`) /
+`pendingConflict` (a mirror of the latest turn's conflict — the per-message
+`conflict` field is the render source) / `error`. Actions:
+`startHistoryLoad` / `hydrate` / `failHistoryLoad`; `startSend` (optimistic pending
+user turn, clears a stale popup, returns a temp id) → `completeSend` (reconciles the
+user turn, appends the assistant turn with citations / tier / conflict, clears
+`sending`, stashes `pendingDisambiguation` when the result carries one) /
+`failSend` (marks the user turn failed, clears `sending`, sets `error`);
+`removeMessage` (retry); `applyConfirmResult` (append the `chat.confirm_action`
+assistant turn, clear the popup); `dismissDisambiguation` (visual-only);
+`reset` (`chat.new` — swap `sessionId`, **keep** the transcript so a boundary shows
+on the next turn); `clearError`.
+
+**`desktop/src/routes/chatView.ts`** (new; pure) —
+`withBoundaries(messages)` interleaves `{ kind: "boundary" }` markers (walks from
+index 1, so it structurally cannot emit one before the first turn — covers `chat.new`
+*and* a transparent idle auto-close, detected purely from the id);
+`shortId` (trailing 6 chars of `session_<hex>`); `formatTimestamp` (locale
+date+time, raw string back on a parse failure); `formatCitationLabel`
+(`[Session <short> · approx. <ts>]`); `disambigLabel` (action-type → button copy,
+raw value fallback).
+
+**`desktop/src/ui/DisambiguationPopup.tsx`** (new; presentational) — a card over the
+transcript (not a full-screen modal): one button per backend option via
+`disambigLabel`, a × and a backdrop that both dismiss, `role="dialog"`
+`aria-modal="true"`, first option focused on mount, `Esc` → dismiss, buttons
+disabled while the `chat.confirm_action` round-trip is in flight.
+
+**`desktop/src/routes/Chat.tsx`** (rewrite from the placeholder) —
+- **Mount**: `startHistoryLoad()` → `call("chat.history", {})` → `hydrate` /
+  `failHistoryLoad`. `.chat-log-loading` while loading (no empty-content flash), an
+  empty-state line for a hydrated 0-message session, a retry link on load failure.
+- **Unmount cleanup**: `dismissDisambiguation()` — a Tier-2 popup never survives
+  leaving `/chat` (visual-only; the backend `_pending_action` self-discards on the
+  next `chat.send` / `chat.new`).
+- **Transcript**: `withBoundaries(messages).map(...)` — right-aligned user bubbles,
+  left-aligned assistant bubbles, a `New conversation` `role="separator"` at each
+  boundary, per-message timestamp, a "Retry" button on a `failed` user turn, an
+  inline `.chat-conflict` block under an assistant turn that reported a schedule
+  overlap ("⚠️ That overlaps with **{title}** ({start}–{end}). Open the Schedule view
+  to overwrite or keep it." — no action wired). Tier 3 needs no special case (the
+  backend returns it as a normal `answer`).
+- **Typing indicator**: while `sending`, a left-aligned `.chat-typing` bubble with an
+  animated ellipsis, `role="status"` `aria-live="polite"`; fine for ~120 s.
+- **Composer**: full-width `<textarea aria-label="Message">` + a
+  `<button aria-label="Send message">`. `Enter` submits, `Shift+Enter` inserts a
+  newline. Disabled while `sending` or `phase` is `degraded` / `exited`. Optimistic
+  send: `startSend` → `call("chat.send")` → `completeSend` / `failSend`.
+- **Auto-scroll**: a bottom sentinel `ref` + `scrollIntoView` keyed on
+  `messages.length` / `sending`, suppressed for the one-shot `hydrate()` via a
+  `didHydrate` ref (honours `prefers-reduced-motion`).
+- **"New conversation"**: `call("chat.new", {})` → `reset(session_id)`; disabled while
+  `sending`.
+- **Disambiguation**: `<DisambiguationPopup>` when `pendingDisambiguation` is set.
+  A choice → `call("chat.confirm_action", { pending_action_id, choice })` →
+  `applyConfirmResult`; a `no_pending_action` error → close + "That prompt expired".
+  Dismiss (× / backdrop / `Esc`) → close immediately, then
+  `chat.confirm_action(..., choice: "conversation")` to append the Tier-4 reply.
+- **Degraded/exited**: a `.chat-offline` line + disabled composer (the fe.5 banner
+  carries the primary messaging).
+
+**`desktop/src/styles.css`** — a `--- chat interface (3.2) ---` block:
+`.chat-view` / `.chat-header` / `.chat-log` (`flex:1; min-height:0` so it scrolls,
+not the page) / `.chat-msg[data-role]` / `.chat-typing` / `.chat-boundary` /
+`.chat-citation` + `.chat-citation-tip` (CSS popover) / `.chat-conflict` /
+`.chat-composer` / `.chat-offline` / `.disambig-*`, plus a
+`prefers-reduced-motion` rule for the typing ellipsis.
+
+**No `ipc/` change** — the contract is untouched; the 79-test `ipc` suite and the
+existing `chat.send` tier/conflict fixtures already cover the shapes the store
+consumes. **No Rust change.**
+
+New tests: `desktop/src/store/session.test.ts` (10) +
+`desktop/src/routes/chatView.test.ts` (9). **71 → 90 vitest (desktop).**
+
+#### Verification
+
+`desktop`: `npm typecheck` / `lint` / `test` (90) / `build` green.
+`ipc`: 79. Python: `black` / `ruff` / `mypy src observability db` clean;
+`pytest` **775 passed, 1 skipped**. Rust: unchanged (7).
+
+E2e via `tauri dev` (model `llama3.1:8b` active, driven over a WebView2
+`--remote-debugging-port=9222` CDP seam; `Page.captureScreenshot`):
+- lands on `/chat`; empty session hydrated ("Start a conversation…").
+- type + `Enter` → optimistic user bubble (with timestamp) → `.chat-typing` →
+  assistant reply appended, `sending` cleared.
+- `Shift+Enter` keeps the draft and does **not** send.
+- "New conversation" → `chat.new` (backend returns a new `session_id`) → the next
+  turn renders below a single "New conversation" separator.
+- window close → backend exits code 0, zero orphan `python.exe`.
+- **Not exercised live** (this box has only ~4 GB free RAM, so `llama3.1:8b` can't
+  actually load and every agent call returns the safe `CONVERSATION` fallback):
+  the Tier-2 popup, the Tier-3 clarification copy, grounded citations, and the
+  inline conflict block — all covered by the store / helper unit tests and the
+  `ipc` fixtures.
+
+---
+
+## Step 3.3 — Feature Views (Reminders, Todos, Meetings, Schedule)
+
+The 3.1d **OPEN ITEM** (`ScheduleConflict` surfaced but overwrite/keep resolution
+unwired, no overwrite helper on `ScheduleHandler`) is **now closed** — see 3.3a
+(`overwrite_ids`) + 3.3e (the inline alert).
+
+Settled decisions built to (Q1/Q2/Q3 + this session's AskUserQuestion):
+- **Q1** — feature-CRUD IPC lands as a preliminary backend sub-step 3.3a,
+  schema-first, all `worker=True`. Inline NLP create in every view = `chat.send`
+  (not a form), **except Meetings** which uses a dedicated `meetings.capture`.
+
+  > **Deliberate deviation from the Q1 pre-planning answer** (confirmed via
+  > AskUserQuestion during planning). The Q1 note said "inline NLP create in
+  > every view goes through `chat.send`". Meetings capture does **not** — it
+  > calls `meetings.capture` (→ `MeetingNoteHandler.capture_meeting_note`)
+  > directly. Rationale: a dedicated "Capture" button on a paste-a-transcript
+  > text area is a decision the user has *already made explicit* — routing a
+  > multi-hundred-line transcript through the four-tier agentic classifier is
+  > unreliable, would only avoid a conversational reply at Tier-1
+  > `meeting_note`, and the spec requires "no conversational response during
+  > capture". The other three views keep `chat.send` (the utterance genuinely
+  > is natural language that must be classified). So there are two create paths
+  > by design: `chat.send` for reminders/todos/schedule, `meetings.capture` for
+  > meetings.
+- **Q2** — schedule conflict resolution = `schedule.create_item` with
+  `overwrite_ids: list[str] = []`. Non-empty → each id (must be a *current*
+  conflict) is soft-deleted, then the item is created, one transaction. Keep =
+  dismiss, nothing created. Resolution lives **only** in the Schedule view; no
+  chat-side resolution, no `_pending_action` coupling.
+- **Q3** — no `reminders.acknowledge_reconciliation`. `reminders.complete/
+  dismiss/reschedule` (and `delete`) prune the id from `useReminderStore`
+  locally **and** the worker prunes its cached `self._reconciliation`.
+- Nav shell = persistent left sidebar. Inline-create Tier-2/3 fallback handled
+  inline in the feature view (answer text + option buttons → `chat.confirm_action`).
+
+---
+
+### 3.3a — feature-view CRUD IPC surface (`f6474c5`)
+
+**19 new methods**, all `worker=True` + `degraded_ok=False` (the session DB
+connection is thread-affine on `SessionWorker`, same reason `chat.*` /
+`health.check` are):
+
+| Namespace | Methods |
+|---|---|
+| reminders | `list` `complete` `dismiss` `reschedule` `update` `delete` |
+| todos | `list` `complete` `update` `delete` |
+| meetings | `list` `get` `capture` `delete` |
+| schedule | `day` `week` `create_item` `update` `delete` |
+
+- **`src/common/ipc/methods.py`** — `TodoWire` / `ActionItemWire` /
+  `MeetingNoteWire` / `ScheduleItemWire` / `ScheduleConflictWire` + params/
+  results; `ReminderWire` (from 3.1c) reused verbatim for `reminders.list` /
+  the lifecycle results. `ScheduleItemResult = { item | null, conflict | null }`.
+- **`src/backend/feature_wire.py`** (new) — entity → wire-dict mappers, sibling
+  of `reminders_wire.py`.
+- **`src/backend/session_worker.py`** — thin pass-throughs on the worker thread
+  (`list_reminders` / `complete_reminder` / … / `create_schedule_item` /
+  `schedule_week` / …). Each builds the handler on `self._conn` and returns the
+  dataclass(es). `ReminderHandler` is built with `NoOpToastBridge()` — real
+  WinRT toast registration is a later step, so create/reschedule via these
+  paths do **not** yet register OS toasts (same as `action_dispatch` today).
+  `complete/dismiss/reschedule/delete` also call `_prune_reconciliation(id)`
+  (Q3). `schedule_week` = one `get_range_schedule` query, grouped into 7 keys.
+- **`src/backend/handlers.py`** — 19 thin adapters. `ValueError` →
+  `invalid_params`, `KeyError` → `not_found` (via `_feature_call`).
+- **`src/features/schedule_handler.py`** — `create_schedule_item` gains
+  `overwrite_ids` (Q2): a stray id (not in the current conflict set) →
+  `ValueError`; partial coverage → `ScheduleConflict` with only the unresolved
+  items; full coverage → soft-delete those rows + insert, one `with self._conn:`
+  block (soft-delete only, project_logic §5). New `get_range_schedule(start,
+  end)` — one JOIN query backing `schedule.week`. `update_schedule_item` is
+  **unchanged** — still returns the conflict, no overwrite path (documented
+  limitation; the roadmap conflict-alert acceptance is about *new* items).
+- **`ipc/schema/methods.ts` + `ipc/fixtures/methods_examples.json`** — zod
+  mirror `.strict()` + one params/result fixture per method (incl. a
+  `schedule.create_item` `overwrite_ids` params + a conflict result). The
+  cross-language round-trip (`tests/common/test_ipc_methods_roundtrip.py`) and
+  `ipc/schema/methods.test.ts` coverage check gate it.
+
+`todos.list` is capped server-side at the newest 500 non-deleted rows (an
+internal constant, like `history()`'s 200 — no param).
+
+New/changed tests: `tests/backend/test_ipc_methods_contract.py` (worker set),
+`tests/backend/test_handlers.py` (+5, fake worker), `tests/backend/
+test_session_worker.py` (+7, real DB + injected worker — pass-throughs +
+`_prune_reconciliation` on a seeded overdue reminder + `overwrite_ids` +
+`schedule_week` bad-date), `tests/features/test_schedule_handler.py` (+4).
+**775 → 866 py** (+91: +16 real, +75 parametrized across the two contract
+tests). `black` / `ruff` / `mypy src observability db` clean. **No Rust change.**
+
+---
+
+### 3.3b — nav shell + Reminders view (`ad3d9ad`)
+
+- **`desktop/src/ui/NavRail.tsx`** (new) — persistent left `<nav>`, `NavLink`
+  per destination (Chat / Reminders / To-dos / Meetings / Schedule),
+  active-link highlight via `aria-current`. Emoji glyphs (no SVG assets).
+  Returns `null` on `/` and `/first-run` and while `phase` is `starting` /
+  `exited`.
+- **`RootLayout.tsx`** — `<NavRail/>` + `<main>` wrapped in a
+  `<div class="root-body">` flex row below `<Banner>`.
+- **`App.tsx`** — `/reminders` `/todos` `/meetings` `/schedule` routes inside
+  the existing `<RequireModel>` wrapper. Todos/Meetings/Schedule shipped as
+  "Coming soon" placeholders (filled in by 3.3c/d/e).
+- **`desktop/src/routes/featureCreate.ts`** (new, pure) —
+  `interpretCreateResult(ChatSendResult)` → `created` | `disambiguation` |
+  `conflict` | `message`. The shared inline-NLP-create interpretation for all
+  four views. `actionLabel(option)`.
+- **`desktop/src/store/reminders.ts`** — extends `useReminderStore` with the
+  authoritative `active` list (from `reminders.list`) + `patchReminder`
+  (drops a now-completed/dismissed row) / `removeReminder` /
+  `pruneReconciliation`. `overdue` / `pendingAcknowledgment` (from the
+  `app.reminders_pending` startup event) are **id-set overlays only** — never
+  separate rows.
+- **`desktop/src/routes/remindersView.ts`** (new, pure) —
+  `groupReminders(active, overdueIds, now)` → `{ overdue, today, upcoming }`
+  (each reminder once; overdue if its id ∈ `overdueIds` **or**
+  `scheduled_time < now`); `datetimeLocalToIso` / `isoToDatetimeLocal` /
+  `formatWhen`.
+- **`desktop/src/routes/Reminders.tsx`** — grouped list, the Overdue group
+  always rendered with a distinct `.reminder-overdue` style (never hidden),
+  complete checkbox / delete / reschedule (`datetime-local`), inline NLP create
+  (`chat.send` → `interpretCreateResult`) with the Tier-2 option buttons wired
+  to `chat.confirm_action`.
+- **`desktop/src/ipc/client.ts`** — per-method timeouts for the 19 new methods
+  (`meetings.capture` 120 s — one local-LLM pass; the rest 10 s).
+- **`styles.css`** — `--- feature views + nav rail (3.3) ---` block.
+
+New tests: `featureCreate.test.ts` (6), `remindersView.test.ts` (6),
+`store/reminders.test.ts` (+5). **90 → 107 vitest.**
+
+---
+
+### 3.3c — To-dos view (`5de2234`)
+
+`store/todos.ts` (`useTodoStore` — all non-deleted rows), `routes/todosView.ts`
+(`splitTodos` → `{ active, completed }`; active by priority then age, completed
+newest-first; `priorityRank` / `priorityLabel`), `routes/Todos.tsx` (priority +
+category chips, complete checkbox, inline title edit + priority `<select>` →
+`todos.update`, soft-delete, a local "Completed" tab; shared `featureCreate`
+inline create). `styles.css` `.todo-tabs` / `.todo-priority[data-level]` /
+`.todo-category`. **+9 vitest → 116.**
+
+---
+
+### 3.3d — Meetings view (`53dd07d`)
+
+`store/meetings.ts` (`useMeetingStore` — list + capture lifecycle; a captured
+note is prepended), `routes/meetingsView.ts` (`summarizeMeeting` collapsed-row
+preview, `actionItemLine`, `formatMeetingDate`), `routes/Meetings.tsx`
+(expandable rows — attendees / topics / decisions / action items / follow-ups +
+a collapsible transcript, "Review needed" badge when `needs_review`, inline
+capture via the dedicated **`meetings.capture`** method — Q1, no `chat.send`, no
+conversational response — delete). `styles.css` `.meeting-capture` /
+`.needs-review-badge` / `.meeting-detail`. **+9 vitest → 125.**
+
+---
+
+### 3.3e — Schedule view + conflict resolution (`93d560c`)
+
+`store/schedule.ts` (`useScheduleStore` — day = 1 group / week = 7, anchor date,
+patch/remove), `routes/scheduleView.ts` (`weekStart` / `addDays` — **UTC**
+date-key math so a non-UTC runner/viewer never rolls a day; `layoutDay` →
+ordered slots + an overlap flag; `overwriteParams(conflict)` →
+`schedule.create_item` params with `overwrite_ids = every conflicting id`),
+`routes/Schedule.tsx`:
+- Day (default) / Week toggle, prev / next / Today nav, a vertical timeline
+  (time gutter + slots; overlapping items flagged red).
+- NL edit `<input>` → `chat.send` → shared `featureCreate` helper.
+- An **inline** (non-modal) conflict alert with **Overwrite** / **Keep
+  existing**, seeded on mount from `useSessionStore.getState().pendingConflict`
+  (a conflict raised in the chat view lands here — the only resolution surface)
+  **and** from this view's own `chat.send` result. Overwrite →
+  `schedule.create_item` with `overwriteParams(conflict)` → refresh + clear both
+  the local state and the session-store mirror. Keep → clear both, nothing
+  created.
+- Per-item delete (`schedule.delete`).
+
+`styles.css` `.schedule-toggle` / `.schedule-nav` / `.schedule-conflict` /
+`.schedule-timeline` / `.schedule-slot[data-overlaps]`. **+8 vitest → 133.**
+
+---
+
+### Verification
+
+Per commit: `desktop` `npm typecheck` / `lint` / `test` / `build` green;
+`ipc` 136 vitest; Python (3.3a) `black` / `ruff` / `mypy` + `pytest` **866
+passed, 1 skipped**. No Rust change.
+
+**E2e** via `tauri dev` (WebView2 `--remote-debugging-port=9222`, CDP driver;
+`active_model = llama3.1:8b` in the dev `app_config.json` so the app is past
+`<RequireModel>`). The dev `session.db` was seeded with 3 reminders / 3 todos /
+2 schedule items / 1 meeting note via the handlers (key from Credential
+Manager):
+- nav rail renders 5 links; click-navigation switches views; rail hidden on
+  `/first-run`.
+- **Reminders** — Overdue / Today / Upcoming groups; completing the overdue
+  reminder drops it (3 → 2 rows) and the Overdue group disappears (local prune
+  + list refresh).
+- **To-dos** — Active (2) / Completed (1) tabs; priority + category shown;
+  deleting an active todo (2 → 1).
+- **Meetings** — the captured note renders; expanding shows the detail
+  sections.
+- **Schedule** — Day/Week toggle (week = 7 day columns); timeline with the
+  seeded items; the NL "apply" field degrades gracefully (this box can't load
+  `llama3.1:8b`, so `chat.send` returns the safe `CONVERSATION` fallback and
+  nothing is created — no crash).
+- **No console errors / warnings** across all five views.
+
+**Not exercised live** (needs a Tier-1 agentic classification, which needs a
+loaded model): inline NLP create actually creating an entity, the Tier-2
+option-button path, and the Schedule conflict Overwrite/Keep flow. Covered by
+`featureCreate.test.ts` + `scheduleView.test.ts` + `tests/features/
+test_schedule_handler.py` (`overwrite_ids`) + `tests/backend/
+test_session_worker.py` + the `ipc` `schedule.create_item` conflict fixture.
+
+---
+
+## Step 3.4 — Settings & Diagnostics
+
+Settled decisions built to (pre-planning Q1/Q2/Q3 + this session's AskUserQuestion):
+- **Q1** — General settings persist as `AppConfig` fields in
+  `data/app_config.json` (`idle_timeout_minutes` / `summary_time`), **not** a
+  `settings.json`, **not** a SQLite table. `_CONFIG_VERSION` 2 → 3 (v2 files load
+  fine). `settings.get` returns the *effective* value (config → env → YAML →
+  default) + a `*_is_default` flag per field; `settings.update` writes `AppConfig`.
+- **Q2** — "Export all data" uses `@tauri-apps/plugin-dialog` `save()` for the
+  path, then `data.export` → `DataManager.write_export(path)`.
+- **Q3** — "Report a problem" = generate a redacted log → `plugin-dialog`
+  `save()` → `revealItemInDir` → open a `mailto:` compose window whose body tells
+  the user to attach the file (`mailto` cannot attach — documented limitation).
+- Settings = **one `/settings` route**, active panel from a `?tab=` URL param.
+- The rotating log file + redaction is **its own backend sub-step (3.4a)**.
+- `diagnostics.metrics` aggregates **only what `metrics.db` records today**;
+  error rate / compute time render "not tracked yet (v1.1)".
+
+---
+
+### 3.4a — rotating backend log file + redaction (`84414b5`)
+
+The backend only logged to stderr (`logging.basicConfig`), which the Tauri shell
+inherits and a packaged app drops. `diagnostics.logs` / `diagnostics.report` need
+a persisted log.
+
+- **`src/backend/paths.py`** — `log_dir()` (`<data_dir>/logs`) + `log_file()`
+  (`backend.log`), one definition shared by the handler and the diagnostics
+  handlers.
+- **`src/backend/logging_setup.py`** — `configure_logging()`: keeps the stderr
+  `StreamHandler` (format `%(asctime)s %(levelname)s %(name)s %(message)s`) and
+  adds a `RotatingFileHandler` at `paths.log_file()` (1 MB × 3, `delay=True`).
+  Safe to call repeatedly — prior handlers it installed are removed first, so a
+  test that runs `main()` under a fresh `RAGPIPE_DATA_DIR` re-points rather than
+  stacking. A read-only data dir logs a warning, doesn't crash.
+- **`src/backend/log_redaction.py`** — `redact(text)` scrubs e-mail addresses,
+  `C:\Users\<name>` / POSIX home dirs, `authorization|bearer|api_key|secret|
+  password` assignments (rest of line), 32+-char hex runs, IPv4.
+  `write_redacted_report(dest)` concatenates `backend.log` + its rotations
+  oldest-first, redacts, writes atomically. **Redaction is always backend-side**
+  — applied by `diagnostics.logs` per entry *and* by `diagnostics.report`; the
+  frontend never redacts.
+- **`src/backend/main.py`** — `main()` calls `configure_logging()` before serving.
+
+Tests: `test_logging_setup.py` (5), `test_log_redaction.py` (9).
+
+---
+
+### 3.4b — settings persistence + settings / data / diagnostics IPC (`a823891`)
+
+Schema-first, mirrors 3.3a: Pydantic contract → zod mirror → fixtures → dispatcher
+handlers → worker pass-throughs where the session DB is touched → round-trip test.
+
+**8 new methods:**
+
+| Method | worker | degraded_ok | Params → Result |
+|---|---|---|---|
+| `settings.get` | no | yes | `{}` → `{idle_timeout_minutes, summary_time, idle_timeout_is_default, summary_time_is_default}` |
+| `settings.update` | no | yes | `{idle_timeout_minutes?, summary_time?}` (present=write, `null`=clear, absent=unchanged via `model_fields_set`) → same as `settings.get` |
+| `data.info` | no | yes | `{}` → export-badge line + `days_since` + the 3 Data & Privacy copy strings |
+| `data.export` | **yes** | no | `{path}` → `{path, exported_at, bytes_written}` |
+| `data.wipe` | **yes** | no | `{confirm}` (must be `true`) → `{wiped}` |
+| `diagnostics.logs` | no | yes | `{level?, limit=200}` → `{entries[], truncated}` (redacted) |
+| `diagnostics.metrics` | no | yes | `{limit=1000}` → aggregate (below) |
+| `diagnostics.report` | no | yes | `{path}` → `{path, bytes_written}` |
+
+`diagnostics.metrics` — `MetricsStore.query_recent(limit, env="backend")`
+aggregated in Python: `sample_size`, `retrieval_latency_ms {p50,p95,p99}` (from
+the only latency the chat spine records), `confidence_distribution
+{high,medium,low,none}`, `grounded_rate`, `retrieval_hit_rate`. `error_rate` and
+`compute_ms` are `null` — not instrumented yet, a documented v1.1 gap.
+
+**Settings persistence (Q1):**
+- `AppConfig` gains `idle_timeout_minutes: int | None` + `summary_time: str | None`;
+  `_CONFIG_VERSION` 2 → 3; `set_idle_timeout_minutes` / `set_summary_time` (accept
+  `None` to clear).
+- **`src/backend/settings.py`** — the single resolver: `effective_idle_minutes`
+  (AppConfig → `$RAGPIPE_SESSION_IDLE_MINUTES` → 45), `env_yaml_summary_time`
+  (`$RAGPIPE_SUMMARY_DAILY_TIME` → YAML → 21:00), `effective_summary_time`
+  (AppConfig on top), and **`resolved(cfg)`** which computes the whole
+  `settings.get` result **from one `AppConfig`** (+ env/YAML) so the value and its
+  `*_is_default` flag can never skew and `settings.update` answers from the
+  object it just saved.
+- **Live, no restart:** `SessionWorker.send()` reads
+  `backend_settings.effective_idle_minutes(self._app_config_path)` **per call**
+  (the module `_idle_minutes()` / `_DEFAULT_IDLE_MINUTES` are gone; a test can
+  still pin `idle_minutes=`). `SchedulerThread._tick()` refreshes
+  `self._summaries.config.daily_time` from `AppConfig.load().summary_time or
+  SummaryConfig.from_yaml().daily_time` each poll.
+  - *Deviation from the Q1 wording:* Q1 said "`SummaryConfig` gains an `AppConfig`
+    read ahead of the env/YAML lookup". `SummaryConfig.from_yaml()` is left
+    unchanged (env → YAML → default — its many callers/tests untouched); the
+    AppConfig layer is applied by the scheduler tick and by
+    `settings.effective_summary_time`. Same effect (a settings edit takes effect
+    with no restart), narrower blast radius.
+
+**`data.*` on the worker:** new `SessionWorker.export_data(path)` /
+`wipe_data()` build a `DataManager` on `self._conn`. **After `full_wipe()` the
+worker resets** `_session_id` / `_turn_count` / `_pending_action` /
+`_reconciliation` and, in a real (non-injected) run, rebuilds the vector index +
+router + model bundle so retrieval no longer surfaces the wiped chunks.
+**Toast cancellation on wipe is a documented no-op** — `full_wipe` calls
+`NoOpToastBridge.cancel_all()`; toast *registration* is also a no-op today (no OS
+toast is ever scheduled yet). When the real WinRT `ToastBridge` step lands its
+`cancel_all()` (per-id `RemoveFromSchedule`) is inherited here for free. Carried
+forward.
+
+**`data.info`:** `export_badge_state(app_config, now)` was lifted out of
+`DataManager` into a module function (the method delegates) so the handler builds
+the badge from `AppConfig` alone — no DB connection.
+
+Tests: `test_settings.py` (7), `test_diagnostics.py` (8), `test_handlers.py`
+(+11), `test_ipc_methods_contract.py` (degraded / worker sets), `test_app_config.py`
+(v2→v3, general-settings roundtrip), `test_session_worker.py` (+3: idle-from-config
+live, `export_data`, `wipe_data`), `test_data_admin.py` (+1 standalone badge),
+`ipc/schema/methods.test.ts` + `tests/common/test_ipc_methods_roundtrip.py` (+16
+fixtures).
+
+---
+
+### AppConfig concurrency hardening (follow-up fix — found via the 3.4b e2e)
+
+The in-process end-to-end (`main()` fed `settings.get` / `settings.update` /
+`data.info` / `diagnostics.*` envelopes) surfaced two real races in
+`data/app_config.json`, both new pressure from 3.4b (`settings.update` +
+`SchedulerThread` reading the file per tick):
+
+1. **Windows sharing violation** — a reader (`SessionWorker.send()` per message,
+   `SchedulerThread._tick()` per poll) holds a read handle without
+   `FILE_SHARE_DELETE`, so a concurrent `os.replace` fails with `WinError 5`; and
+   a read during the writer's `os.replace` hits a sharing violation.
+   → `AppConfig.load()` and `save()` retry read / rename a few times
+   (~155 ms total) before giving up.
+2. **Lost update** — two in-flight `settings.update` calls each did
+   `load → mutate → save` unsynchronised, so one clobbered a field it hadn't
+   touched.
+   → `_WRITE_LOCK` is now an `RLock`; new `AppConfig.update_fields(path, **changes)`
+   holds it across the whole load-modify-save; `settings.update` uses it. `save()`
+   also writes to a **per-thread-unique** temp name.
+
+Neither is Phase-3.4-specific in principle (`settings.update` vs `send()` reading
+`active_model` already raced), so the hardening lives in `AppConfig` itself.
+
+---
+
+### 3.4c — Settings shell + nav + export badge + General & Models (`12a0a1c`)
+
+- **`App.tsx`** — `/settings` behind `<RequireModel>`.
+- **`NavRail.tsx`** — Settings entry + a `●` dot when `needsExportBadge`
+  (`lastExportedAt` null or > 30 days, mirrors `data_admin._EXPORT_BADGE_DAYS`).
+- **`store/settings.ts`** — `lastExportedAt`, one source of truth: `AppConfig` →
+  `app.status.last_exported_at` → this store (set in `bootstrap.ts`) → the nav
+  dot; re-read after export / wipe.
+- **`routes/settingsView.ts`** (pure, tested) — `SETTINGS_TABS` + `activeTab(?tab=)`,
+  `needsExportBadge`, `isValidIdle` / `isValidTime`.
+- **`Settings.tsx`** — one route, `useSearchParams` for the active panel.
+- **`SettingsGeneral.tsx`** — idle timeout + summary time forms over
+  `settings.get` / `settings.update`; per-field "Use default" (sends `null`);
+  effective-value hints.
+- **`ui/ModelCatalogList.tsx`** — the catalog-row list **extracted from
+  `FirstRun.tsx`** (rows / Download / Activate|Switch / progress), driven by
+  `useModelStore` so `/first-run` and Settings → Models stay in sync. `FirstRun`
+  now consumes it (no behaviour change — its E2E path + `modelRow` tests
+  unchanged). `SettingsModels.tsx` adds the `"Switch"` variant, no navigate-away.
+- **`client.ts`** — per-method timeouts for the 8 new methods.
+
+Tests: `settingsView.test.ts` (9), `store/settings.test.ts` (1). **133 → 143 vitest.**
+
+---
+
+### 3.4d — Data & Privacy + Backup & Recovery (`5bbc649`)
+
+Folds in the Phase-2-deferred export badge / full-wipe confirm / restore UI.
+
+- **`@tauri-apps/plugin-dialog`** — `Cargo.toml` + `lib.rs` +
+  `capabilities/default.json` (`"dialog:allow-save"`) + npm dep. The native save
+  picker.
+- **`ui/ConfirmDialog.tsx`** — `role="alertdialog"` modal for the irreversible
+  actions (Escape / backdrop cancel, focus to the confirm button).
+- **`SettingsData.tsx`** — `data.info` copy strings (backend-authoritative);
+  "Export all data" → `save({defaultPath: mirrormind-export-<date>.json})` →
+  `data.export` → refresh the badge; "Delete all my data" → `ConfirmDialog` →
+  `data.wipe` → `window.location.reload()` so every store re-hydrates from a
+  clean `app.status`.
+- **`SettingsBackup.tsx`** — `backup.list` rows → `ConfirmDialog` →
+  `backup.restore`. The handler is inline and sends its `ok` response *before*
+  the serve loop breaks, so `call()` normally resolves; but the process exit can
+  race the response read, so a **`backend_exited` transport error is treated as
+  "restart underway"**, never a failure. The fe.5 "Applying your backup…" banner
+  (already wired via `app.restore_staged` + `backend:exit {will_retry}`) takes
+  over.
+
+`cargo fmt` / `clippy -D warnings` / `test` (7); desktop typecheck / lint / test
+(143) / build.
+
+---
+
+### 3.4e — Diagnostics + Report a problem (`0a6ab4a`)
+
+- **`@tauri-apps/plugin-opener`** — `Cargo.toml` + `lib.rs` + scoped
+  capabilities (`opener:allow-reveal-item-in-dir` path `**`,
+  `opener:allow-open-url` `mailto:*`) + npm dep.
+- **`routes/diagnosticsView.ts`** (pure, tested) — `levelParam`, `barWidths`,
+  `formatPct` / `formatMs` ("not tracked yet" for `null`), `reportMailto` (the
+  pre-filled body that names the saved file and tells the user to attach it).
+- **`SettingsDiagnostics.tsx`**:
+  - *Recent activity* — `diagnostics.metrics` → retrieval-latency p50/p95/p99,
+    a confidence-distribution bar row, grounded / hit rates; error rate + compute
+    time show "not tracked yet".
+  - *Logs* — level `<select>` (ALL/DEBUG/INFO/WARNING/ERROR) + Refresh →
+    `diagnostics.logs` (redacted), newest 200, truncation note. Colour by level.
+  - *Report a problem* — `save()` → `diagnostics.report` → `revealItemInDir` +
+    `openUrl(mailto)`. Both opener calls are best-effort (`.catch`) so a scope
+    miss never breaks the saved report.
+
+Tests: `diagnosticsView.test.ts` (6). **143 → 149 vitest.** `cargo` clean (7).
+
+---
+
+### Verification
+
+Per commit: `black` / `ruff` / `mypy src observability db` clean; desktop
+`typecheck` / `lint` / `test` / `build`; `cargo fmt` / `clippy --all-targets -D
+warnings` / `test` for the plugin sub-steps; `ipc` vitest (**136 → 160**);
+`tests/common/test_ipc_methods_roundtrip.py` **82 → 98** (Pydantic↔zod per fixture,
+real Node subprocess).
+
+**In-process end-to-end** (`src.backend.main` fed request envelopes over
+BytesIO, no model, exit 0):
+- `settings.get` → effective defaults (45 / 21:00, both `is_default`).
+- `settings.update {idle:30, summary:"07:15"}` → both set, `is_default` false;
+  a follow-up `{idle:null}` clears **only** idle (summary stays "07:15") — the
+  lost-update fix.
+- `data.info` → the real `NEVER_EXPORTED_LINE` / `UNINSTALL_WARNING` /
+  `EXPORT_BLURB` strings.
+- `diagnostics.logs` → parsed, redacted `backend.log` entries.
+- `diagnostics.metrics` → `sample_size: 0` on a fresh DB, all buckets 0,
+  `error_rate` / `compute_ms` null.
+
+**Not exercised live** (needs `tauri dev` + a WebView2 CDP session, deferred to
+the Phase 3 audit): the native save dialog, `window.location.reload` after wipe,
+the `backup.restore` → exit 5 → supervisor swap round-trip, `revealItemInDir` /
+`openUrl(mailto)` scope behaviour. Covered by unit tests + the ipc fixtures + the
+in-process e2e above; the restore path is unchanged from fe.7's verified flow.
+
