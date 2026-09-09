@@ -19,6 +19,8 @@ tauri = { version = "2", features = [] }
 # Single-instance enforcement — Rust owns the canonical named-mutex guard
 # (project_logic §7); the Python SingleInstanceGuard stays as defense-in-depth.
 tauri-plugin-single-instance = "2"
+# Settings → Data & Privacy / Diagnostics (Step 3.4): native save dialog.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # oneshot correlation + per-call timeout for the stdio<->invoke bridge. Tauri

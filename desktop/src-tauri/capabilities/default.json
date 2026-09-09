@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Core permissions for the main window: default set plus event listen/emit so the webview can subscribe to backend:// events.",
   "windows": ["main"],
-  "permissions": ["core:default", "core:event:default"]
+  "permissions": ["core:default", "core:event:default", "dialog:allow-save"]
 }

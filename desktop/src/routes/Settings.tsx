@@ -1,5 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 
+import { SettingsBackup } from "./SettingsBackup";
+import { SettingsData } from "./SettingsData";
 import { SettingsGeneral } from "./SettingsGeneral";
 import { SettingsModels } from "./SettingsModels";
 import { activeTab, SETTINGS_TAB_LABELS, SETTINGS_TABS, type SettingsTab } from "./settingsView";
@@ -34,8 +36,8 @@ export function Settings() {
 
       {tab === "general" && <SettingsGeneral />}
       {tab === "models" && <SettingsModels />}
-      {tab === "data" && <ComingSoon name="Data & Privacy" />}
-      {tab === "backup" && <ComingSoon name="Backup & Recovery" />}
+      {tab === "data" && <SettingsData />}
+      {tab === "backup" && <SettingsBackup />}
       {tab === "diagnostics" && <ComingSoon name="Diagnostics" />}
     </div>
   );

@@ -21,6 +21,9 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }))
+        // Settings → Data & Privacy (Step 3.4): the native save dialog for the
+        // "Export all data" flow (and the redacted report in 3.4e).
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
             match backend::spawn(&handle) {
