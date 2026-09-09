@@ -180,6 +180,114 @@ def test_chat_confirm_action_maps_the_worker_result(ctx_factory):
     assert res.action_type == "reminder" and res.feature and res.feature.kind == "reminder"
 
 
+# -- feature views (Step 3.3) ---------------------------------------------
+
+
+def _fw(ctx_factory):
+    return ctx_factory(worker=FakeSessionWorker())
+
+
+def _h(name, params, ctx):
+    return handlers.HANDLERS[name](params, ctx, "r")
+
+
+def test_reminders_list_and_lifecycle_map_wire(ctx_factory):
+    from src.common.ipc.methods import (
+        FeatureIdParams,
+        ReminderRescheduleParams,
+        RemindersListParams,
+    )
+
+    ctx = _fw(ctx_factory)
+    lst = _h("reminders.list", RemindersListParams(), ctx)
+    assert [r.id for r in lst.reminders] == ["rem_1"]
+
+    done = _h("reminders.complete", FeatureIdParams(id="rem_1"), ctx)
+    assert done.reminder.completed_at is not None
+    resc = _h(
+        "reminders.reschedule",
+        ReminderRescheduleParams(id="rem_1", scheduled_time="2026-10-01T09:00:00+00:00"),
+        ctx,
+    )
+    assert resc.reminder.scheduled_time == "2026-10-01T09:00:00+00:00"
+    assert _h("reminders.delete", FeatureIdParams(id="rem_1"), ctx).deleted is True
+
+
+def test_todos_list_and_update_map_wire(ctx_factory):
+    from src.common.ipc.methods import FeatureIdParams, TodosListParams, TodoUpdateParams
+
+    ctx = _fw(ctx_factory)
+    assert [t.id for t in _h("todos.list", TodosListParams(), ctx).todos] == ["todo_1"]
+    upd = _h("todos.update", TodoUpdateParams(id="todo_1", priority="low"), ctx)
+    assert upd.todo.priority == "low"
+    assert _h("todos.complete", FeatureIdParams(id="todo_1"), ctx).todo.completed_at is not None
+
+
+def test_meetings_capture_list_get_delete(ctx_factory):
+    from src.common.ipc.methods import (
+        FeatureIdParams,
+        MeetingsCaptureParams,
+        MeetingsListParams,
+    )
+
+    ctx = _fw(ctx_factory)
+    cap = _h("meetings.capture", MeetingsCaptureParams(transcript="Alice: hi"), ctx)
+    assert cap.meeting.needs_review is True and cap.meeting.raw_transcript == "Alice: hi"
+    assert [m.id for m in _h("meetings.list", MeetingsListParams(), ctx).meetings] == ["mn_1"]
+    assert _h("meetings.get", FeatureIdParams(id="mn_1"), ctx).meeting is not None
+    assert _h("meetings.get", FeatureIdParams(id="missing"), ctx).meeting is None
+    assert _h("meetings.delete", FeatureIdParams(id="mn_1"), ctx).deleted is True
+
+
+def test_schedule_day_week_and_conflict_result(ctx_factory):
+    from src.common.ipc.methods import (
+        ScheduleCreateItemParams,
+        ScheduleDayParams,
+        ScheduleWeekParams,
+    )
+
+    ctx = _fw(ctx_factory)
+    day = _h("schedule.day", ScheduleDayParams(date="2026-09-08"), ctx)
+    assert [i.title for i in day.items] == ["Standup"]
+
+    week = _h("schedule.week", ScheduleWeekParams(start_date="2026-09-07"), ctx)
+    assert [d.date for d in week.days] == [f"2026-09-{n:02d}" for n in range(7, 14)]
+
+    # no overwrite → conflict surfaced
+    conflict = _h(
+        "schedule.create_item",
+        ScheduleCreateItemParams(
+            title="Dentist",
+            start_time="2026-09-08T09:00:00+00:00",
+            end_time="2026-09-08T10:00:00+00:00",
+        ),
+        ctx,
+    )
+    assert conflict.item is None and conflict.conflict is not None
+    assert conflict.conflict.conflicts_with[0].title == "Standup"
+
+    # overwrite → created item
+    created = _h(
+        "schedule.create_item",
+        ScheduleCreateItemParams(
+            title="Dentist",
+            start_time="2026-09-08T09:00:00+00:00",
+            end_time="2026-09-08T10:00:00+00:00",
+            overwrite_ids=["sci_1"],
+        ),
+        ctx,
+    )
+    assert created.conflict is None and created.item is not None and created.item.id == "sci_new"
+
+
+def test_feature_method_without_worker_is_unavailable(ctx_factory):
+    from src.common.ipc.methods import RemindersListParams
+
+    with pytest.raises(MethodError) as ei:
+        handlers.HANDLERS["reminders.list"](RemindersListParams(), ctx_factory(), "r")
+    assert ei.value.code == "unavailable"
+
+
 def test_reminders_reconciliation_maps_the_worker_result(ctx_factory):
     from src.common.ipc.methods import RemindersReconciliationParams
     from src.common.types import ReconciliationResult, Reminder

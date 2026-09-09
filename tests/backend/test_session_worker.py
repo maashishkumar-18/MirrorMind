@@ -15,7 +15,13 @@ import pytest
 from db.connection import open_session_db
 from src.backend.session_worker import ChatResult, SessionWorker, _minutes_between
 from src.backend.wire import MethodError
-from src.common.types import AgenticActionType, AgenticOutput, RetrievalRoute, SessionRetrievedChunk
+from src.common.types import (
+    AgenticActionType,
+    AgenticOutput,
+    RetrievalRoute,
+    ScheduleConflict,
+    SessionRetrievedChunk,
+)
 from src.features.base import now_iso
 from src.models.app_config import AppConfig
 
@@ -487,5 +493,138 @@ def test_pending_action_cleared_on_new_conversation(keyed_db, tmp_path, monkeypa
         assert w._pending_action is not None
         _call(w, w.new_conversation)
         assert w._pending_action is None
+    finally:
+        w.stop(timeout=30)
+
+
+# -- 3.3: feature-view CRUD pass-throughs -------------------------------------
+
+
+def _feature_worker(keyed_db, tmp_path, monkeypatch):
+    return _worker(keyed_db, tmp_path, monkeypatch, agent=FakeAgent(_ao()))
+
+
+def test_reminder_crud_pass_throughs(keyed_db, tmp_path, monkeypatch):
+    w = _feature_worker(keyed_db, tmp_path, monkeypatch)
+    try:
+        r = _call(w, lambda: w._reminders().create_reminder("dentist", "2026-09-10T09:00:00+00:00"))
+        assert [x.id for x in _call(w, w.list_reminders)] == [r.id]
+
+        done = _call(w, lambda: w.complete_reminder(r.id))
+        assert done.completed_at is not None
+        assert _call(w, w.list_reminders) == []  # completed drops out of the active list
+
+        r2 = _call(
+            w, lambda: w._reminders().create_reminder("call bob", "2026-09-11T09:00:00+00:00")
+        )
+        _call(w, lambda: w.update_reminder(r2.id, title="call robert"))
+        assert _call(w, w.list_reminders)[0].title == "call robert"
+        assert _call(w, lambda: w.delete_reminder(r2.id)) is True
+        assert _call(w, w.list_reminders) == []
+    finally:
+        w.stop(timeout=30)
+
+
+def test_reminder_lifecycle_actions_prune_the_reconciliation_cache(keyed_db, tmp_path, monkeypatch):
+    conn = open_session_db(keyed_db)
+    conn.executemany(
+        "INSERT INTO reminders (id, title, scheduled_time, created_at, updated_at) "
+        "VALUES (?, ?, '2000-01-01T00:00:00+00:00', 't', 't')",
+        [("od1", "a"), ("od2", "b"), ("od3", "c")],
+    )
+    conn.commit()
+    conn.close()
+
+    w = _feature_worker(keyed_db, tmp_path, monkeypatch)
+    try:
+        assert {r.id for r in _call(w, w.reconciliation).overdue} == {"od1", "od2", "od3"}
+        _call(w, lambda: w.complete_reminder("od1"))
+        _call(w, lambda: w.dismiss_reminder("od2"))
+        _call(w, lambda: w.reschedule_reminder("od3", "2027-01-01T00:00:00+00:00"))
+        assert _call(w, w.reconciliation).overdue == []
+    finally:
+        w.stop(timeout=30)
+
+
+def test_todo_crud_pass_throughs(keyed_db, tmp_path, monkeypatch):
+    w = _feature_worker(keyed_db, tmp_path, monkeypatch)
+    try:
+        from src.features.todo_handler import TodoHandler
+
+        t = _call(w, lambda: TodoHandler(connection=w._conn).create_todo("report", priority="high"))
+        assert [x.id for x in _call(w, w.list_todos)] == [t.id]
+        _call(w, lambda: w.complete_todo(t.id))
+        assert _call(w, w.list_todos)[0].completed_at is not None  # retained, not removed
+        _call(w, lambda: w.update_todo(t.id, priority="low"))
+        assert _call(w, w.list_todos)[0].priority == "low"
+        assert _call(w, lambda: w.delete_todo(t.id)) is True
+        assert _call(w, w.list_todos) == []
+    finally:
+        w.stop(timeout=30)
+
+
+def test_meeting_note_pass_throughs(keyed_db, tmp_path, monkeypatch):
+    w = _feature_worker(keyed_db, tmp_path, monkeypatch)
+    try:
+        # simple_generate has no model on this box → extraction falls back to
+        # needs_review; the row is still created.
+        note = _call(w, lambda: w.capture_meeting_note("Alice: ship Friday. Bob: ok."))
+        assert note.raw_transcript.startswith("Alice")
+        assert [n.id for n in _call(w, w.list_meeting_notes)] == [note.id]
+        assert _call(w, lambda: w.get_meeting_note(note.id)).id == note.id
+        assert _call(w, lambda: w.delete_meeting_note(note.id)) is True
+        assert _call(w, w.list_meeting_notes) == []
+    finally:
+        w.stop(timeout=30)
+
+
+def test_schedule_day_week_and_conflict_overwrite(keyed_db, tmp_path, monkeypatch):
+    w = _feature_worker(keyed_db, tmp_path, monkeypatch)
+    try:
+        a = _call(
+            w,
+            lambda: w.create_schedule_item(
+                "Standup", "2026-09-08T09:00:00+00:00", "2026-09-08T09:30:00+00:00"
+            ),
+        )
+        assert not isinstance(a, ScheduleConflict)
+        assert [i.id for i in _call(w, lambda: w.schedule_day("2026-09-08"))] == [a.id]
+
+        # week: start Mon 2026-09-07 → 7 groups, the item lands on day index 1
+        week = _call(w, lambda: w.schedule_week("2026-09-07"))
+        assert [d for d, _ in week] == [f"2026-09-{n:02d}" for n in range(7, 14)]
+        assert [i.id for i in dict(week)["2026-09-08"]] == [a.id]
+
+        # overlapping create → conflict; overwrite resolves it
+        conflict = _call(
+            w,
+            lambda: w.create_schedule_item(
+                "Dentist", "2026-09-08T09:15:00+00:00", "2026-09-08T10:00:00+00:00"
+            ),
+        )
+        assert isinstance(conflict, ScheduleConflict)
+        created = _call(
+            w,
+            lambda: w.create_schedule_item(
+                "Dentist",
+                "2026-09-08T09:15:00+00:00",
+                "2026-09-08T10:00:00+00:00",
+                overwrite_ids=[a.id],
+            ),
+        )
+        assert not isinstance(created, ScheduleConflict)
+        day = _call(w, lambda: w.schedule_day("2026-09-08"))
+        assert [i.title for i in day] == ["Dentist"]  # Standup soft-deleted
+        assert _call(w, lambda: w.delete_schedule_item(created.id)) is True
+    finally:
+        w.stop(timeout=30)
+
+
+def test_schedule_week_rejects_a_bad_start_date(keyed_db, tmp_path, monkeypatch):
+    w = _feature_worker(keyed_db, tmp_path, monkeypatch)
+    try:
+        with pytest.raises(MethodError) as ei:
+            _call(w, lambda: w.schedule_week("not-a-date"))
+        assert ei.value.code == "invalid_params"
     finally:
         w.stop(timeout=30)

@@ -26,7 +26,7 @@ import uuid
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import src.backend.action_dispatch as action_dispatch
@@ -40,12 +40,20 @@ from src.backend.wire import MethodError
 from src.common.sqlite_vector_store import SQLiteVectorStore
 from src.common.types import (
     AgenticActionType,
+    MeetingNote,
     ReconciliationResult,
+    Reminder,
+    ScheduleConflict,
+    ScheduleItem,
     SessionRetrievedChunk,
+    Todo,
 )
 from src.features.base import now_iso
+from src.features.meeting_note_handler import MeetingNoteHandler
 from src.features.reminder_handler import ReminderHandler
+from src.features.schedule_handler import ScheduleHandler
 from src.features.toast_bridge import NoOpToastBridge
+from src.features.todo_handler import TodoHandler
 from src.generation.config import (
     ChatTurn,
     ConfidenceLevel,
@@ -685,6 +693,144 @@ class SessionWorker(threading.Thread):
             bridge=NoOpToastBridge(),
             model=self._bound_model,
         )
+
+    # ------------------------------------------------------------------
+    # Feature-view CRUD pass-throughs (Step 3.3) — worker thread only.
+    # Each builds a handler on self._conn (the only long-lived session
+    # connection) and returns the dataclass(es); handlers.py maps to wire.
+    # ------------------------------------------------------------------
+
+    def _reminders(self) -> ReminderHandler:
+        # NoOpToastBridge: the real WinRT bridge is a later step, so these
+        # create/reschedule paths do not (yet) register OS toasts — same as
+        # action_dispatch today.
+        return ReminderHandler(connection=self._conn, bridge=NoOpToastBridge())
+
+    def _prune_reconciliation(self, reminder_id: str) -> None:
+        """Drop a reminder id from the cached on-launch reconciliation lists
+        (Q3) — keeps the frozen snapshot honest for a later re-fetch. Worker
+        thread only, no lock (same access pattern as the cache itself)."""
+        self._reconciliation = ReconciliationResult(
+            overdue=[r for r in self._reconciliation.overdue if r.id != reminder_id],
+            pending_acknowledgment=[
+                r for r in self._reconciliation.pending_acknowledgment if r.id != reminder_id
+            ],
+        )
+
+    def list_reminders(self) -> list[Reminder]:
+        self._raise_if_unavailable()
+        return self._reminders().get_reminders(active_only=True)
+
+    def complete_reminder(self, reminder_id: str) -> Reminder:
+        self._raise_if_unavailable()
+        r = self._reminders().complete_reminder(reminder_id)
+        self._prune_reconciliation(reminder_id)
+        return r
+
+    def dismiss_reminder(self, reminder_id: str) -> Reminder:
+        self._raise_if_unavailable()
+        r = self._reminders().dismiss_reminder(reminder_id)
+        self._prune_reconciliation(reminder_id)
+        return r
+
+    def reschedule_reminder(self, reminder_id: str, scheduled_time: str) -> Reminder:
+        self._raise_if_unavailable()
+        r = self._reminders().reschedule_reminder(reminder_id, scheduled_time)
+        self._prune_reconciliation(reminder_id)
+        return r
+
+    def update_reminder(self, reminder_id: str, **fields: object) -> Reminder:
+        self._raise_if_unavailable()
+        return self._reminders().update_reminder(reminder_id, **fields)
+
+    def delete_reminder(self, reminder_id: str) -> bool:
+        self._raise_if_unavailable()
+        deleted = self._reminders().delete_reminder(reminder_id)
+        self._prune_reconciliation(reminder_id)
+        return deleted
+
+    def list_todos(self, *, limit: int = 500) -> list[Todo]:
+        self._raise_if_unavailable()
+        return TodoHandler(connection=self._conn).get_todos()[-limit:]
+
+    def complete_todo(self, todo_id: str) -> Todo:
+        self._raise_if_unavailable()
+        return TodoHandler(connection=self._conn).complete_todo(todo_id)
+
+    def update_todo(self, todo_id: str, **fields: object) -> Todo:
+        self._raise_if_unavailable()
+        return TodoHandler(connection=self._conn).update_todo(todo_id, **fields)
+
+    def delete_todo(self, todo_id: str) -> bool:
+        self._raise_if_unavailable()
+        return TodoHandler(connection=self._conn).delete_todo(todo_id)
+
+    def list_meeting_notes(self) -> list[MeetingNote]:
+        self._raise_if_unavailable()
+        return MeetingNoteHandler(connection=self._conn).get_meeting_notes()
+
+    def get_meeting_note(self, note_id: str) -> MeetingNote | None:
+        self._raise_if_unavailable()
+        return MeetingNoteHandler(connection=self._conn).get_meeting_note(note_id)
+
+    def capture_meeting_note(self, transcript: str) -> MeetingNote:
+        self._raise_if_unavailable()
+        return MeetingNoteHandler(
+            connection=self._conn, model=self._bound_model
+        ).capture_meeting_note(transcript, session_id=self._session_id)
+
+    def delete_meeting_note(self, note_id: str) -> bool:
+        self._raise_if_unavailable()
+        return MeetingNoteHandler(connection=self._conn).delete_meeting_note(note_id)
+
+    def schedule_day(self, date: str) -> list[ScheduleItem]:
+        self._raise_if_unavailable()
+        return ScheduleHandler(connection=self._conn).get_day_schedule(date)
+
+    def schedule_week(self, start_date: str) -> list[tuple[str, list[ScheduleItem]]]:
+        self._raise_if_unavailable()
+        try:
+            start = datetime.fromisoformat(start_date).date()
+        except ValueError as exc:
+            raise MethodError(
+                "invalid_params", f"start_date is not a date: {start_date!r}"
+            ) from exc
+        dates = [(start + timedelta(days=i)).isoformat() for i in range(7)]
+        items = ScheduleHandler(connection=self._conn).get_range_schedule(dates[0], dates[-1])
+        by_date: dict[str, list[ScheduleItem]] = {d: [] for d in dates}
+        for it in items:
+            by_date.setdefault(it.start_time[:10], []).append(it)
+        return [(d, by_date.get(d, [])) for d in dates]
+
+    def create_schedule_item(
+        self,
+        title: str,
+        start_time: str,
+        end_time: str,
+        *,
+        location: str = "",
+        notes: str = "",
+        overwrite_ids: list[str] | None = None,
+    ) -> ScheduleItem | ScheduleConflict:
+        self._raise_if_unavailable()
+        return ScheduleHandler(connection=self._conn).create_schedule_item(
+            title,
+            start_time,
+            end_time,
+            location=location,
+            notes=notes,
+            overwrite_ids=overwrite_ids,
+        )
+
+    def update_schedule_item(
+        self, item_id: str, **fields: object
+    ) -> ScheduleItem | ScheduleConflict:
+        self._raise_if_unavailable()
+        return ScheduleHandler(connection=self._conn).update_schedule_item(item_id, **fields)
+
+    def delete_schedule_item(self, item_id: str) -> bool:
+        self._raise_if_unavailable()
+        return ScheduleHandler(connection=self._conn).delete_schedule_item(item_id)
 
     # ------------------------------------------------------------------
     # Internals

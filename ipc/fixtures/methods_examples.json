@@ -274,6 +274,333 @@
       "pending_acknowledgment": []
     }
   },
+  { "target": "params:reminders.list", "payload": {} },
+  {
+    "target": "result:reminders.list",
+    "payload": {
+      "reminders": [
+        {
+          "id": "rem_1",
+          "title": "Call the dentist",
+          "scheduled_time": "2026-09-10T09:00:00+00:00",
+          "notes": "",
+          "fired_at": null,
+          "completed_at": null,
+          "dismissed_at": null,
+          "created_at": "2026-09-08T12:00:00+00:00"
+        }
+      ]
+    }
+  },
+  { "target": "params:reminders.complete", "payload": { "id": "rem_1" } },
+  {
+    "target": "result:reminders.complete",
+    "payload": {
+      "reminder": {
+        "id": "rem_1",
+        "title": "Call the dentist",
+        "scheduled_time": "2026-09-10T09:00:00+00:00",
+        "notes": "",
+        "fired_at": null,
+        "completed_at": "2026-09-09T10:00:00+00:00",
+        "dismissed_at": null,
+        "created_at": "2026-09-08T12:00:00+00:00"
+      }
+    }
+  },
+  { "target": "params:reminders.dismiss", "payload": { "id": "rem_1" } },
+  {
+    "target": "result:reminders.dismiss",
+    "payload": {
+      "reminder": {
+        "id": "rem_1",
+        "title": "Call the dentist",
+        "scheduled_time": "2026-09-10T09:00:00+00:00",
+        "notes": "",
+        "fired_at": null,
+        "completed_at": null,
+        "dismissed_at": "2026-09-09T10:00:00+00:00",
+        "created_at": "2026-09-08T12:00:00+00:00"
+      }
+    }
+  },
+  {
+    "target": "params:reminders.reschedule",
+    "payload": { "id": "rem_1", "scheduled_time": "2026-09-11T09:00:00+00:00" }
+  },
+  {
+    "target": "result:reminders.reschedule",
+    "payload": {
+      "reminder": {
+        "id": "rem_1",
+        "title": "Call the dentist",
+        "scheduled_time": "2026-09-11T09:00:00+00:00",
+        "notes": "",
+        "fired_at": null,
+        "completed_at": null,
+        "dismissed_at": null,
+        "created_at": "2026-09-08T12:00:00+00:00"
+      }
+    }
+  },
+  {
+    "target": "params:reminders.update",
+    "payload": { "id": "rem_1", "title": "Call the orthodontist", "notes": "ask about braces", "scheduled_time": null }
+  },
+  {
+    "target": "result:reminders.update",
+    "payload": {
+      "reminder": {
+        "id": "rem_1",
+        "title": "Call the orthodontist",
+        "scheduled_time": "2026-09-10T09:00:00+00:00",
+        "notes": "ask about braces",
+        "fired_at": null,
+        "completed_at": null,
+        "dismissed_at": null,
+        "created_at": "2026-09-08T12:00:00+00:00"
+      }
+    }
+  },
+  { "target": "params:reminders.delete", "payload": { "id": "rem_1" } },
+  { "target": "result:reminders.delete", "payload": { "deleted": true } },
+  { "target": "params:todos.list", "payload": {} },
+  {
+    "target": "result:todos.list",
+    "payload": {
+      "todos": [
+        {
+          "id": "todo_1",
+          "session_id": "session_abc",
+          "title": "Draft the Q3 report",
+          "notes": "",
+          "priority": "high",
+          "category": "work",
+          "completed_at": null,
+          "created_at": "2026-09-08T12:00:00+00:00",
+          "updated_at": "2026-09-08T12:00:00+00:00"
+        }
+      ]
+    }
+  },
+  { "target": "params:todos.complete", "payload": { "id": "todo_1" } },
+  {
+    "target": "result:todos.complete",
+    "payload": {
+      "todo": {
+        "id": "todo_1",
+        "session_id": null,
+        "title": "Draft the Q3 report",
+        "notes": "",
+        "priority": "high",
+        "category": "work",
+        "completed_at": "2026-09-09T10:00:00+00:00",
+        "created_at": "2026-09-08T12:00:00+00:00",
+        "updated_at": "2026-09-09T10:00:00+00:00"
+      }
+    }
+  },
+  {
+    "target": "params:todos.update",
+    "payload": { "id": "todo_1", "title": null, "notes": null, "priority": "medium", "category": "personal" }
+  },
+  {
+    "target": "result:todos.update",
+    "payload": {
+      "todo": {
+        "id": "todo_1",
+        "session_id": null,
+        "title": "Draft the Q3 report",
+        "notes": "",
+        "priority": "medium",
+        "category": "personal",
+        "completed_at": null,
+        "created_at": "2026-09-08T12:00:00+00:00",
+        "updated_at": "2026-09-09T10:00:00+00:00"
+      }
+    }
+  },
+  { "target": "params:todos.delete", "payload": { "id": "todo_1" } },
+  { "target": "result:todos.delete", "payload": { "deleted": true } },
+  { "target": "params:meetings.list", "payload": {} },
+  {
+    "target": "result:meetings.list",
+    "payload": {
+      "meetings": [
+        {
+          "id": "mn_1",
+          "session_id": null,
+          "raw_transcript": "Alice: let's ship Friday. Bob: agreed.",
+          "attendees": ["Alice", "Bob"],
+          "topics": ["release"],
+          "decisions": ["Ship on Friday"],
+          "action_items": [{ "task": "Cut the release branch", "owner": "Bob", "deadline": "Thursday" }],
+          "follow_ups": ["Confirm QA sign-off"],
+          "needs_review": false,
+          "searchable_text": "Alice Bob release Ship on Friday Cut the release branch Confirm QA sign-off",
+          "created_at": "2026-09-08T12:00:00+00:00",
+          "updated_at": "2026-09-08T12:00:00+00:00"
+        }
+      ]
+    }
+  },
+  { "target": "params:meetings.get", "payload": { "id": "mn_1" } },
+  {
+    "target": "result:meetings.get",
+    "payload": {
+      "meeting": {
+        "id": "mn_1",
+        "session_id": null,
+        "raw_transcript": "Alice: let's ship Friday. Bob: agreed.",
+        "attendees": ["Alice", "Bob"],
+        "topics": ["release"],
+        "decisions": ["Ship on Friday"],
+        "action_items": [{ "task": "Cut the release branch", "owner": null, "deadline": null }],
+        "follow_ups": [],
+        "needs_review": false,
+        "searchable_text": "Alice Bob release Ship on Friday",
+        "created_at": "2026-09-08T12:00:00+00:00",
+        "updated_at": "2026-09-08T12:00:00+00:00"
+      }
+    }
+  },
+  {
+    "target": "params:meetings.capture",
+    "payload": { "transcript": "Alice: let's ship Friday. Bob: agreed." }
+  },
+  {
+    "target": "result:meetings.capture",
+    "payload": {
+      "meeting": {
+        "id": "mn_2",
+        "session_id": "session_abc",
+        "raw_transcript": "Alice: let's ship Friday. Bob: agreed.",
+        "attendees": [],
+        "topics": [],
+        "decisions": [],
+        "action_items": [],
+        "follow_ups": [],
+        "needs_review": true,
+        "searchable_text": "",
+        "created_at": "2026-09-09T10:00:00+00:00",
+        "updated_at": "2026-09-09T10:00:00+00:00"
+      }
+    }
+  },
+  { "target": "params:meetings.delete", "payload": { "id": "mn_1" } },
+  { "target": "result:meetings.delete", "payload": { "deleted": true } },
+  { "target": "params:schedule.day", "payload": { "date": "2026-09-10" } },
+  {
+    "target": "result:schedule.day",
+    "payload": {
+      "date": "2026-09-10",
+      "items": [
+        {
+          "id": "sci_1",
+          "schedule_id": "sch_1",
+          "title": "Standup",
+          "start_time": "2026-09-10T09:00:00+00:00",
+          "end_time": "2026-09-10T09:15:00+00:00",
+          "location": "Zoom",
+          "notes": "",
+          "created_at": "2026-09-08T12:00:00+00:00",
+          "updated_at": "2026-09-08T12:00:00+00:00"
+        }
+      ]
+    }
+  },
+  { "target": "params:schedule.week", "payload": { "start_date": "2026-09-07" } },
+  {
+    "target": "result:schedule.week",
+    "payload": {
+      "start_date": "2026-09-07",
+      "days": [
+        { "date": "2026-09-07", "items": [] },
+        {
+          "date": "2026-09-08",
+          "items": [
+            {
+              "id": "sci_1",
+              "schedule_id": "sch_1",
+              "title": "Standup",
+              "start_time": "2026-09-08T09:00:00+00:00",
+              "end_time": "2026-09-08T09:15:00+00:00",
+              "location": "Zoom",
+              "notes": "",
+              "created_at": "2026-09-07T12:00:00+00:00",
+              "updated_at": "2026-09-07T12:00:00+00:00"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "target": "params:schedule.create_item",
+    "payload": {
+      "title": "Dentist",
+      "start_time": "2026-09-10T09:00:00+00:00",
+      "end_time": "2026-09-10T10:00:00+00:00",
+      "location": "",
+      "notes": "",
+      "overwrite_ids": ["sci_1"]
+    }
+  },
+  {
+    "target": "result:schedule.create_item",
+    "payload": {
+      "item": null,
+      "conflict": {
+        "attempted": {
+          "id": "sci_2",
+          "schedule_id": "",
+          "title": "Dentist",
+          "start_time": "2026-09-10T09:00:00+00:00",
+          "end_time": "2026-09-10T10:00:00+00:00",
+          "location": "",
+          "notes": "",
+          "created_at": "",
+          "updated_at": ""
+        },
+        "conflicts_with": [
+          {
+            "id": "sci_1",
+            "schedule_id": "sch_1",
+            "title": "Standup",
+            "start_time": "2026-09-10T09:00:00+00:00",
+            "end_time": "2026-09-10T09:15:00+00:00",
+            "location": "Zoom",
+            "notes": "",
+            "created_at": "2026-09-08T12:00:00+00:00",
+            "updated_at": "2026-09-08T12:00:00+00:00"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "params:schedule.update",
+    "payload": { "id": "sci_1", "title": "Standup (moved)", "start_time": null, "end_time": null, "location": null, "notes": null }
+  },
+  {
+    "target": "result:schedule.update",
+    "payload": {
+      "item": {
+        "id": "sci_1",
+        "schedule_id": "sch_1",
+        "title": "Standup (moved)",
+        "start_time": "2026-09-10T09:00:00+00:00",
+        "end_time": "2026-09-10T09:15:00+00:00",
+        "location": "Zoom",
+        "notes": "",
+        "created_at": "2026-09-08T12:00:00+00:00",
+        "updated_at": "2026-09-09T10:00:00+00:00"
+      },
+      "conflict": null
+    }
+  },
+  { "target": "params:schedule.delete", "payload": { "id": "sci_1" } },
+  { "target": "result:schedule.delete", "payload": { "deleted": true } },
   {
     "target": "event:app.ready",
     "payload": { "ipc_version": 1, "model_setup_required": true, "active_model": null }

@@ -7,6 +7,13 @@ if the new time slot overlaps an existing non-deleted item, the handler
 returns a ``ScheduleConflict`` and writes nothing — it never silently
 overwrites (project_logic.md §5). Overlap is global, not per-schedule: a
 person cannot be in two places at once.
+
+``create_schedule_item`` accepts ``overwrite_ids`` (Phase 3 Step 3.3, Q2): the
+caller resolves a conflict by naming the items to overwrite. Each id must be in
+the *current* conflict set; the handler soft-deletes those (soft-delete only,
+same transaction as the insert) and then creates. An empty / omitted
+``overwrite_ids`` keeps the historical behaviour — the ``ScheduleConflict`` is
+returned and nothing is written. ``update_schedule_item`` has no overwrite path.
 """
 
 import sqlite3
@@ -29,6 +36,7 @@ class ScheduleHandler(TableHandler):
         location: str = "",
         notes: str = "",
         date: str | None = None,
+        overwrite_ids: list[str] | None = None,
     ) -> ScheduleItem | ScheduleConflict:
         item_id = new_id("sci")
         attempted = ScheduleItem(
@@ -46,11 +54,24 @@ class ScheduleHandler(TableHandler):
         # writes schedule_items) — there is no second writer to race. Revisit if
         # that changes (audit 1.5-C1).
         conflicts = self._overlapping(start_time, end_time)
+        overwrite = set(overwrite_ids or [])
         if conflicts:
-            return ScheduleConflict(attempted=attempted, conflicts_with=conflicts)
+            stray = overwrite - {c.id for c in conflicts}
+            if stray:
+                raise ValueError(f"overwrite_ids not in the current conflict set: {sorted(stray)}")
+            unresolved = [c for c in conflicts if c.id not in overwrite]
+            if unresolved:
+                return ScheduleConflict(attempted=attempted, conflicts_with=unresolved)
 
         now = now_iso()
         with self._conn:
+            for cid in overwrite:
+                # soft-delete only (project_logic.md §5) — same txn as the insert
+                self._conn.execute(
+                    "UPDATE schedule_items SET deleted_at = ?, updated_at = ? "
+                    "WHERE id = ? AND deleted_at IS NULL",
+                    (now, now, cid),
+                )
             schedule_id = self._get_or_create_schedule(date or start_time[:10], now)
             self._conn.execute(
                 "INSERT INTO schedule_items (id, schedule_id, title, start_time, end_time, "
@@ -99,6 +120,20 @@ class ScheduleHandler(TableHandler):
             "WHERE s.date = ? AND si.deleted_at IS NULL AND s.deleted_at IS NULL "
             "ORDER BY si.start_time",
             (date,),
+        ).fetchall()
+        return [self._row_to_item(r) for r in rows]
+
+    def get_range_schedule(self, start_date: str, end_date: str) -> list[ScheduleItem]:
+        """Every non-deleted item on a date in ``[start_date, end_date]``
+        (inclusive), ordered by date then start time — one query backing the
+        Schedule view's week toggle (avoids 7× ``get_day_schedule``)."""
+        rows = self._conn.execute(
+            "SELECT si.* FROM schedule_items si "
+            "JOIN schedules s ON s.id = si.schedule_id "
+            "WHERE s.date BETWEEN ? AND ? "
+            "AND si.deleted_at IS NULL AND s.deleted_at IS NULL "
+            "ORDER BY s.date, si.start_time",
+            (start_date, end_date),
         ).fetchall()
         return [self._row_to_item(r) for r in rows]
 

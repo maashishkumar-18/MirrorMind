@@ -41,6 +41,26 @@ def test_worker_methods_are_the_expected_set():
         "chat.new",
         "chat.history",
         "reminders.reconciliation",
+        # feature views (Step 3.3) — the session DB connection is thread-affine
+        "reminders.list",
+        "reminders.complete",
+        "reminders.dismiss",
+        "reminders.reschedule",
+        "reminders.update",
+        "reminders.delete",
+        "todos.list",
+        "todos.complete",
+        "todos.update",
+        "todos.delete",
+        "meetings.list",
+        "meetings.get",
+        "meetings.capture",
+        "meetings.delete",
+        "schedule.day",
+        "schedule.week",
+        "schedule.create_item",
+        "schedule.update",
+        "schedule.delete",
     }
 
 

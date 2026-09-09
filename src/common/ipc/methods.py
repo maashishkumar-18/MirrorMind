@@ -313,6 +313,196 @@ class AppRemindersPendingEvent(_Result):
 
 
 # --------------------------------------------------------------------------
+# Feature views — reminders / todos / meetings / schedule CRUD  (Step 3.3)
+#
+# Every method is worker=True (the session DB connection is thread-affine on the
+# SessionWorker, same reason chat.* / health.check are) and degraded_ok=False
+# (degraded mode has no worker). Inline NLP create in each view goes through
+# chat.send, so there is no *.create here except schedule.create_item (which
+# carries the Q2 overwrite/keep resolution) and meetings.capture (transcript
+# extraction — deliberately not agentic; "no conversational response").
+# --------------------------------------------------------------------------
+
+
+class FeatureIdParams(_Params):
+    id: str = Field(min_length=1)
+
+
+class FeatureDeletedResult(_Result):
+    deleted: bool
+
+
+# -- reminders -------------------------------------------------------------
+class RemindersListParams(_Params):
+    pass
+
+
+class RemindersListResult(_Result):
+    #: active reminders only (not completed / dismissed / deleted)
+    reminders: list[ReminderWire]
+
+
+class ReminderRescheduleParams(_Params):
+    id: str = Field(min_length=1)
+    scheduled_time: str = Field(min_length=1)
+
+
+class ReminderUpdateParams(_Params):
+    id: str = Field(min_length=1)
+    title: str | None = None
+    notes: str | None = None
+    scheduled_time: str | None = None
+
+
+class ReminderResult(_Result):
+    reminder: ReminderWire
+
+
+# -- todos ---------------------------------------------------------------
+class TodoWire(_Result):
+    id: str
+    session_id: str | None
+    title: str
+    notes: str
+    priority: str | None
+    category: str | None
+    completed_at: str | None
+    created_at: str
+    updated_at: str
+
+
+class TodosListParams(_Params):
+    pass
+
+
+class TodosListResult(_Result):
+    #: every non-deleted todo (active + completed) — the view splits them into
+    #: the list and the "Completed" tab; capped server-side at the newest 500.
+    todos: list[TodoWire]
+
+
+class TodoUpdateParams(_Params):
+    id: str = Field(min_length=1)
+    title: str | None = None
+    notes: str | None = None
+    priority: str | None = None
+    category: str | None = None
+
+
+class TodoResult(_Result):
+    todo: TodoWire
+
+
+# -- meetings ----------------------------------------------------------
+class ActionItemWire(_Result):
+    task: str
+    owner: str | None
+    deadline: str | None
+
+
+class MeetingNoteWire(_Result):
+    id: str
+    session_id: str | None
+    raw_transcript: str
+    attendees: list[str]
+    topics: list[str]
+    decisions: list[str]
+    action_items: list[ActionItemWire]
+    follow_ups: list[str]
+    needs_review: bool
+    searchable_text: str
+    created_at: str
+    updated_at: str
+
+
+class MeetingsListParams(_Params):
+    pass
+
+
+class MeetingsListResult(_Result):
+    meetings: list[MeetingNoteWire]
+
+
+class MeetingGetResult(_Result):
+    meeting: MeetingNoteWire | None
+
+
+class MeetingsCaptureParams(_Params):
+    transcript: str = Field(min_length=1)
+
+
+class MeetingResult(_Result):
+    meeting: MeetingNoteWire
+
+
+# -- schedule --------------------------------------------------------
+class ScheduleItemWire(_Result):
+    id: str
+    schedule_id: str
+    title: str
+    start_time: str
+    end_time: str
+    location: str
+    notes: str
+    created_at: str
+    updated_at: str
+
+
+class ScheduleConflictWire(_Result):
+    attempted: ScheduleItemWire
+    conflicts_with: list[ScheduleItemWire]
+
+
+class ScheduleDayParams(_Params):
+    date: str = Field(min_length=1)
+
+
+class ScheduleDayGroup(_Result):
+    date: str
+    items: list[ScheduleItemWire]
+
+
+class ScheduleDayResult(_Result):
+    date: str
+    items: list[ScheduleItemWire]
+
+
+class ScheduleWeekParams(_Params):
+    start_date: str = Field(min_length=1)
+
+
+class ScheduleWeekResult(_Result):
+    start_date: str
+    days: list[ScheduleDayGroup]
+
+
+class ScheduleCreateItemParams(_Params):
+    title: str = Field(min_length=1)
+    start_time: str = Field(min_length=1)
+    end_time: str = Field(min_length=1)
+    location: str = ""
+    notes: str = ""
+    #: Q2 — non-empty resolves a conflict: each id (must be in the current
+    #: conflict set) is soft-deleted, then the item is created.
+    overwrite_ids: list[str] = []
+
+
+class ScheduleUpdateParams(_Params):
+    id: str = Field(min_length=1)
+    title: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    location: str | None = None
+    notes: str | None = None
+
+
+class ScheduleItemResult(_Result):
+    #: exactly one of these is set — a created/updated item, or an unresolved conflict
+    item: ScheduleItemWire | None
+    conflict: ScheduleConflictWire | None
+
+
+# --------------------------------------------------------------------------
 # Lifecycle events (server-initiated; no request/params from the frontend)
 # --------------------------------------------------------------------------
 class AppReadyEvent(_Result):
@@ -365,4 +555,26 @@ METHOD_CONTRACTS: dict[str, MethodContract] = {
     "reminders.reconciliation": MethodContract(
         RemindersReconciliationParams, RemindersReconciliationResult, worker=True
     ),
+    # -- feature views (Step 3.3) — all worker=True, degraded_ok=False --------
+    "reminders.list": MethodContract(RemindersListParams, RemindersListResult, worker=True),
+    "reminders.complete": MethodContract(FeatureIdParams, ReminderResult, worker=True),
+    "reminders.dismiss": MethodContract(FeatureIdParams, ReminderResult, worker=True),
+    "reminders.reschedule": MethodContract(ReminderRescheduleParams, ReminderResult, worker=True),
+    "reminders.update": MethodContract(ReminderUpdateParams, ReminderResult, worker=True),
+    "reminders.delete": MethodContract(FeatureIdParams, FeatureDeletedResult, worker=True),
+    "todos.list": MethodContract(TodosListParams, TodosListResult, worker=True),
+    "todos.complete": MethodContract(FeatureIdParams, TodoResult, worker=True),
+    "todos.update": MethodContract(TodoUpdateParams, TodoResult, worker=True),
+    "todos.delete": MethodContract(FeatureIdParams, FeatureDeletedResult, worker=True),
+    "meetings.list": MethodContract(MeetingsListParams, MeetingsListResult, worker=True),
+    "meetings.get": MethodContract(FeatureIdParams, MeetingGetResult, worker=True),
+    "meetings.capture": MethodContract(MeetingsCaptureParams, MeetingResult, worker=True),
+    "meetings.delete": MethodContract(FeatureIdParams, FeatureDeletedResult, worker=True),
+    "schedule.day": MethodContract(ScheduleDayParams, ScheduleDayResult, worker=True),
+    "schedule.week": MethodContract(ScheduleWeekParams, ScheduleWeekResult, worker=True),
+    "schedule.create_item": MethodContract(
+        ScheduleCreateItemParams, ScheduleItemResult, worker=True
+    ),
+    "schedule.update": MethodContract(ScheduleUpdateParams, ScheduleItemResult, worker=True),
+    "schedule.delete": MethodContract(FeatureIdParams, FeatureDeletedResult, worker=True),
 }

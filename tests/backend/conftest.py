@@ -188,6 +188,126 @@ class FakeSessionWorker:
         )
         return r
 
+    # -- feature-view CRUD pass-throughs (Step 3.3) — canned entities --------
+
+    def list_reminders(self):
+        from src.common.types import Reminder
+
+        return [Reminder(id="rem_1", title="dentist", scheduled_time="2026-09-10T09:00:00+00:00")]
+
+    def _reminder(self, rid, **kw):
+        from src.common.types import Reminder
+
+        base = dict(id=rid, title="dentist", scheduled_time="2026-09-10T09:00:00+00:00")
+        base.update(kw)
+        return Reminder(**base)
+
+    def complete_reminder(self, rid):
+        return self._reminder(rid, completed_at="2026-09-09T00:00:00+00:00")
+
+    def dismiss_reminder(self, rid):
+        return self._reminder(rid, dismissed_at="2026-09-09T00:00:00+00:00")
+
+    def reschedule_reminder(self, rid, scheduled_time):
+        return self._reminder(rid, scheduled_time=scheduled_time)
+
+    def update_reminder(self, rid, **fields):
+        return self._reminder(rid, title=fields.get("title", "dentist"))
+
+    def delete_reminder(self, rid):
+        return True
+
+    def list_todos(self):
+        from src.common.types import Todo
+
+        return [Todo(id="todo_1", title="report", priority="high", category="work")]
+
+    def complete_todo(self, tid):
+        from src.common.types import Todo
+
+        return Todo(id=tid, title="report", completed_at="2026-09-09T00:00:00+00:00")
+
+    def update_todo(self, tid, **fields):
+        from src.common.types import Todo
+
+        return Todo(id=tid, title="report", priority=fields.get("priority"))
+
+    def delete_todo(self, tid):
+        return True
+
+    def list_meeting_notes(self):
+        from src.common.types import MeetingNote
+
+        return [MeetingNote(id="mn_1", raw_transcript="t", decisions=["ship"])]
+
+    def get_meeting_note(self, nid):
+        from src.common.types import MeetingNote
+
+        return MeetingNote(id=nid, raw_transcript="t") if nid == "mn_1" else None
+
+    def capture_meeting_note(self, transcript):
+        from src.common.types import MeetingNote
+
+        return MeetingNote(id="mn_2", raw_transcript=transcript, needs_review=True)
+
+    def delete_meeting_note(self, nid):
+        return True
+
+    def schedule_day(self, date):
+        from src.common.types import ScheduleItem
+
+        return [
+            ScheduleItem(
+                id="sci_1",
+                schedule_id="sch_1",
+                title="Standup",
+                start_time=f"{date}T09:00:00+00:00",
+                end_time=f"{date}T09:15:00+00:00",
+            )
+        ]
+
+    def schedule_week(self, start_date):
+        from datetime import date, timedelta
+
+        start = date.fromisoformat(start_date)
+        return [((start + timedelta(days=i)).isoformat(), []) for i in range(7)]
+
+    def create_schedule_item(self, title, start, end, *, location="", notes="", overwrite_ids=None):
+        from src.common.types import ScheduleConflict, ScheduleItem
+
+        if overwrite_ids:
+            return ScheduleItem(
+                id="sci_new", schedule_id="sch_1", title=title, start_time=start, end_time=end
+            )
+        return ScheduleConflict(
+            attempted=ScheduleItem(
+                id="", schedule_id="", title=title, start_time=start, end_time=end
+            ),
+            conflicts_with=[
+                ScheduleItem(
+                    id="sci_1",
+                    schedule_id="sch_1",
+                    title="Standup",
+                    start_time=start,
+                    end_time=end,
+                )
+            ],
+        )
+
+    def update_schedule_item(self, iid, **fields):
+        from src.common.types import ScheduleItem
+
+        return ScheduleItem(
+            id=iid,
+            schedule_id="sch_1",
+            title=fields.get("title", "Standup"),
+            start_time="2026-09-08T09:00:00+00:00",
+            end_time="2026-09-08T09:15:00+00:00",
+        )
+
+    def delete_schedule_item(self, iid):
+        return True
+
 
 @pytest.fixture
 def keyed_db(tmp_path: Path) -> str:

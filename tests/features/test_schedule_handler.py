@@ -79,3 +79,66 @@ def test_update_into_an_overlap_is_rejected(handler):
 
     ok = handler.update_schedule_item(b.id, title="B renamed")
     assert isinstance(ok, ScheduleItem) and ok.title == "B renamed"
+
+
+# -- Step 3.3 / Q2: overwrite_ids conflict resolution ------------------------
+
+
+def test_overwrite_ids_soft_deletes_the_conflict_then_creates(handler, session_conn):
+    standup = handler.create_schedule_item(
+        "Standup", "2026-02-20T09:00:00Z", "2026-02-20T09:30:00Z"
+    )
+    assert isinstance(standup, ScheduleItem)
+
+    created = handler.create_schedule_item(
+        "Dentist",
+        "2026-02-20T09:15:00Z",
+        "2026-02-20T10:00:00Z",
+        overwrite_ids=[standup.id],
+    )
+    assert isinstance(created, ScheduleItem) and created.title == "Dentist"
+    assert [i.title for i in handler.get_day_schedule("2026-02-20")] == ["Dentist"]
+
+    # soft-delete only — the row is still there, just flagged
+    row = session_conn.execute(
+        "SELECT deleted_at FROM schedule_items WHERE id = ?", (standup.id,)
+    ).fetchone()
+    assert row["deleted_at"] is not None
+
+
+def test_overwrite_ids_covering_only_some_conflicts_returns_the_rest(handler):
+    a = handler.create_schedule_item("A", "2026-02-20T09:00:00Z", "2026-02-20T09:20:00Z")
+    b = handler.create_schedule_item("B", "2026-02-20T09:20:00Z", "2026-02-20T09:40:00Z")
+    assert isinstance(a, ScheduleItem) and isinstance(b, ScheduleItem)
+
+    result = handler.create_schedule_item(
+        "Long block",
+        "2026-02-20T09:10:00Z",
+        "2026-02-20T09:30:00Z",
+        overwrite_ids=[a.id],
+    )
+    assert isinstance(result, ScheduleConflict)
+    assert [c.id for c in result.conflicts_with] == [b.id]  # only the unresolved one
+
+
+def test_overwrite_ids_not_in_the_conflict_set_is_rejected(handler):
+    standup = handler.create_schedule_item(
+        "Standup", "2026-02-20T09:00:00Z", "2026-02-20T09:30:00Z"
+    )
+    assert isinstance(standup, ScheduleItem)
+    with pytest.raises(ValueError, match="conflict set"):
+        handler.create_schedule_item(
+            "Dentist",
+            "2026-02-20T09:15:00Z",
+            "2026-02-20T10:00:00Z",
+            overwrite_ids=["sci_does_not_exist"],
+        )
+
+
+def test_get_range_schedule_spans_days(handler):
+    handler.create_schedule_item("Mon", "2026-02-16T09:00:00Z", "2026-02-16T10:00:00Z")
+    handler.create_schedule_item("Wed", "2026-02-18T09:00:00Z", "2026-02-18T10:00:00Z")
+    handler.create_schedule_item("Sun next", "2026-02-22T09:00:00Z", "2026-02-22T10:00:00Z")
+
+    week = handler.get_range_schedule("2026-02-16", "2026-02-20")
+    assert [i.title for i in week] == ["Mon", "Wed"]  # Sunday is outside the range
