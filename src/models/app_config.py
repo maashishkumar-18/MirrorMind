@@ -32,7 +32,9 @@ from src.features.base import now_iso  # generic ISO-8601 UTC timestamp helper
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
-_CONFIG_VERSION = 2  # v2 (Phase 2 Step 2.2) added last_exported_at; v1 files load fine
+# v2 (Phase 2 Step 2.2) added last_exported_at; v3 (Phase 3 Step 3.4) added the two
+# General-settings fields. Older files load fine — missing fields default to None.
+_CONFIG_VERSION = 3
 
 
 def app_config_path(path: str | None = None) -> Path:
@@ -54,6 +56,12 @@ class AppConfig:
     #: ISO 8601 timestamp of the last successful data export (Phase 2 Step 2.2);
     #: ``None`` = never exported. Drives the Settings export nudge badge.
     last_exported_at: str | None = None
+    #: Settings → General (Phase 3 Step 3.4). ``None`` = fall back to the
+    #: existing env/YAML default. Resolved to an *effective* value by
+    #: ``src/backend/settings.py``, never read raw by the worker/scheduler.
+    idle_timeout_minutes: int | None = None
+    #: local time-of-day "HH:MM" for the daily summary; ``None`` = env/YAML default.
+    summary_time: str | None = None
     updated_at: str = ""
     version: int = _CONFIG_VERSION
     #: where this instance reads/writes; not serialized
@@ -81,9 +89,13 @@ class AppConfig:
 
         active = data.get("active_model")
         last_exported = data.get("last_exported_at")
+        idle = data.get("idle_timeout_minutes")
+        summary_time = data.get("summary_time")
         return cls(
             active_model=str(active) if active else None,
             last_exported_at=str(last_exported) if last_exported else None,
+            idle_timeout_minutes=int(idle) if isinstance(idle, int | float) and idle else None,
+            summary_time=str(summary_time) if summary_time else None,
             updated_at=str(data.get("updated_at", "")),
             version=int(data.get("version", _CONFIG_VERSION)),
             path=resolved,
@@ -100,6 +112,8 @@ class AppConfig:
             "version": self.version,
             "active_model": self.active_model,
             "last_exported_at": self.last_exported_at,
+            "idle_timeout_minutes": self.idle_timeout_minutes,
+            "summary_time": self.summary_time,
             "updated_at": self.updated_at,
         }
         tmp = target.with_name(target.name + ".tmp")
@@ -115,6 +129,16 @@ class AppConfig:
     def set_last_exported_at(self, value: str | None) -> None:
         """Set (or clear, with ``None``) the last-export timestamp and persist."""
         self.last_exported_at = value or None
+        self.save()
+
+    def set_idle_timeout_minutes(self, value: int | None) -> None:
+        """Set (or clear, with ``None`` → env/YAML default) the idle timeout."""
+        self.idle_timeout_minutes = value if value else None
+        self.save()
+
+    def set_summary_time(self, value: str | None) -> None:
+        """Set (or clear, with ``None`` → env/YAML default) the daily summary time."""
+        self.summary_time = value or None
         self.save()
 
 

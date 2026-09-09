@@ -301,3 +301,125 @@ def test_reminders_reconciliation_maps_the_worker_result(ctx_factory):
     assert [r.id for r in res.overdue] == ["r1"]
     assert res.overdue[0].title == "dentist"
     assert res.pending_acknowledgment == []
+
+
+# -- Settings & Diagnostics (Step 3.4) ------------------------------------
+
+
+def test_settings_get_returns_effective_defaults(ctx_factory, tmp_path, monkeypatch):
+    monkeypatch.delenv("RAGPIPE_SESSION_IDLE_MINUTES", raising=False)
+    ctx = ctx_factory(app_config_path=str(tmp_path / "app_config.json"))
+    from src.common.ipc.methods import SettingsGetParams
+
+    res = handlers.HANDLERS["settings.get"](SettingsGetParams(), ctx, "r")
+    assert res.idle_timeout_minutes == 45
+    assert res.summary_time == "21:00"
+    assert res.idle_timeout_is_default is True
+
+
+def test_settings_update_writes_and_clears(ctx_factory, tmp_path):
+    cfg_path = str(tmp_path / "app_config.json")
+    ctx = ctx_factory(app_config_path=cfg_path)
+    from src.common.ipc.methods import SettingsUpdateParams
+
+    res = handlers.HANDLERS["settings.update"](
+        SettingsUpdateParams(idle_timeout_minutes=30, summary_time="07:15"), ctx, "r"
+    )
+    assert res.idle_timeout_minutes == 30
+    assert res.summary_time == "07:15"
+    assert res.idle_timeout_is_default is False
+    assert AppConfig.load(cfg_path).idle_timeout_minutes == 30
+
+    cleared = handlers.HANDLERS["settings.update"](
+        SettingsUpdateParams.model_validate({"idle_timeout_minutes": None}), ctx, "r"
+    )
+    assert cleared.idle_timeout_minutes == 45
+    assert cleared.idle_timeout_is_default is True
+    # summary_time was not in this call — it stays
+    assert AppConfig.load(cfg_path).summary_time == "07:15"
+
+
+def test_data_info_reports_never_exported(ctx_factory, tmp_path):
+    ctx = ctx_factory(app_config_path=str(tmp_path / "app_config.json"))
+    from src.common.ipc.methods import DataInfoParams
+
+    res = handlers.HANDLERS["data.info"](DataInfoParams(), ctx, "r")
+    assert res.last_exported_at is None
+    assert res.needs_export is True
+    assert res.settings_line.startswith("Never —")
+    assert "Uninstalling this app" in res.uninstall_warning
+
+
+def test_data_export_routes_to_the_worker(ctx_factory, tmp_path):
+    ctx = ctx_factory(worker=FakeSessionWorker())
+    from src.common.ipc.methods import DataExportParams
+
+    dest = str(tmp_path / "export.json")
+    res = handlers.HANDLERS["data.export"](DataExportParams(path=dest), ctx, "r")
+    assert res.path == dest
+    assert res.bytes_written > 0
+    assert ctx.worker.exported_to == dest
+
+
+def test_data_wipe_requires_confirm(ctx_factory):
+    ctx = ctx_factory(worker=FakeSessionWorker())
+    from src.common.ipc.methods import DataWipeParams
+
+    with pytest.raises(MethodError) as ei:
+        handlers.HANDLERS["data.wipe"](DataWipeParams(confirm=False), ctx, "r")
+    assert ei.value.code == "invalid_params"
+
+    res = handlers.HANDLERS["data.wipe"](DataWipeParams(confirm=True), ctx, "r")
+    assert res.wiped is True and ctx.worker.wiped is True
+
+
+def test_diagnostics_logs_reads_the_file(ctx_factory, tmp_path, monkeypatch):
+    monkeypatch.setenv("RAGPIPE_DATA_DIR", str(tmp_path))
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "backend.log").write_text(
+        "2026-09-10 14:00:00,001 INFO backend hello\n", encoding="utf-8"
+    )
+    from src.common.ipc.methods import DiagnosticsLogsParams
+
+    res = handlers.HANDLERS["diagnostics.logs"](
+        DiagnosticsLogsParams(level=None, limit=50), ctx_factory(), "r"
+    )
+    assert res.entries[0].message == "hello"
+    assert res.truncated is False
+
+
+def test_diagnostics_metrics_aggregates(ctx_factory, tmp_path, monkeypatch):
+    monkeypatch.setenv("RAGPIPE_DATA_DIR", str(tmp_path))
+    from observability.metrics_store import MetricsStore, PipelineCallMetrics
+
+    store = MetricsStore(db_path=str(tmp_path / "metrics.db"))
+    store.record(
+        PipelineCallMetrics(
+            request_id="1", env="backend", retrieval_time_ms=12.0, confidence_level="high"
+        )
+    )
+    from src.common.ipc.methods import DiagnosticsMetricsParams
+
+    res = handlers.HANDLERS["diagnostics.metrics"](
+        DiagnosticsMetricsParams(limit=100), ctx_factory(), "r"
+    )
+    assert res.sample_size == 1
+    assert res.confidence_distribution.high == 1
+    assert res.error_rate is None
+
+
+def test_diagnostics_report_writes_a_redacted_file(ctx_factory, tmp_path, monkeypatch):
+    monkeypatch.setenv("RAGPIPE_DATA_DIR", str(tmp_path))
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "backend.log").write_text(
+        "2026-09-10 14:00:00,001 ERROR backend contact bob@example.com\n", encoding="utf-8"
+    )
+    from src.common.ipc.methods import DiagnosticsReportParams
+
+    dest = str(tmp_path / "report.txt")
+    res = handlers.HANDLERS["diagnostics.report"](
+        DiagnosticsReportParams(path=dest), ctx_factory(), "r"
+    )
+    assert res.bytes_written > 0
+    body = (tmp_path / "report.txt").read_text(encoding="utf-8")
+    assert "bob@example.com" not in body and "<email>" in body

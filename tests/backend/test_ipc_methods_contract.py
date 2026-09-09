@@ -29,7 +29,20 @@ def test_params_models_reject_unknown_fields(name):
 
 def test_degraded_whitelist_is_the_expected_set():
     degraded_ok = {n for n, c in METHOD_CONTRACTS.items() if c.degraded_ok}
-    assert degraded_ok == {"app.status", "backup.list", "backup.restore", "app.shutdown"}
+    assert degraded_ok == {
+        "app.status",
+        "backup.list",
+        "backup.restore",
+        "app.shutdown",
+        # Settings & Diagnostics (Step 3.4) — none touch the session DB, and
+        # they are useful precisely while the backend is in recovery mode
+        "settings.get",
+        "settings.update",
+        "data.info",
+        "diagnostics.logs",
+        "diagnostics.metrics",
+        "diagnostics.report",
+    }
 
 
 def test_worker_methods_are_the_expected_set():
@@ -61,6 +74,9 @@ def test_worker_methods_are_the_expected_set():
         "schedule.create_item",
         "schedule.update",
         "schedule.delete",
+        # Data & Privacy (Step 3.4) — export reads / wipe writes the session tables
+        "data.export",
+        "data.wipe",
     }
 
 

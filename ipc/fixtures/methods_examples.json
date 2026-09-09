@@ -658,5 +658,97 @@
       "eta_seconds": null,
       "message": "verifying sha256"
     }
+  },
+  { "target": "params:settings.get", "payload": {} },
+  {
+    "target": "result:settings.get",
+    "payload": {
+      "idle_timeout_minutes": 45,
+      "summary_time": "21:00",
+      "idle_timeout_is_default": true,
+      "summary_time_is_default": true
+    }
+  },
+  {
+    "target": "params:settings.update",
+    "payload": { "idle_timeout_minutes": 30, "summary_time": "20:30" }
+  },
+  {
+    "target": "result:settings.update",
+    "payload": {
+      "idle_timeout_minutes": 30,
+      "summary_time": "20:30",
+      "idle_timeout_is_default": false,
+      "summary_time_is_default": false
+    }
+  },
+  { "target": "params:data.info", "payload": {} },
+  {
+    "target": "result:data.info",
+    "payload": {
+      "last_exported_at": "2026-08-01T00:00:00+00:00",
+      "days_since": 40,
+      "needs_export": true,
+      "settings_line": "Last exported: 2026-08-01",
+      "never_exported_line": "Never - your data cannot be recovered if Windows is reinstalled without an export.",
+      "uninstall_warning": "Uninstalling this app will permanently delete your encrypted database. Export your data first.",
+      "export_blurb": "Export your data - saves a backup copy of everything for safekeeping."
+    }
+  },
+  {
+    "target": "params:data.export",
+    "payload": { "path": "C:/Users/x/Documents/mirrormind-export-2026-09-10.json" }
+  },
+  {
+    "target": "result:data.export",
+    "payload": {
+      "path": "C:/Users/x/Documents/mirrormind-export-2026-09-10.json",
+      "exported_at": "2026-09-10T14:23:01+00:00",
+      "bytes_written": 20480
+    }
+  },
+  { "target": "params:data.wipe", "payload": { "confirm": true } },
+  { "target": "result:data.wipe", "payload": { "wiped": true } },
+  {
+    "target": "params:diagnostics.logs",
+    "payload": { "level": "INFO", "limit": 200 }
+  },
+  {
+    "target": "result:diagnostics.logs",
+    "payload": {
+      "entries": [
+        {
+          "timestamp": "2026-09-10 14:23:01,123",
+          "level": "INFO",
+          "logger": "backend",
+          "message": "backend ready (degraded=False, active_model=None)"
+        }
+      ],
+      "truncated": false
+    }
+  },
+  { "target": "params:diagnostics.metrics", "payload": { "limit": 1000 } },
+  {
+    "target": "result:diagnostics.metrics",
+    "payload": {
+      "sample_size": 3,
+      "retrieval_latency_ms": { "p50": 12.5, "p95": 41.2, "p99": 58.9 },
+      "confidence_distribution": { "high": 1, "medium": 1, "low": 1, "none": 0 },
+      "grounded_rate": 0.667,
+      "retrieval_hit_rate": 1.0,
+      "error_rate": null,
+      "compute_ms": null
+    }
+  },
+  {
+    "target": "params:diagnostics.report",
+    "payload": { "path": "C:/Users/x/Documents/mirrormind-report.txt" }
+  },
+  {
+    "target": "result:diagnostics.report",
+    "payload": {
+      "path": "C:/Users/x/Documents/mirrormind-report.txt",
+      "bytes_written": 4096
+    }
   }
 ]

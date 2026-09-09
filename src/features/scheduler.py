@@ -128,6 +128,10 @@ class SchedulerThread(threading.Thread):
         except Exception:  # noqa: BLE001 — a bad tick must not kill the thread
             logger.exception("scheduler: fire_due failed")
         try:
+            # Settings → General (Phase 3 Step 3.4): re-read the effective daily
+            # summary time each tick so a settings.update takes effect with no
+            # restart. from_yaml folds in AppConfig → env → YAML → default.
+            self._summaries.config.daily_time = SummaryConfig.from_yaml().daily_time
             self._summaries.generate_due_summaries(
                 now, catch_up_days=self._config.summary_catch_up_days
             )

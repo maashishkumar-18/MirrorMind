@@ -77,6 +77,28 @@ def _row_public(row: sqlite3.Row) -> dict:
     return {k: row[k] for k in row.keys() if k not in _PRIVATE_COLUMNS}
 
 
+def export_badge_state(app_config: AppConfig, now: str | None = None) -> ExportBadgeState:
+    """The "Last exported: …" line + the >30-day nudge flag, from ``AppConfig``
+    alone (no DB connection needed). Shared by ``DataManager.export_badge_state``
+    and the ``data.info`` IPC handler (Phase 3 Step 3.4)."""
+    now = now or _now_iso()
+    last = app_config.last_exported_at
+    if not last:
+        return ExportBadgeState(
+            needs_export=True,
+            last_exported_at=None,
+            days_since=None,
+            settings_line=NEVER_EXPORTED_LINE,
+        )
+    days_since = (_parse(now) - _parse(last)).days
+    return ExportBadgeState(
+        needs_export=days_since > _EXPORT_BADGE_DAYS,
+        last_exported_at=last,
+        days_since=days_since,
+        settings_line=f"Last exported: {last[:10]}",
+    )
+
+
 class DataManager:
     def __init__(
         self,
@@ -153,22 +175,7 @@ class DataManager:
     # ------------------------------------------------------------------
 
     def export_badge_state(self, now: str | None = None) -> ExportBadgeState:
-        now = now or _now_iso()
-        last = self._app_config.last_exported_at
-        if not last:
-            return ExportBadgeState(
-                needs_export=True,
-                last_exported_at=None,
-                days_since=None,
-                settings_line=NEVER_EXPORTED_LINE,
-            )
-        days_since = (_parse(now) - _parse(last)).days
-        return ExportBadgeState(
-            needs_export=days_since > _EXPORT_BADGE_DAYS,
-            last_exported_at=last,
-            days_since=days_since,
-            settings_line=f"Last exported: {last[:10]}",
-        )
+        return export_badge_state(self._app_config, now)
 
     # ------------------------------------------------------------------
     # Full wipe

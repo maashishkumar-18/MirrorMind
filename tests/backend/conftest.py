@@ -308,6 +308,18 @@ class FakeSessionWorker:
     def delete_schedule_item(self, iid):
         return True
 
+    # -- Data & Privacy pass-throughs (Step 3.4) ---------------------------
+
+    def export_data(self, path):
+        from pathlib import Path as _P
+
+        _P(path).write_text('{"tables": {}}', encoding="utf-8")
+        self.exported_to = path
+        return "2026-09-10T00:00:00+00:00", _P(path).stat().st_size
+
+    def wipe_data(self):
+        self.wiped = True
+
 
 @pytest.fixture
 def keyed_db(tmp_path: Path) -> str:

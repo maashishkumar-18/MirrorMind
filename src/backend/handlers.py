@@ -15,12 +15,16 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+import src.backend.diagnostics as diagnostics
+import src.backend.settings as backend_settings
+from observability.metrics_store import MetricsStore
 from src.backend.feature_wire import (
     meeting_note_wire,
     schedule_conflict_wire,
     schedule_item_wire,
     todo_wire,
 )
+from src.backend.log_redaction import write_redacted_report
 from src.backend.reminders_wire import reminder_wire
 from src.backend.wire import HandlerContext, MethodError
 from src.common.ipc.envelope import CURRENT_IPC_VERSION
@@ -42,10 +46,24 @@ from src.common.ipc.methods import (
     ChatNewResult,
     ChatSendParams,
     ChatSendResult,
+    ConfidenceDistribution,
+    DataExportParams,
+    DataExportResult,
+    DataInfoResult,
+    DataWipeParams,
+    DataWipeResult,
+    DiagnosticsLogsParams,
+    DiagnosticsLogsResult,
+    DiagnosticsMetricsParams,
+    DiagnosticsMetricsResult,
+    DiagnosticsReportParams,
+    DiagnosticsReportResult,
     FeatureDeletedResult,
     FeatureIdParams,
     HealthCheckResult,
     InstalledEntry,
+    LatencyPercentiles,
+    LogEntry,
     MeetingGetResult,
     MeetingNoteWire,
     MeetingResult,
@@ -74,6 +92,8 @@ from src.common.ipc.methods import (
     ScheduleUpdateParams,
     ScheduleWeekParams,
     ScheduleWeekResult,
+    SettingsResult,
+    SettingsUpdateParams,
     TodoResult,
     TodosListResult,
     TodoUpdateParams,
@@ -86,6 +106,12 @@ from src.common.types import (
 )
 from src.common.types import (
     ScheduleConflict as ScheduleConflictEntity,
+)
+from src.features.data_admin import (
+    EXPORT_BLURB,
+    NEVER_EXPORTED_LINE,
+    UNINSTALL_WARNING,
+    export_badge_state,
 )
 from src.models.app_config import AppConfig
 from src.models.ollama_manager import normalize_model_name
@@ -491,6 +517,106 @@ def _schedule_delete(p: BaseModel, ctx: HandlerContext, _rid: str) -> FeatureDel
     return FeatureDeletedResult(deleted=bool(_feature_call(lambda: w.delete_schedule_item(p.id))))
 
 
+# -- Settings & Diagnostics (Step 3.4) -------------------------------------
+
+
+def _settings_result(ctx: HandlerContext) -> SettingsResult:
+    path = ctx.app_config_path
+    return SettingsResult(
+        idle_timeout_minutes=int(backend_settings.effective_idle_minutes(path)),
+        summary_time=backend_settings.effective_summary_time(path),
+        idle_timeout_is_default=backend_settings.idle_minutes_is_default(path),
+        summary_time_is_default=backend_settings.summary_time_is_default(path),
+    )
+
+
+def _settings_get(_p: BaseModel, ctx: HandlerContext, _rid: str) -> SettingsResult:
+    return _settings_result(ctx)
+
+
+def _settings_update(p: BaseModel, ctx: HandlerContext, _rid: str) -> SettingsResult:
+    assert isinstance(p, SettingsUpdateParams)
+    cfg = AppConfig.load(ctx.app_config_path)
+    written = p.model_fields_set
+    if "idle_timeout_minutes" in written:
+        cfg.idle_timeout_minutes = p.idle_timeout_minutes
+    if "summary_time" in written:
+        cfg.summary_time = p.summary_time
+    cfg.save()
+    return _settings_result(ctx)
+
+
+def _data_info(_p: BaseModel, ctx: HandlerContext, _rid: str) -> DataInfoResult:
+    badge = export_badge_state(AppConfig.load(ctx.app_config_path))
+    return DataInfoResult(
+        last_exported_at=badge.last_exported_at,
+        days_since=badge.days_since,
+        needs_export=badge.needs_export,
+        settings_line=badge.settings_line,
+        never_exported_line=NEVER_EXPORTED_LINE,
+        uninstall_warning=UNINSTALL_WARNING,
+        export_blurb=EXPORT_BLURB,
+    )
+
+
+def _data_export(p: BaseModel, ctx: HandlerContext, _rid: str) -> DataExportResult:
+    assert isinstance(p, DataExportParams)
+    w = _require_worker(ctx)
+    try:
+        exported_at, size = w.export_data(p.path)  # runs on the worker thread
+    except OSError as exc:
+        raise MethodError("export_failed", f"could not write the export: {exc}") from exc
+    return DataExportResult(path=p.path, exported_at=exported_at, bytes_written=size)
+
+
+def _data_wipe(p: BaseModel, ctx: HandlerContext, _rid: str) -> DataWipeResult:
+    assert isinstance(p, DataWipeParams)
+    if not p.confirm:
+        raise MethodError("invalid_params", "wipe requires confirm=true")
+    _require_worker(ctx).wipe_data()
+    return DataWipeResult(wiped=True)
+
+
+def _diagnostics_logs(p: BaseModel, ctx: HandlerContext, _rid: str) -> DiagnosticsLogsResult:
+    assert isinstance(p, DiagnosticsLogsParams)
+    entries, truncated = diagnostics.read_log_entries(p.level, p.limit)
+    return DiagnosticsLogsResult(
+        entries=[
+            LogEntry(timestamp=e.timestamp, level=e.level, logger=e.logger, message=e.message)
+            for e in entries
+        ],
+        truncated=truncated,
+    )
+
+
+def _diagnostics_metrics(p: BaseModel, ctx: HandlerContext, _rid: str) -> DiagnosticsMetricsResult:
+    assert isinstance(p, DiagnosticsMetricsParams)
+    store = MetricsStore(db_path=diagnostics.metrics_db_path())
+    summary = diagnostics.aggregate_metrics(store.query_recent(limit=p.limit, env="backend"))
+    lat = summary.retrieval_latency_ms
+    dist = summary.confidence_distribution
+    return DiagnosticsMetricsResult(
+        sample_size=summary.sample_size,
+        retrieval_latency_ms=(
+            LatencyPercentiles(p50=lat["p50"], p95=lat["p95"], p99=lat["p99"]) if lat else None
+        ),
+        confidence_distribution=ConfidenceDistribution(
+            high=dist["high"], medium=dist["medium"], low=dist["low"], none=dist["none"]
+        ),
+        grounded_rate=summary.grounded_rate,
+        retrieval_hit_rate=summary.retrieval_hit_rate,
+    )
+
+
+def _diagnostics_report(p: BaseModel, ctx: HandlerContext, _rid: str) -> DiagnosticsReportResult:
+    assert isinstance(p, DiagnosticsReportParams)
+    try:
+        written = write_redacted_report(p.path)
+    except OSError as exc:
+        raise MethodError("report_failed", f"could not write the report: {exc}") from exc
+    return DiagnosticsReportResult(path=p.path, bytes_written=written)
+
+
 HANDLERS: dict[str, Handler] = {
     "app.status": _app_status,
     "health.check": _health_check,
@@ -525,4 +651,12 @@ HANDLERS: dict[str, Handler] = {
     "schedule.create_item": _schedule_create_item,
     "schedule.update": _schedule_update,
     "schedule.delete": _schedule_delete,
+    "settings.get": _settings_get,
+    "settings.update": _settings_update,
+    "data.info": _data_info,
+    "data.export": _data_export,
+    "data.wipe": _data_wipe,
+    "diagnostics.logs": _diagnostics_logs,
+    "diagnostics.metrics": _diagnostics_metrics,
+    "diagnostics.report": _diagnostics_report,
 }

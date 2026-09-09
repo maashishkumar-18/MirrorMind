@@ -408,6 +408,105 @@ export const ScheduleItemResult = z
   .strict();
 
 // --------------------------------------------------------------------------
+// Settings → General  (Step 3.4)
+// --------------------------------------------------------------------------
+export const SettingsGetParams = z.object({}).strict();
+export const SettingsResult = z
+  .object({
+    idle_timeout_minutes: z.number().int(),
+    summary_time: z.string(),
+    idle_timeout_is_default: z.boolean(),
+    summary_time_is_default: z.boolean(),
+  })
+  .strict();
+export const SettingsUpdateParams = z
+  .object({
+    idle_timeout_minutes: z.number().int().min(1).max(1440).nullable().default(null),
+    summary_time: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+      .nullable()
+      .default(null),
+  })
+  .strict();
+
+// --------------------------------------------------------------------------
+// Data & Privacy  (Step 3.4)
+// --------------------------------------------------------------------------
+export const DataInfoParams = z.object({}).strict();
+export const DataInfoResult = z
+  .object({
+    last_exported_at: z.string().nullable(),
+    days_since: z.number().int().nullable(),
+    needs_export: z.boolean(),
+    settings_line: z.string(),
+    never_exported_line: z.string(),
+    uninstall_warning: z.string(),
+    export_blurb: z.string(),
+  })
+  .strict();
+export const DataExportParams = z.object({ path: z.string().min(1) }).strict();
+export const DataExportResult = z
+  .object({
+    path: z.string(),
+    exported_at: z.string(),
+    bytes_written: z.number().int(),
+  })
+  .strict();
+export const DataWipeParams = z.object({ confirm: z.boolean() }).strict();
+export const DataWipeResult = z.object({ wiped: z.boolean() }).strict();
+
+// --------------------------------------------------------------------------
+// Diagnostics  (Step 3.4)
+// --------------------------------------------------------------------------
+export const DiagnosticsLogsParams = z
+  .object({
+    level: z.string().nullable().default(null),
+    limit: z.number().int().min(1).max(2000).default(200),
+  })
+  .strict();
+export const LogEntry = z
+  .object({
+    timestamp: z.string(),
+    level: z.string(),
+    logger: z.string(),
+    message: z.string(),
+  })
+  .strict();
+export const DiagnosticsLogsResult = z
+  .object({ entries: z.array(LogEntry), truncated: z.boolean() })
+  .strict();
+export const DiagnosticsMetricsParams = z
+  .object({ limit: z.number().int().min(1).max(10000).default(1000) })
+  .strict();
+export const LatencyPercentiles = z
+  .object({ p50: z.number(), p95: z.number(), p99: z.number() })
+  .strict();
+export const ConfidenceDistribution = z
+  .object({
+    high: z.number().int(),
+    medium: z.number().int(),
+    low: z.number().int(),
+    none: z.number().int(),
+  })
+  .strict();
+export const DiagnosticsMetricsResult = z
+  .object({
+    sample_size: z.number().int(),
+    retrieval_latency_ms: LatencyPercentiles.nullable(),
+    confidence_distribution: ConfidenceDistribution,
+    grounded_rate: z.number().nullable(),
+    retrieval_hit_rate: z.number().nullable(),
+    error_rate: z.null().default(null),
+    compute_ms: z.null().default(null),
+  })
+  .strict();
+export const DiagnosticsReportParams = z.object({ path: z.string().min(1) }).strict();
+export const DiagnosticsReportResult = z
+  .object({ path: z.string(), bytes_written: z.number().int() })
+  .strict();
+
+// --------------------------------------------------------------------------
 // Lifecycle / streaming events (server-initiated; no request from the frontend)
 // --------------------------------------------------------------------------
 export const AppRemindersPendingEvent = z
@@ -486,6 +585,15 @@ export const METHOD_CONTRACTS = {
   "schedule.create_item": { params: ScheduleCreateItemParams, result: ScheduleItemResult, degradedOk: false, worker: true },
   "schedule.update": { params: ScheduleUpdateParams, result: ScheduleItemResult, degradedOk: false, worker: true },
   "schedule.delete": { params: FeatureIdParams, result: FeatureDeletedResult, degradedOk: false, worker: true },
+  // -- Settings & Diagnostics (Step 3.4) ------------------------------------
+  "settings.get": { params: SettingsGetParams, result: SettingsResult, degradedOk: true, worker: false },
+  "settings.update": { params: SettingsUpdateParams, result: SettingsResult, degradedOk: true, worker: false },
+  "data.info": { params: DataInfoParams, result: DataInfoResult, degradedOk: true, worker: false },
+  "data.export": { params: DataExportParams, result: DataExportResult, degradedOk: false, worker: true },
+  "data.wipe": { params: DataWipeParams, result: DataWipeResult, degradedOk: false, worker: true },
+  "diagnostics.logs": { params: DiagnosticsLogsParams, result: DiagnosticsLogsResult, degradedOk: true, worker: false },
+  "diagnostics.metrics": { params: DiagnosticsMetricsParams, result: DiagnosticsMetricsResult, degradedOk: true, worker: false },
+  "diagnostics.report": { params: DiagnosticsReportParams, result: DiagnosticsReportResult, degradedOk: true, worker: false },
 } as const satisfies Record<string, MethodContract>;
 
 export type MethodName = keyof typeof METHOD_CONTRACTS;

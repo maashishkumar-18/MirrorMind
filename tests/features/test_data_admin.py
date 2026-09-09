@@ -156,6 +156,22 @@ def test_badge_stale_export_nudges(manager, app_config):
     assert state.days_since == 40
 
 
+def test_standalone_export_badge_state_needs_no_db(tmp_path):
+    # Phase 3 Step 3.4: the data.info IPC handler computes the badge from
+    # AppConfig alone — no DataManager / no connection.
+    from src.features.data_admin import export_badge_state
+
+    cfg = AppConfig.load(str(tmp_path / "app_config.json"))
+    never = export_badge_state(cfg, now="2026-03-02T00:00:00+00:00")
+    assert never.needs_export is True and never.last_exported_at is None
+
+    cfg.set_last_exported_at("2026-02-28T00:00:00+00:00")
+    recent = export_badge_state(cfg, now="2026-03-02T00:00:00+00:00")
+    assert recent.needs_export is False
+    assert recent.days_since == 2
+    assert recent.settings_line == "Last exported: 2026-02-28"
+
+
 # --- full wipe ---------------------------------------------------------------
 
 

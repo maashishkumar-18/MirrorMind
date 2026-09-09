@@ -18,7 +18,6 @@ drains a pending one.
 from __future__ import annotations
 
 import logging
-import os
 import queue
 import threading
 import time
@@ -30,6 +29,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import src.backend.action_dispatch as action_dispatch
+import src.backend.settings as backend_settings
 from db.connection import open_session_db
 from db.health import IntegrityResult, check_quick
 from observability.metrics_store import MetricsStore, PipelineCallMetrics
@@ -49,6 +49,7 @@ from src.common.types import (
     Todo,
 )
 from src.features.base import now_iso
+from src.features.data_admin import DataManager
 from src.features.meeting_note_handler import MeetingNoteHandler
 from src.features.reminder_handler import ReminderHandler
 from src.features.schedule_handler import ScheduleHandler
@@ -77,20 +78,8 @@ HISTORY_TURNS = 6
 _NO_MODEL_MESSAGE = "No AI model is set up yet. Choose one in Settings → Models to get started."
 
 # project_logic.md §13: a session closes after a configurable idle timeout
-# (~30-60 min). Env-overridable like HISTORY_TURNS; no YAML — the worker is not
-# a "feature" and §13 only needs the value externalized.
-_DEFAULT_IDLE_MINUTES = 45.0
-
-
-def _idle_minutes() -> float:
-    raw = os.getenv("RAGPIPE_SESSION_IDLE_MINUTES")
-    if raw is None:
-        return _DEFAULT_IDLE_MINUTES
-    try:
-        return float(raw)
-    except ValueError:
-        logger.warning("RAGPIPE_SESSION_IDLE_MINUTES=%r is not a number; using default", raw)
-        return _DEFAULT_IDLE_MINUTES
+# (~30-60 min). The effective value (AppConfig → env → default 45) is resolved
+# per send() by src/backend/settings.py — see Settings → General (Step 3.4).
 
 
 def _minutes_between(earlier_iso: str, later_iso: str) -> float:
@@ -235,7 +224,9 @@ class SessionWorker(threading.Thread):
         self._key = key
         self._app_config_path = app_config_path
         self._history_turns = history_turns
-        self._idle_minutes = idle_minutes if idle_minutes is not None else _idle_minutes()
+        # None → resolve the effective value live on every send() (so a
+        # settings.update takes effect with no restart); a test can pin it.
+        self._idle_minutes_override = idle_minutes
         self._on_ready = on_ready
         # Injection seams — tests pass fakes so the worker never loads the
         # all-MiniLM / cross-encoder models. When all four are injected the
@@ -478,12 +469,15 @@ class SessionWorker(threading.Thread):
             self._rebuild_model_bundle(active)
 
         # Idle auto-close (project_logic.md §13) — checked BEFORE the reuse/
-        # create decision so this message starts a fresh session.
+        # create decision so this message starts a fresh session. The effective
+        # timeout is re-read per call (Settings → General, Phase 3 Step 3.4).
         now = now_iso()
-        if (
-            self._session_id is not None
-            and _minutes_between(self._last_activity, now) > self._idle_minutes
-        ):
+        idle_limit = (
+            self._idle_minutes_override
+            if self._idle_minutes_override is not None
+            else backend_settings.effective_idle_minutes(self._app_config_path)
+        )
+        if self._session_id is not None and _minutes_between(self._last_activity, now) > idle_limit:
             self._close_session(self._session_id, "idle_timeout")
             self._session_id = None
             self._turn_count = 0
@@ -831,6 +825,51 @@ class SessionWorker(threading.Thread):
     def delete_schedule_item(self, item_id: str) -> bool:
         self._raise_if_unavailable()
         return ScheduleHandler(connection=self._conn).delete_schedule_item(item_id)
+
+    # ------------------------------------------------------------------
+    # Data & Privacy pass-throughs (Step 3.4) — worker thread only, because
+    # export reads and full-wipe writes the same session tables the chat spine
+    # touches; serializing them here removes the race with a concurrent send().
+    # ------------------------------------------------------------------
+
+    def _data_manager(self) -> DataManager:
+        return DataManager(
+            connection=self._conn,
+            bridge=NoOpToastBridge(),
+            app_config=AppConfig.load(self._app_config_path),
+        )
+
+    def export_data(self, path: str) -> tuple[str, int]:
+        """Write the JSON export to ``path``; returns ``(exported_at, bytes_written)``.
+        ``DataManager.write_export`` stamps ``last_exported_at`` on success."""
+        self._raise_if_unavailable()
+        now = now_iso()
+        written = self._data_manager().write_export(path, now=now)
+        return now, written.stat().st_size
+
+    def wipe_data(self) -> None:
+        """Soft-delete every substantive row, then discard the now-meaningless
+        in-memory session + vector state so nothing stale survives the wipe."""
+        self._raise_if_unavailable()
+        self._data_manager().full_wipe()
+
+        self._session_id = None
+        self._turn_count = 0
+        self._pending_action = None
+        self._reconciliation = ReconciliationResult(overdue=[], pending_acknowledgment=[])
+
+        # The vector index still holds the (now soft-deleted) chunks in memory.
+        # In a real run rebuild it + everything that referenced the old store;
+        # a fully-injected test keeps its fakes.
+        if self._inj_router is None:
+            if self._store is not None:
+                self._store.close()
+            self._store = SQLiteVectorStore(db_path=self._db_path, key=self._key)
+            assert self._reranker is not None and self._embedder is not None
+            self._router = RetrievalRouter(
+                self._store, self._structured, reranker=self._reranker, embedder=self._embedder
+            )
+            self._rebuild_model_bundle(self._bound_model)
 
     # ------------------------------------------------------------------
     # Internals

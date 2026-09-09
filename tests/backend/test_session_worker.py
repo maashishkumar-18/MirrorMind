@@ -628,3 +628,57 @@ def test_schedule_week_rejects_a_bad_start_date(keyed_db, tmp_path, monkeypatch)
         assert ei.value.code == "invalid_params"
     finally:
         w.stop(timeout=30)
+
+
+# -- 3.4: Settings & Data pass-throughs -------------------------------------
+
+
+def test_idle_timeout_from_app_config_takes_effect_without_restart(keyed_db, tmp_path, monkeypatch):
+    # no idle_minutes override — the effective value is read live from AppConfig
+    w = _worker(keyed_db, tmp_path, monkeypatch, agent=FakeAgent(_ao()))
+    try:
+        first = _call(w, lambda: w.send("hello")).session_id
+        _call(w, lambda: None)
+        AppConfig.load(str(tmp_path / "app_config.json")).set_idle_timeout_minutes(1)
+        w._last_activity = "2020-01-01T00:00:00+00:00"
+        second = _call(w, lambda: w.send("back")).session_id
+        assert second != first
+    finally:
+        w.stop(timeout=30)
+
+
+def test_export_data_writes_a_json_file(keyed_db, tmp_path, monkeypatch):
+    w = _feature_worker(keyed_db, tmp_path, monkeypatch)
+    try:
+        _call(w, lambda: w._reminders().create_reminder("dentist", "2026-09-10T09:00:00+00:00"))
+        dest = str(tmp_path / "export.json")
+        exported_at, size = _call(w, lambda: w.export_data(dest))
+        assert exported_at and size > 0
+        import json
+
+        data = json.loads((tmp_path / "export.json").read_text(encoding="utf-8"))
+        assert [r["title"] for r in data["tables"]["reminders"]] == ["dentist"]
+        assert AppConfig.load(str(tmp_path / "app_config.json")).last_exported_at == exported_at
+    finally:
+        w.stop(timeout=30)
+
+
+def test_wipe_data_empties_the_handlers_and_resets_session_state(keyed_db, tmp_path, monkeypatch):
+    w = _worker(keyed_db, tmp_path, monkeypatch, agent=FakeAgent(_ao()))
+    try:
+        from src.features.todo_handler import TodoHandler
+
+        _call(w, lambda: w._reminders().create_reminder("dentist", "2026-09-10T09:00:00+00:00"))
+        _call(w, lambda: TodoHandler(connection=w._conn).create_todo("report"))
+        _call(w, lambda: w.send("hello"))
+        _call(w, lambda: None)  # drain re-ingest
+        assert w._session_id is not None
+
+        _call(w, w.wipe_data)
+
+        assert _call(w, w.list_reminders) == []
+        assert _call(w, w.list_todos) == []
+        assert w._session_id is None and w._turn_count == 0
+        assert AppConfig.load(str(tmp_path / "app_config.json")).last_exported_at is None
+    finally:
+        w.stop(timeout=30)

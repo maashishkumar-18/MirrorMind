@@ -503,6 +503,125 @@ class ScheduleItemResult(_Result):
 
 
 # --------------------------------------------------------------------------
+# Settings → General  (Step 3.4) — persisted as AppConfig fields; the results
+# carry the *effective* value (config → env → YAML → default) plus a flag per
+# field for the "Reset to default" affordance.
+# --------------------------------------------------------------------------
+class SettingsGetParams(_Params):
+    pass
+
+
+class SettingsResult(_Result):
+    idle_timeout_minutes: int
+    summary_time: str
+    idle_timeout_is_default: bool
+    summary_time_is_default: bool
+
+
+class SettingsUpdateParams(_Params):
+    #: A field present with a value → write it; present as ``null`` → clear the
+    #: override (back to the env/YAML default); absent → leave unchanged. The
+    #: handler uses ``model_fields_set`` to tell "null" from "absent".
+    idle_timeout_minutes: int | None = Field(default=None, ge=1, le=1440)
+    summary_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+# --------------------------------------------------------------------------
+# Data & Privacy  (Step 3.4)
+# --------------------------------------------------------------------------
+class DataInfoParams(_Params):
+    pass
+
+
+class DataInfoResult(_Result):
+    last_exported_at: str | None
+    days_since: int | None
+    needs_export: bool
+    settings_line: str
+    never_exported_line: str
+    uninstall_warning: str
+    export_blurb: str
+
+
+class DataExportParams(_Params):
+    path: str = Field(min_length=1)
+
+
+class DataExportResult(_Result):
+    path: str
+    exported_at: str
+    bytes_written: int
+
+
+class DataWipeParams(_Params):
+    #: must be ``true`` — a second guard behind the frontend confirm dialog
+    confirm: bool
+
+
+class DataWipeResult(_Result):
+    wiped: bool
+
+
+# --------------------------------------------------------------------------
+# Diagnostics  (Step 3.4)
+# --------------------------------------------------------------------------
+class DiagnosticsLogsParams(_Params):
+    #: "DEBUG" | "INFO" | "WARNING" | "ERROR" — None = all levels
+    level: str | None = None
+    limit: int = Field(default=200, ge=1, le=2000)
+
+
+class LogEntry(_Result):
+    timestamp: str
+    level: str
+    logger: str
+    message: str
+
+
+class DiagnosticsLogsResult(_Result):
+    entries: list[LogEntry]
+    #: True when older entries existed beyond ``limit``
+    truncated: bool
+
+
+class DiagnosticsMetricsParams(_Params):
+    limit: int = Field(default=1000, ge=1, le=10000)
+
+
+class LatencyPercentiles(_Result):
+    p50: float
+    p95: float
+    p99: float
+
+
+class ConfidenceDistribution(_Result):
+    high: int
+    medium: int
+    low: int
+    none: int
+
+
+class DiagnosticsMetricsResult(_Result):
+    sample_size: int
+    retrieval_latency_ms: LatencyPercentiles | None
+    confidence_distribution: ConfidenceDistribution
+    grounded_rate: float | None
+    retrieval_hit_rate: float | None
+    #: not instrumented yet (v1.1) — the UI renders "not tracked yet"
+    error_rate: None = None
+    compute_ms: None = None
+
+
+class DiagnosticsReportParams(_Params):
+    path: str = Field(min_length=1)
+
+
+class DiagnosticsReportResult(_Result):
+    path: str
+    bytes_written: int
+
+
+# --------------------------------------------------------------------------
 # Lifecycle events (server-initiated; no request/params from the frontend)
 # --------------------------------------------------------------------------
 class AppReadyEvent(_Result):
@@ -577,4 +696,19 @@ METHOD_CONTRACTS: dict[str, MethodContract] = {
     ),
     "schedule.update": MethodContract(ScheduleUpdateParams, ScheduleItemResult, worker=True),
     "schedule.delete": MethodContract(FeatureIdParams, FeatureDeletedResult, worker=True),
+    # -- Settings & Diagnostics (Step 3.4) ----------------------------------
+    "settings.get": MethodContract(SettingsGetParams, SettingsResult, degraded_ok=True),
+    "settings.update": MethodContract(SettingsUpdateParams, SettingsResult, degraded_ok=True),
+    "data.info": MethodContract(DataInfoParams, DataInfoResult, degraded_ok=True),
+    "data.export": MethodContract(DataExportParams, DataExportResult, worker=True),
+    "data.wipe": MethodContract(DataWipeParams, DataWipeResult, worker=True),
+    "diagnostics.logs": MethodContract(
+        DiagnosticsLogsParams, DiagnosticsLogsResult, degraded_ok=True
+    ),
+    "diagnostics.metrics": MethodContract(
+        DiagnosticsMetricsParams, DiagnosticsMetricsResult, degraded_ok=True
+    ),
+    "diagnostics.report": MethodContract(
+        DiagnosticsReportParams, DiagnosticsReportResult, degraded_ok=True
+    ),
 }
