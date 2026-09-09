@@ -3,7 +3,9 @@
 **Status:** Step 3.1 is **COMPLETE** — backend 3.1a–3.1d + Rust/React scaffold fe.1–fe.7:
 **fe.1 (`4291182`)** + **fe.2 (`72ba144`)** + **fe.3 (`e678ec4`)** + **fe.4 (`198d493`)** +
 **fe.5 (`2198a65`)** + **fe.6 (`b2f7936`, + backend fix `f330e84`)** + **fe.7 (`fb084df`)** all
-landed. Next: Step 3.2 (Chat Interface).
+landed. **Step 3.2 (Chat Interface) is also COMPLETE** — see `audits/PHASE_3_STEP_3_2.md`.
+Next: Step 3.3 (feature views — Reminders / Todos / Meetings / Schedule; the 3.1d
+`ScheduleConflict` overwrite/keep OPEN ITEM below still stands).
 
 Roadmap Step 3.1 bundles the Tauri Rust scaffold, the React+TS+Vite project, the typed zod
 IPC client, the degraded-mode banner, and the first-launch model flow — and *implies* a

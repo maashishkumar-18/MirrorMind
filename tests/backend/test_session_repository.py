@@ -79,6 +79,24 @@ def test_all_messages_and_history(repo):
     assert "created_at" in hist[0]
 
 
+def test_history_caps_at_the_newest_history_max_turns(repo):
+    from src.backend.session_repository import _HISTORY_MAX
+
+    sid = repo.create_session()
+    total = _HISTORY_MAX + 50
+    for i in range(total):
+        repo.append_message(sid, "user" if i % 2 == 0 else "assistant", f"m{i}")
+
+    hist = repo.history(sid)
+    assert len(hist) == _HISTORY_MAX
+    # newest _HISTORY_MAX turns, returned oldest-first
+    assert hist[0]["turn_index"] == 50
+    assert hist[-1]["turn_index"] == total - 1
+    assert [h["turn_index"] for h in hist] == sorted(h["turn_index"] for h in hist)
+    # re-ingest input stays complete
+    assert len(repo.all_messages(sid)) == total
+
+
 def test_finalize_dangling_sessions(repo):
     a, b, c = repo.create_session(), repo.create_session(), repo.create_session()
     repo.finalize_session(b, "explicit")  # already closed

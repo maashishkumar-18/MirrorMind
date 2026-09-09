@@ -15,6 +15,12 @@ from src.features.base import TableHandler, new_id, now_iso
 
 _VALID_CLOSE_REASONS = ("idle_timeout", "explicit", "app_shutdown")
 
+#: chat.history returns at most this many of a session's newest turns (oldest-first
+#: after the cap). Sessions are already bounded by idle-close + chat.new, so this is
+#: a defensive ceiling on the transcript the frontend renders un-virtualized, not a
+#: routine limit. ``all_messages`` (the re-ingest input) is deliberately uncapped.
+_HISTORY_MAX = 200
+
 
 class SessionRepository(TableHandler):
     _REQUIRED_TABLES = ("sessions", "messages")
@@ -105,11 +111,13 @@ class SessionRepository(TableHandler):
         return [SessionMessage(role=r["role"], content=r["content"]) for r in rows]
 
     def history(self, session_id: str) -> list[dict[str, object]]:
-        """Full turn records for the ``chat.history`` IPC method."""
+        """Turn records for the ``chat.history`` IPC method — the newest
+        ``_HISTORY_MAX`` turns of the session, returned oldest-first."""
         rows = self._conn.execute(
             "SELECT turn_index, role, content, created_at FROM messages "
-            "WHERE session_id = ? AND deleted_at IS NULL ORDER BY turn_index ASC",
-            (session_id,),
+            "WHERE session_id = ? AND deleted_at IS NULL "
+            "ORDER BY turn_index DESC LIMIT ?",
+            (session_id, _HISTORY_MAX),
         ).fetchall()
         return [
             {
@@ -118,5 +126,5 @@ class SessionRepository(TableHandler):
                 "content": r["content"],
                 "created_at": r["created_at"],
             }
-            for r in rows
+            for r in reversed(rows)
         ]
