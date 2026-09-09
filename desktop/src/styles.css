@@ -752,3 +752,76 @@ h1 {
   border-radius: 4px;
   background: rgba(127, 127, 127, 0.16);
 }
+
+/* meetings (3.3d) */
+.meeting-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.meeting-capture textarea {
+  font: inherit;
+  padding: 0.6rem;
+  resize: vertical;
+}
+
+.meeting-capture button {
+  align-self: flex-start;
+  padding: 0.4rem 1rem;
+}
+
+.meeting-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.needs-review-badge {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  background: #8a6d1a;
+  color: #fff;
+}
+
+.meeting-detail {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.meeting-detail-section h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+}
+
+.meeting-detail-section ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.meeting-transcript pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(127, 127, 127, 0.1);
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
