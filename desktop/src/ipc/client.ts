@@ -59,6 +59,15 @@ const TIMEOUT_MS: Record<CallableMethod, number> = {
   "schedule.create_item": 10000,
   "schedule.update": 10000,
   "schedule.delete": 10000,
+  // Settings & Diagnostics (Step 3.4)
+  "settings.get": 5000,
+  "settings.update": 5000,
+  "data.info": 5000,
+  "data.export": 120000, // streams every message row on the worker thread
+  "data.wipe": 60000,
+  "diagnostics.logs": 10000,
+  "diagnostics.metrics": 10000,
+  "diagnostics.report": 30000, // reads + redacts the rotating log
 };
 
 export type IpcErrorKind = "transport" | "backend" | "schema";

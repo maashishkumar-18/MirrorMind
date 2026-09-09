@@ -8,6 +8,7 @@ import { Loading } from "./routes/Loading";
 import { Meetings } from "./routes/Meetings";
 import { Reminders } from "./routes/Reminders";
 import { Schedule } from "./routes/Schedule";
+import { Settings } from "./routes/Settings";
 import { Todos } from "./routes/Todos";
 import { RequireModel } from "./ui/RequireModel";
 import { RootLayout } from "./ui/RootLayout";
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/todos" element={<Todos />} />
           <Route path="/meetings" element={<Meetings />} />
           <Route path="/schedule" element={<Schedule />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

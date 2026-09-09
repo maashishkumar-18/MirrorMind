@@ -10,6 +10,7 @@ import { subscribe, type BackendExit, type RawEnvelope } from "./ipc/events";
 import { useBackendStore } from "./store/backend";
 import { useModelStore } from "./store/model";
 import { useReminderStore } from "./store/reminders";
+import { useSettingsStore } from "./store/settings";
 
 export async function startBackendBridge(): Promise<() => void> {
   const backend = useBackendStore.getState;
@@ -51,6 +52,7 @@ export async function startBackendBridge(): Promise<() => void> {
         active_model: status.active_model,
       });
       model().hydrateFromStatus(status);
+      useSettingsStore.getState().setLastExportedAt(status.last_exported_at);
       if (status.degraded) backend().setDegraded([]);
     })
     .catch((err: unknown) => {
