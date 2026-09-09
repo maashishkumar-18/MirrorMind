@@ -694,3 +694,61 @@ h1 {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* to-dos (3.3c) */
+.todo-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.todo-tabs button {
+  font-size: 0.82rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.todo-tabs button[aria-selected="true"] {
+  background: rgba(42, 90, 161, 0.16);
+  font-weight: 600;
+}
+
+.feature-row-title-edit {
+  font: inherit;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-bottom: 1px dashed transparent;
+}
+
+.feature-row-title-edit:focus {
+  outline: none;
+  border-bottom-color: rgba(127, 127, 127, 0.6);
+}
+
+.todo-priority {
+  font-weight: 600;
+}
+
+.todo-priority[data-level="0"] {
+  color: #c94b4b;
+}
+.todo-priority[data-level="1"] {
+  color: #8a6d1a;
+}
+.todo-priority[data-level="2"] {
+  color: #3b7a3b;
+}
+
+.todo-category {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.16);
+}
