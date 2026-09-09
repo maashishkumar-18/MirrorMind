@@ -28,6 +28,7 @@ from src.features.base import now_iso
 from src.features.reminder_handler import ReminderHandler
 from src.features.summary_handler import SummaryConfig, SummaryHandler
 from src.features.toast_bridge import ToastBridge
+from src.models.app_config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +131,10 @@ class SchedulerThread(threading.Thread):
         try:
             # Settings → General (Phase 3 Step 3.4): re-read the effective daily
             # summary time each tick so a settings.update takes effect with no
-            # restart. from_yaml folds in AppConfig → env → YAML → default.
-            self._summaries.config.daily_time = SummaryConfig.from_yaml().daily_time
+            # restart — AppConfig override on top of the env/YAML config.
+            self._summaries.config.daily_time = (
+                AppConfig.load().summary_time or SummaryConfig.from_yaml().daily_time
+            )
             self._summaries.generate_due_summaries(
                 now, catch_up_days=self._config.summary_catch_up_days
             )

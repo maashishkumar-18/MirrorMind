@@ -52,14 +52,34 @@ def idle_minutes_is_default(app_config_path: str | None = None) -> bool:
     return not _load(app_config_path).idle_timeout_minutes
 
 
-def effective_summary_time(app_config_path: str | None = None) -> str:
-    """The effective daily-summary time. ``SummaryConfig.from_yaml`` already
-    resolves ``AppConfig.summary_time`` → ``$RAGPIPE_SUMMARY_DAILY_TIME`` → YAML
-    → ``21:00`` — this is just the typed accessor the IPC handler calls."""
+def env_yaml_summary_time() -> str:
+    """``$RAGPIPE_SUMMARY_DAILY_TIME`` → ``config/features/summary.yaml`` →
+    ``21:00``. The fallback below a user-set ``AppConfig.summary_time``; also
+    what ``SchedulerThread`` layers its own AppConfig read on top of."""
     from src.features.summary_handler import SummaryConfig
 
-    return SummaryConfig.from_yaml(app_config_path=app_config_path).daily_time
+    return SummaryConfig.from_yaml().daily_time
+
+
+def effective_summary_time(app_config_path: str | None = None) -> str:
+    """``AppConfig.summary_time`` → env → YAML → ``21:00``."""
+    return _load(app_config_path).summary_time or env_yaml_summary_time()
 
 
 def summary_time_is_default(app_config_path: str | None = None) -> bool:
     return not _load(app_config_path).summary_time
+
+
+def resolved(cfg: AppConfig) -> dict[str, object]:
+    """The effective General-settings values + per-field default flags, computed
+    **entirely from the passed ``AppConfig``** (plus env/YAML) — no second
+    app-config read, so the value and its ``*_is_default`` flag can never skew,
+    and ``settings.update`` can answer from the object it just saved."""
+    idle = cfg.idle_timeout_minutes
+    summary = cfg.summary_time
+    return {
+        "idle_timeout_minutes": int(idle or _env_idle_minutes() or DEFAULT_IDLE_MINUTES),
+        "summary_time": summary or env_yaml_summary_time(),
+        "idle_timeout_is_default": not idle,
+        "summary_time_is_default": not summary,
+    }

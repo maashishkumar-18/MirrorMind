@@ -865,7 +865,11 @@ class SessionWorker(threading.Thread):
             if self._store is not None:
                 self._store.close()
             self._store = SQLiteVectorStore(db_path=self._db_path, key=self._key)
-            assert self._reranker is not None and self._embedder is not None
+            assert (
+                self._structured is not None
+                and self._reranker is not None
+                and self._embedder is not None
+            )
             self._router = RetrievalRouter(
                 self._store, self._structured, reranker=self._reranker, embedder=self._embedder
             )

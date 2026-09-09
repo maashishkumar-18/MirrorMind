@@ -70,9 +70,7 @@ class SummaryConfig:
     weekly_time: str = "18:00"
 
     @classmethod
-    def from_yaml(
-        cls, path: str | None = None, *, app_config_path: str | None = None
-    ) -> "SummaryConfig":
+    def from_yaml(cls, path: str | None = None) -> "SummaryConfig":
         config_path = (
             path
             or os.getenv("RAGPIPE_SUMMARY_CONFIG")
@@ -85,14 +83,8 @@ class SummaryConfig:
 
         schedule = data.get("schedule", {})
         defaults = cls()
-        # Settings → General (Phase 3 Step 3.4): a user-set daily summary time in
-        # data/app_config.json wins over the env var / YAML / hard default.
-        from src.models.app_config import AppConfig
-
-        daily_override = AppConfig.load(app_config_path).summary_time
         return cls(
-            daily_time=daily_override
-            or str(
+            daily_time=str(
                 os.getenv(
                     "RAGPIPE_SUMMARY_DAILY_TIME", schedule.get("daily_time", defaults.daily_time)
                 )

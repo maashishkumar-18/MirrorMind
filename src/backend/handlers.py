@@ -520,30 +520,26 @@ def _schedule_delete(p: BaseModel, ctx: HandlerContext, _rid: str) -> FeatureDel
 # -- Settings & Diagnostics (Step 3.4) -------------------------------------
 
 
-def _settings_result(ctx: HandlerContext) -> SettingsResult:
-    path = ctx.app_config_path
-    return SettingsResult(
-        idle_timeout_minutes=int(backend_settings.effective_idle_minutes(path)),
-        summary_time=backend_settings.effective_summary_time(path),
-        idle_timeout_is_default=backend_settings.idle_minutes_is_default(path),
-        summary_time_is_default=backend_settings.summary_time_is_default(path),
-    )
+def _settings_result(cfg: AppConfig) -> SettingsResult:
+    return SettingsResult.model_validate(backend_settings.resolved(cfg))
 
 
 def _settings_get(_p: BaseModel, ctx: HandlerContext, _rid: str) -> SettingsResult:
-    return _settings_result(ctx)
+    return _settings_result(AppConfig.load(ctx.app_config_path))
 
 
 def _settings_update(p: BaseModel, ctx: HandlerContext, _rid: str) -> SettingsResult:
     assert isinstance(p, SettingsUpdateParams)
-    cfg = AppConfig.load(ctx.app_config_path)
     written = p.model_fields_set
+    changes: dict[str, object] = {}
     if "idle_timeout_minutes" in written:
-        cfg.idle_timeout_minutes = p.idle_timeout_minutes
+        changes["idle_timeout_minutes"] = p.idle_timeout_minutes
     if "summary_time" in written:
-        cfg.summary_time = p.summary_time
-    cfg.save()
-    return _settings_result(ctx)
+        changes["summary_time"] = p.summary_time
+    # the whole load-modify-save is serialised so two in-flight updates cannot
+    # lose each other's field
+    cfg = AppConfig.update_fields(ctx.app_config_path, **changes)
+    return _settings_result(cfg)
 
 
 def _data_info(_p: BaseModel, ctx: HandlerContext, _rid: str) -> DataInfoResult:
