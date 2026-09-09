@@ -13,6 +13,20 @@ Settled decisions built to (Q1/Q2/Q3 + this session's AskUserQuestion):
 - **Q1** — feature-CRUD IPC lands as a preliminary backend sub-step 3.3a,
   schema-first, all `worker=True`. Inline NLP create in every view = `chat.send`
   (not a form), **except Meetings** which uses a dedicated `meetings.capture`.
+
+  > **Deliberate deviation from the Q1 pre-planning answer** (confirmed via
+  > AskUserQuestion during planning). The Q1 note said "inline NLP create in
+  > every view goes through `chat.send`". Meetings capture does **not** — it
+  > calls `meetings.capture` (→ `MeetingNoteHandler.capture_meeting_note`)
+  > directly. Rationale: a dedicated "Capture" button on a paste-a-transcript
+  > text area is a decision the user has *already made explicit* — routing a
+  > multi-hundred-line transcript through the four-tier agentic classifier is
+  > unreliable, would only avoid a conversational reply at Tier-1
+  > `meeting_note`, and the spec requires "no conversational response during
+  > capture". The other three views keep `chat.send` (the utterance genuinely
+  > is natural language that must be classified). So there are two create paths
+  > by design: `chat.send` for reminders/todos/schedule, `meetings.capture` for
+  > meetings.
 - **Q2** — schedule conflict resolution = `schedule.create_item` with
   `overwrite_ids: list[str] = []`. Non-empty → each id (must be a *current*
   conflict) is soft-deleted, then the item is created, one transaction. Keep =
