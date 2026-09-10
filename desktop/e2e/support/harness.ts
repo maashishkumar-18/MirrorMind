@@ -41,10 +41,11 @@ export interface Backend {
   stopChild(): Promise<void>;
   /** Wait until the frontend store has seen `app.ready`. */
   waitReady(): Promise<void>;
-  /** Block until the SessionWorker has finished warm-up (loads all-MiniLM +
-   *  the cross-encoder — 20–40s on a cold CI runner). A `chat.history` round
-   *  trip only resolves once the worker drains its first queue item, so it is
-   *  the warm signal. Call after `waitReady()` in chat flows. */
+  /** Block until the SessionWorker has finished warm-up — without `stubEmbed`
+   *  this loads all-MiniLM + the cross-encoder (20–40s on a cold CI runner). A
+   *  `chat.history` round trip only resolves once the worker drains its first
+   *  queue item, so it is the warm signal. Call after `waitReady()` in chat
+   *  flows. */
   warmup(): Promise<void>;
   /** Apply a `tools.e2e_seed` spec to the DB (backend must be stopped). */
   seed(spec: Record<string, unknown>): Promise<void>;
@@ -64,6 +65,10 @@ export const test = base.extend<{
   /** Per-flow: swap the cross-encoder for a deterministic fake (no HF
    *  download) — real embedding + hybrid search kept. */
   stubRerank: boolean;
+  /** Per-flow: swap the embedding provider for a deterministic fake (no
+   *  torch / sentence-transformers load, 30-60s cold on CI) — real vector
+   *  store + BM25 + router + generation kept. */
+  stubEmbed: boolean;
   /** Per-flow: make `_reingest` a no-op (real agent kept) so the async
    *  re-ingest followup can't block the next worker call on a slow runner.
    *  For flows that don't test memory retrieval. */
@@ -75,8 +80,12 @@ export const test = base.extend<{
   activeModel: [undefined, { option: true }],
   stubIngest: [false, { option: true }],
   stubRerank: [false, { option: true }],
+  stubEmbed: [false, { option: true }],
 
-  backend: async ({ page, fakeLlmFixture, fakeModels, activeModel, stubIngest, stubRerank }, use) => {
+  backend: async (
+    { page, fakeLlmFixture, fakeModels, activeModel, stubIngest, stubRerank, stubEmbed },
+    use,
+  ) => {
     const dataDir = mkdtempSync(join(tmpdir(), "mm-e2e-"));
     const toastFile = join(dataDir, "toast-calls.jsonl");
     const dbPath = join(dataDir, "session.db");
@@ -99,6 +108,7 @@ export const test = base.extend<{
         ...(fakeModels ? { RAGPIPE_FAKE_MODELS: "1" } : {}),
         ...(stubIngest ? { RAGPIPE_E2E_STUB_INGEST: "1" } : {}),
         ...(stubRerank ? { RAGPIPE_E2E_STUB_RERANK: "1" } : {}),
+        ...(stubEmbed ? { RAGPIPE_E2E_STUB_EMBED: "1" } : {}),
       },
     });
     const port = await bridge.listen();
@@ -160,7 +170,9 @@ export const test = base.extend<{
     await use(api);
 
     await bridge.stop();
-    rmSync(dataDir, { recursive: true, force: true });
+    // Windows holds the SQLite handles (session.db / metrics.db) briefly after
+    // the sidecar exits — retry the unlink instead of failing teardown (EBUSY).
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   },
 });
 

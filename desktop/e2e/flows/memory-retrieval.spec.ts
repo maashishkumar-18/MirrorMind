@@ -7,7 +7,16 @@ import { test, expect } from "../support/harness";
  * a question is asked that should retrieve from it. The response must cite the
  * session with its ID and timestamp.
  */
-test.use({ activeModel: "llama3.1:8b", fakeLlmFixture: "retrieval", stubRerank: true });
+// stubEmbed + stubRerank: the dense/cross-encoder models never load (30-60s cold
+// on CI). The SEMANTIC route still runs the real vector store + BM25 + router +
+// context builder + generation; with a single seeded chunk the fake unit-vector
+// provider is enough to surface it. Ranking quality lives in the eval + unit suites.
+test.use({
+  activeModel: "llama3.1:8b",
+  fakeLlmFixture: "retrieval",
+  stubEmbed: true,
+  stubRerank: true,
+});
 
 test("ask about a past conversation → grounded answer with a session citation", async ({
   page,

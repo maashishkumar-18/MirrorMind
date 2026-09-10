@@ -11,6 +11,12 @@ packaged app never sets it.
 The stubs make ``chat.send`` persist a user + assistant message (the property the
 fuzz asserts) and make ``_reingest`` a no-op. They are NOT the ``RAGPIPE_FAKE_LLM``
 seam — that one keeps the real pipeline and only swaps the Ollama adapter.
+
+This module also holds the narrower e2e seams that keep the real pipeline but
+swap only its slowest-to-load model: ``RAGPIPE_E2E_STUB_INGEST`` (no-op
+``_reingest``), ``RAGPIPE_E2E_STUB_RERANK`` (:func:`maybe_stub_reranker` — fake
+cross-encoder), ``RAGPIPE_E2E_STUB_EMBED`` (:func:`maybe_stub_embedder` — fake
+embedding provider, no ``torch``). See ``audits/PHASE_4_AUDIT.md`` "CI hardening".
 """
 
 from __future__ import annotations
@@ -61,6 +67,56 @@ class _StubSlotExtractor:
 
 _STUB_INGEST_ENV = "RAGPIPE_E2E_STUB_INGEST"
 _STUB_RERANK_ENV = "RAGPIPE_E2E_STUB_RERANK"
+_STUB_EMBED_ENV = "RAGPIPE_E2E_STUB_EMBED"
+
+
+class _FakeEmbeddingProvider:
+    """Deterministic embedding provider — no ``torch`` / ``sentence-transformers``
+    import and no model load (30-60s cold on a CI runner). Every string maps to a
+    near-identical unit vector (tiny hash-seeded jitter), so cosine similarity is
+    ~1.0 for any pair: the single seeded chunk always comes back from the vector
+    store regardless of the query, which is all the memory-retrieval e2e flow
+    needs from the dense side (ranking quality is covered by the eval + unit
+    suites). Mirrors ``tests/eval/test_harness_smoke.py::_FakeEmbedder``.
+
+    Implements the slice of the ``EmbeddingProvider`` surface that
+    ``EmbeddingGenerator`` touches: ``embed_batch`` / ``get_usage`` /
+    ``reset_usage`` / ``provider_name``.
+    """
+
+    provider_name = "fake-e2e"
+
+    def __init__(self, dim: int = 384) -> None:
+        self._dim = dim
+        self._texts = 0
+
+    def embed_batch(self, texts: list[str]) -> Any:
+        import numpy as np
+
+        self._texts += len(texts)
+        out = np.empty((len(texts), self._dim), dtype=np.float32)
+        base = np.ones(self._dim, dtype=np.float32)
+        for i, text in enumerate(texts):
+            rng = np.random.default_rng(abs(hash(text)) % (2**32))
+            vec = base + rng.standard_normal(self._dim).astype(np.float32) * 0.01
+            out[i] = vec / (float(np.linalg.norm(vec)) or 1.0)
+        return out
+
+    def get_usage(self) -> dict[str, Any]:
+        return {"provider": self.provider_name, "total_texts": self._texts, "total_tokens": 0}
+
+    def reset_usage(self) -> None:
+        self._texts = 0
+
+
+def maybe_stub_embedder(generator: Any) -> None:
+    """When ``RAGPIPE_E2E_STUB_EMBED`` is set, swap the provider on an
+    ``EmbeddingGenerator`` for :class:`_FakeEmbeddingProvider` (real vector store,
+    BM25, router, context builder, generation all stay intact). No-op otherwise."""
+    if not os.getenv(_STUB_EMBED_ENV) or generator is None:
+        return
+    dim = int(getattr(generator, "dimensions", 384) or 384)
+    generator.provider = _FakeEmbeddingProvider(dim)
 
 
 class _FakeCrossEncoder:

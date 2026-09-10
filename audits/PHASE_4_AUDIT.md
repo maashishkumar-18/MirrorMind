@@ -114,9 +114,11 @@ New `e2e` job (`.github/workflows/ci.yml`, `windows-latest`): checkout w/ LFS
 `desktop/e2e/flows/*.spec.ts`, one `RAGPIPE_FAKE_LLM` fixture per flow under
 `tests/e2e/fixtures/`. All assertions go through the rendered views + a final DB
 / toast-file check. The whole suite (6 specs incl. the 4.1a smoke) runs in
-**~44 s** locally, well under the 5-minute budget; sidecar warm-up
+**~44 s** locally, well under the 5-minute budget. Locally the sidecar warm-up
 (`all-MiniLM` + cross-encoder) is fast enough that no `RAGPIPE_FAKE_RETRIEVAL`
-seam was needed.
+seam was needed; on a cold CI runner the model loads are 30-60s each, so the
+chat flows stub the heavy pieces (see "CI hardening" — `STUB_INGEST`,
+`STUB_RERANK`, `STUB_EMBED`).
 
 New harness affordances (`support/harness.ts`): `activeModel` option writes a
 minimal `app_config.json` before launch so model-gated routes pass;
@@ -133,7 +135,7 @@ canned generation can echo the real `[Session <id> · approx. <ts>]` header that
 |---|---|---|
 | Reminder | `reminder.spec.ts` | Chat → Tier-2 `DisambiguationPopup` → confirm → `action_dispatch` creates the row + `FileRecordingToastBridge` records a `register` → Reminders view → `stopChild` + `seed` a past `scheduled_time` → relaunch → `reconcile_on_launch` marks it overdue → complete → leaves the active list |
 | Meeting note | `meeting-note.spec.ts` | Meetings view → paste transcript → `meetings.capture` (faked extraction) → the note card renders the extracted decisions + action items |
-| Memory retrieval | `memory-retrieval.spec.ts` | turn 1 (`conversation`) → async `_reingest` embeds it with real `all-MiniLM` → turn 2 (`retrieve_needed`, `semantic`) → `RetrievalRouter` finds the chunk → `ContextBuilder` → faked generation echoes the citation header → `.chat-citation` renders with the session id + timestamp; orchestrator logs `grounded=True, citations=1` |
+| Memory retrieval | `memory-retrieval.spec.ts` | turn 1 (`conversation`) → async `_reingest` embeds it → turn 2 (`retrieve_needed`, `semantic`) → `RetrievalRouter` finds the chunk → `ContextBuilder` → faked generation echoes the citation header → `.chat-citation` renders with the session id + timestamp; orchestrator logs `grounded=True, citations=1`. Runs `stubEmbed` + `stubRerank` on CI (see "CI hardening" round 3) — real vector store + BM25 + router + context builder, deterministic embed/rerank models |
 | Model download | `model-download.spec.ts` | no active model → `/first-run` → Download (instant via `RAGPIPE_FAKE_MODELS`) → outcome banner → Activate → lands on `/chat` |
 | Missed-fire reconciliation | `missed-fire.spec.ts` | `seed` a past-due reminder with `fired_at IS NULL` → launch → `app.reminders_pending` → Reminders view shows it under "Overdue" |
 
@@ -490,3 +492,21 @@ defect:
      deterministic `_FakeCrossEncoder` (no `cross-encoder/ms-marco-MiniLM-L-6-v2`
      HuggingFace download mid-test). `memory-retrieval` uses it and drops from
      ~44s -> ~10s; real embedding + hybrid search + the vector store stay live.
+
+   **Round 3** (`memory-retrieval` still red on the cold runner — run #10 /
+   `e2fe935`; every other job green): the flow embeds **twice** on the worker
+   thread mid-test — the async `_reingest` of turn 1, then the turn-2 query — and
+   on a cold CI runner the first `embed_batch` pays a 30-60s `SentenceTransformer`
+   load that `stubRerank` did not remove. The 60s citation wait + 150s test cap
+   could not absorb it (local runs pass — models are warm there). Fix: a new
+   `RAGPIPE_E2E_STUB_EMBED` seam
+   (`src/backend/fake_retrieval.py::maybe_stub_embedder`, wired in
+   `SessionWorker._build` next to the rerank stub) swaps the
+   `EmbeddingGenerator.provider` for `_FakeEmbeddingProvider` — deterministic
+   near-unit vectors, no `torch` import, no model load. The SEMANTIC route still
+   runs the **real** `SQLiteVectorStore` + BM25 + `RetrievalRouter` +
+   `ContextBuilder` + faked generation; with a single seeded chunk the fake dense
+   side only needs to surface it (cosine ~1.0 for any pair), and ranking quality
+   is covered by the eval + `tests/retrieval/` suites. `memory-retrieval.spec.ts`
+   sets `stubEmbed: true` and drops from failing-at-150s to **~9s** locally.
+   `harness.ts` gains the `stubEmbed` fixture option.

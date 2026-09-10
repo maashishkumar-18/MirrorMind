@@ -360,6 +360,7 @@ class SessionWorker(threading.Thread):
             self._router = self._inj_router
         else:
             self._embedder = EmbeddingGenerator(enable_logging=False)
+            fake_retrieval.maybe_stub_embedder(self._embedder)  # RAGPIPE_E2E_STUB_EMBED
             self._reranker = Reranker()
             fake_retrieval.maybe_stub_reranker(self._reranker)  # RAGPIPE_E2E_STUB_RERANK
             self._router = RetrievalRouter(
