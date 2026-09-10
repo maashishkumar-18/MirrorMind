@@ -1,5 +1,8 @@
 [
-  { "target": "params:app.status", "payload": {} },
+  {
+    "target": "params:app.status",
+    "payload": {}
+  },
   {
     "target": "result:app.status",
     "payload": {
@@ -22,13 +25,30 @@
       "ready": false
     }
   },
-  { "target": "params:health.check", "payload": {} },
-  { "target": "result:health.check", "payload": { "ok": true, "details": [] } },
+  {
+    "target": "params:health.check",
+    "payload": {}
+  },
   {
     "target": "result:health.check",
-    "payload": { "ok": false, "details": ["database disk image is malformed"] }
+    "payload": {
+      "ok": true,
+      "details": []
+    }
   },
-  { "target": "params:model.catalog", "payload": {} },
+  {
+    "target": "result:health.check",
+    "payload": {
+      "ok": false,
+      "details": [
+        "database disk image is malformed"
+      ]
+    }
+  },
+  {
+    "target": "params:model.catalog",
+    "payload": {}
+  },
   {
     "target": "result:model.catalog",
     "payload": {
@@ -44,17 +64,43 @@
       ]
     }
   },
-  { "target": "params:model.status", "payload": { "names": null } },
-  { "target": "params:model.status", "payload": { "names": ["llama3.1:8b", "mistral:latest"] } },
+  {
+    "target": "params:model.status",
+    "payload": {
+      "names": null
+    }
+  },
+  {
+    "target": "params:model.status",
+    "payload": {
+      "names": [
+        "llama3.1:8b",
+        "mistral:latest"
+      ]
+    }
+  },
   {
     "target": "result:model.status",
     "payload": {
       "ollama_running": true,
-      "installed": [{ "name": "llama3.1:8b", "size_bytes": 4920000000 }],
-      "statuses": { "llama3.1:8b": "active", "mistral:latest": "not_installed" }
+      "installed": [
+        {
+          "name": "llama3.1:8b",
+          "size_bytes": 4920000000
+        }
+      ],
+      "statuses": {
+        "llama3.1:8b": "active",
+        "mistral:latest": "not_installed"
+      }
     }
   },
-  { "target": "params:model.download", "payload": { "name": "mistral:latest" } },
+  {
+    "target": "params:model.download",
+    "payload": {
+      "name": "mistral:latest"
+    }
+  },
   {
     "target": "result:model.download",
     "payload": {
@@ -65,12 +111,23 @@
       "verified": true
     }
   },
-  { "target": "params:model.activate", "payload": { "name": "llama3.1:8b" } },
+  {
+    "target": "params:model.activate",
+    "payload": {
+      "name": "llama3.1:8b"
+    }
+  },
   {
     "target": "result:model.activate",
-    "payload": { "active_model": "llama3.1:8b", "verified": true }
+    "payload": {
+      "active_model": "llama3.1:8b",
+      "verified": true
+    }
   },
-  { "target": "params:backup.list", "payload": {} },
+  {
+    "target": "params:backup.list",
+    "payload": {}
+  },
   {
     "target": "result:backup.list",
     "payload": {
@@ -83,7 +140,12 @@
       ]
     }
   },
-  { "target": "params:backup.restore", "payload": { "path": "C:\\backups\\session.db" } },
+  {
+    "target": "params:backup.restore",
+    "payload": {
+      "path": "C:\\backups\\session.db"
+    }
+  },
   {
     "target": "result:backup.restore",
     "payload": {
@@ -93,9 +155,22 @@
       "validated_snapshot_path": "C:\\backups\\session.db"
     }
   },
-  { "target": "params:app.shutdown", "payload": {} },
-  { "target": "result:app.shutdown", "payload": { "stopping": true } },
-  { "target": "params:chat.send", "payload": { "text": "what did I say about the roadmap?" } },
+  {
+    "target": "params:app.shutdown",
+    "payload": {}
+  },
+  {
+    "target": "result:app.shutdown",
+    "payload": {
+      "stopping": true
+    }
+  },
+  {
+    "target": "params:chat.send",
+    "payload": {
+      "text": "what did I say about the roadmap?"
+    }
+  },
   {
     "target": "result:chat.send",
     "payload": {
@@ -137,8 +212,14 @@
       "is_grounded": false,
       "grounding_confidence": 0.0,
       "citations": [],
-      "warnings": ["scheduled_time was inferred"],
-      "feature": { "kind": "reminder", "id": "reminder_9f2a1c", "summary": "Call the dentist" },
+      "warnings": [
+        "scheduled_time was inferred"
+      ],
+      "feature": {
+        "kind": "reminder",
+        "id": "reminder_9f2a1c",
+        "summary": "Call the dentist"
+      },
       "disambiguation": null,
       "conflict": null,
       "dismissed_pending": false
@@ -162,7 +243,11 @@
       "feature": null,
       "disambiguation": {
         "pending_action_id": "pending_1a2b3c",
-        "options": ["reminder", "todo", "conversation"]
+        "options": [
+          "reminder",
+          "todo",
+          "conversation"
+        ]
       },
       "conflict": null,
       "dismissed_pending": false
@@ -206,10 +291,28 @@
       "dismissed_pending": false
     }
   },
-  { "target": "params:chat.new", "payload": {} },
-  { "target": "result:chat.new", "payload": { "session_id": "sess_def456" } },
-  { "target": "params:chat.history", "payload": { "session_id": null } },
-  { "target": "params:chat.history", "payload": { "session_id": "sess_abc123" } },
+  {
+    "target": "params:chat.new",
+    "payload": {}
+  },
+  {
+    "target": "result:chat.new",
+    "payload": {
+      "session_id": "sess_def456"
+    }
+  },
+  {
+    "target": "params:chat.history",
+    "payload": {
+      "session_id": null
+    }
+  },
+  {
+    "target": "params:chat.history",
+    "payload": {
+      "session_id": "sess_abc123"
+    }
+  },
   {
     "target": "result:chat.history",
     "payload": {
@@ -232,7 +335,10 @@
   },
   {
     "target": "params:chat.confirm_action",
-    "payload": { "pending_action_id": "pending_1a2b3c", "choice": "todo" }
+    "payload": {
+      "pending_action_id": "pending_1a2b3c",
+      "choice": "todo"
+    }
   },
   {
     "target": "result:chat.confirm_action",
@@ -249,13 +355,20 @@
       "grounding_confidence": 0.0,
       "citations": [],
       "warnings": [],
-      "feature": { "kind": "todo", "id": "todo_5c4d3e", "summary": "Buy milk" },
+      "feature": {
+        "kind": "todo",
+        "id": "todo_5c4d3e",
+        "summary": "Buy milk"
+      },
       "disambiguation": null,
       "conflict": null,
       "dismissed_pending": false
     }
   },
-  { "target": "params:reminders.reconciliation", "payload": {} },
+  {
+    "target": "params:reminders.reconciliation",
+    "payload": {}
+  },
   {
     "target": "result:reminders.reconciliation",
     "payload": {
@@ -274,7 +387,10 @@
       "pending_acknowledgment": []
     }
   },
-  { "target": "params:reminders.list", "payload": {} },
+  {
+    "target": "params:reminders.list",
+    "payload": {}
+  },
   {
     "target": "result:reminders.list",
     "payload": {
@@ -292,7 +408,12 @@
       ]
     }
   },
-  { "target": "params:reminders.complete", "payload": { "id": "rem_1" } },
+  {
+    "target": "params:reminders.complete",
+    "payload": {
+      "id": "rem_1"
+    }
+  },
   {
     "target": "result:reminders.complete",
     "payload": {
@@ -308,7 +429,12 @@
       }
     }
   },
-  { "target": "params:reminders.dismiss", "payload": { "id": "rem_1" } },
+  {
+    "target": "params:reminders.dismiss",
+    "payload": {
+      "id": "rem_1"
+    }
+  },
   {
     "target": "result:reminders.dismiss",
     "payload": {
@@ -326,7 +452,10 @@
   },
   {
     "target": "params:reminders.reschedule",
-    "payload": { "id": "rem_1", "scheduled_time": "2026-09-11T09:00:00+00:00" }
+    "payload": {
+      "id": "rem_1",
+      "scheduled_time": "2026-09-11T09:00:00+00:00"
+    }
   },
   {
     "target": "result:reminders.reschedule",
@@ -345,7 +474,12 @@
   },
   {
     "target": "params:reminders.update",
-    "payload": { "id": "rem_1", "title": "Call the orthodontist", "notes": "ask about braces", "scheduled_time": null }
+    "payload": {
+      "id": "rem_1",
+      "title": "Call the orthodontist",
+      "notes": "ask about braces",
+      "scheduled_time": null
+    }
   },
   {
     "target": "result:reminders.update",
@@ -362,9 +496,22 @@
       }
     }
   },
-  { "target": "params:reminders.delete", "payload": { "id": "rem_1" } },
-  { "target": "result:reminders.delete", "payload": { "deleted": true } },
-  { "target": "params:todos.list", "payload": {} },
+  {
+    "target": "params:reminders.delete",
+    "payload": {
+      "id": "rem_1"
+    }
+  },
+  {
+    "target": "result:reminders.delete",
+    "payload": {
+      "deleted": true
+    }
+  },
+  {
+    "target": "params:todos.list",
+    "payload": {}
+  },
   {
     "target": "result:todos.list",
     "payload": {
@@ -383,7 +530,12 @@
       ]
     }
   },
-  { "target": "params:todos.complete", "payload": { "id": "todo_1" } },
+  {
+    "target": "params:todos.complete",
+    "payload": {
+      "id": "todo_1"
+    }
+  },
   {
     "target": "result:todos.complete",
     "payload": {
@@ -402,7 +554,13 @@
   },
   {
     "target": "params:todos.update",
-    "payload": { "id": "todo_1", "title": null, "notes": null, "priority": "medium", "category": "personal" }
+    "payload": {
+      "id": "todo_1",
+      "title": null,
+      "notes": null,
+      "priority": "medium",
+      "category": "personal"
+    }
   },
   {
     "target": "result:todos.update",
@@ -420,9 +578,22 @@
       }
     }
   },
-  { "target": "params:todos.delete", "payload": { "id": "todo_1" } },
-  { "target": "result:todos.delete", "payload": { "deleted": true } },
-  { "target": "params:meetings.list", "payload": {} },
+  {
+    "target": "params:todos.delete",
+    "payload": {
+      "id": "todo_1"
+    }
+  },
+  {
+    "target": "result:todos.delete",
+    "payload": {
+      "deleted": true
+    }
+  },
+  {
+    "target": "params:meetings.list",
+    "payload": {}
+  },
   {
     "target": "result:meetings.list",
     "payload": {
@@ -431,11 +602,26 @@
           "id": "mn_1",
           "session_id": null,
           "raw_transcript": "Alice: let's ship Friday. Bob: agreed.",
-          "attendees": ["Alice", "Bob"],
-          "topics": ["release"],
-          "decisions": ["Ship on Friday"],
-          "action_items": [{ "task": "Cut the release branch", "owner": "Bob", "deadline": "Thursday" }],
-          "follow_ups": ["Confirm QA sign-off"],
+          "attendees": [
+            "Alice",
+            "Bob"
+          ],
+          "topics": [
+            "release"
+          ],
+          "decisions": [
+            "Ship on Friday"
+          ],
+          "action_items": [
+            {
+              "task": "Cut the release branch",
+              "owner": "Bob",
+              "deadline": "Thursday"
+            }
+          ],
+          "follow_ups": [
+            "Confirm QA sign-off"
+          ],
           "needs_review": false,
           "searchable_text": "Alice Bob release Ship on Friday Cut the release branch Confirm QA sign-off",
           "created_at": "2026-09-08T12:00:00+00:00",
@@ -444,7 +630,12 @@
       ]
     }
   },
-  { "target": "params:meetings.get", "payload": { "id": "mn_1" } },
+  {
+    "target": "params:meetings.get",
+    "payload": {
+      "id": "mn_1"
+    }
+  },
   {
     "target": "result:meetings.get",
     "payload": {
@@ -452,10 +643,23 @@
         "id": "mn_1",
         "session_id": null,
         "raw_transcript": "Alice: let's ship Friday. Bob: agreed.",
-        "attendees": ["Alice", "Bob"],
-        "topics": ["release"],
-        "decisions": ["Ship on Friday"],
-        "action_items": [{ "task": "Cut the release branch", "owner": null, "deadline": null }],
+        "attendees": [
+          "Alice",
+          "Bob"
+        ],
+        "topics": [
+          "release"
+        ],
+        "decisions": [
+          "Ship on Friday"
+        ],
+        "action_items": [
+          {
+            "task": "Cut the release branch",
+            "owner": null,
+            "deadline": null
+          }
+        ],
         "follow_ups": [],
         "needs_review": false,
         "searchable_text": "Alice Bob release Ship on Friday",
@@ -466,7 +670,9 @@
   },
   {
     "target": "params:meetings.capture",
-    "payload": { "transcript": "Alice: let's ship Friday. Bob: agreed." }
+    "payload": {
+      "transcript": "Alice: let's ship Friday. Bob: agreed."
+    }
   },
   {
     "target": "result:meetings.capture",
@@ -487,9 +693,24 @@
       }
     }
   },
-  { "target": "params:meetings.delete", "payload": { "id": "mn_1" } },
-  { "target": "result:meetings.delete", "payload": { "deleted": true } },
-  { "target": "params:schedule.day", "payload": { "date": "2026-09-10" } },
+  {
+    "target": "params:meetings.delete",
+    "payload": {
+      "id": "mn_1"
+    }
+  },
+  {
+    "target": "result:meetings.delete",
+    "payload": {
+      "deleted": true
+    }
+  },
+  {
+    "target": "params:schedule.day",
+    "payload": {
+      "date": "2026-09-10"
+    }
+  },
   {
     "target": "result:schedule.day",
     "payload": {
@@ -509,13 +730,21 @@
       ]
     }
   },
-  { "target": "params:schedule.week", "payload": { "start_date": "2026-09-07" } },
+  {
+    "target": "params:schedule.week",
+    "payload": {
+      "start_date": "2026-09-07"
+    }
+  },
   {
     "target": "result:schedule.week",
     "payload": {
       "start_date": "2026-09-07",
       "days": [
-        { "date": "2026-09-07", "items": [] },
+        {
+          "date": "2026-09-07",
+          "items": []
+        },
         {
           "date": "2026-09-08",
           "items": [
@@ -543,7 +772,9 @@
       "end_time": "2026-09-10T10:00:00+00:00",
       "location": "",
       "notes": "",
-      "overwrite_ids": ["sci_1"]
+      "overwrite_ids": [
+        "sci_1"
+      ]
     }
   },
   {
@@ -580,7 +811,14 @@
   },
   {
     "target": "params:schedule.update",
-    "payload": { "id": "sci_1", "title": "Standup (moved)", "start_time": null, "end_time": null, "location": null, "notes": null }
+    "payload": {
+      "id": "sci_1",
+      "title": "Standup (moved)",
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "notes": null
+    }
   },
   {
     "target": "result:schedule.update",
@@ -599,15 +837,33 @@
       "conflict": null
     }
   },
-  { "target": "params:schedule.delete", "payload": { "id": "sci_1" } },
-  { "target": "result:schedule.delete", "payload": { "deleted": true } },
+  {
+    "target": "params:schedule.delete",
+    "payload": {
+      "id": "sci_1"
+    }
+  },
+  {
+    "target": "result:schedule.delete",
+    "payload": {
+      "deleted": true
+    }
+  },
   {
     "target": "event:app.ready",
-    "payload": { "ipc_version": 1, "model_setup_required": true, "active_model": null }
+    "payload": {
+      "ipc_version": 1,
+      "model_setup_required": true,
+      "active_model": null
+    }
   },
   {
     "target": "event:app.integrity_failed",
-    "payload": { "details": ["database disk image is malformed"] }
+    "payload": {
+      "details": [
+        "database disk image is malformed"
+      ]
+    }
   },
   {
     "target": "event:app.previous_data_unrecoverable",
@@ -617,7 +873,9 @@
   },
   {
     "target": "event:app.restore_staged",
-    "payload": { "validated_snapshot_path": "C:\\backups\\session-2026-09-01.db" }
+    "payload": {
+      "validated_snapshot_path": "C:\\backups\\session-2026-09-01.db"
+    }
   },
   {
     "target": "event:app.reminders_pending",
@@ -659,7 +917,10 @@
       "message": "verifying sha256"
     }
   },
-  { "target": "params:settings.get", "payload": {} },
+  {
+    "target": "params:settings.get",
+    "payload": {}
+  },
   {
     "target": "result:settings.get",
     "payload": {
@@ -671,7 +932,10 @@
   },
   {
     "target": "params:settings.update",
-    "payload": { "idle_timeout_minutes": 30, "summary_time": "20:30" }
+    "payload": {
+      "idle_timeout_minutes": 30,
+      "summary_time": "20:30"
+    }
   },
   {
     "target": "result:settings.update",
@@ -682,7 +946,10 @@
       "summary_time_is_default": false
     }
   },
-  { "target": "params:data.info", "payload": {} },
+  {
+    "target": "params:data.info",
+    "payload": {}
+  },
   {
     "target": "result:data.info",
     "payload": {
@@ -697,7 +964,9 @@
   },
   {
     "target": "params:data.export",
-    "payload": { "path": "C:/Users/x/Documents/mirrormind-export-2026-09-10.json" }
+    "payload": {
+      "path": "C:/Users/x/Documents/mirrormind-export-2026-09-10.json"
+    }
   },
   {
     "target": "result:data.export",
@@ -707,11 +976,24 @@
       "bytes_written": 20480
     }
   },
-  { "target": "params:data.wipe", "payload": { "confirm": true } },
-  { "target": "result:data.wipe", "payload": { "wiped": true } },
+  {
+    "target": "params:data.wipe",
+    "payload": {
+      "confirm": true
+    }
+  },
+  {
+    "target": "result:data.wipe",
+    "payload": {
+      "wiped": true
+    }
+  },
   {
     "target": "params:diagnostics.logs",
-    "payload": { "level": "INFO", "limit": 200 }
+    "payload": {
+      "level": "INFO",
+      "limit": 200
+    }
   },
   {
     "target": "result:diagnostics.logs",
@@ -727,13 +1009,27 @@
       "truncated": false
     }
   },
-  { "target": "params:diagnostics.metrics", "payload": { "limit": 1000 } },
+  {
+    "target": "params:diagnostics.metrics",
+    "payload": {
+      "limit": 1000
+    }
+  },
   {
     "target": "result:diagnostics.metrics",
     "payload": {
       "sample_size": 3,
-      "retrieval_latency_ms": { "p50": 12.5, "p95": 41.2, "p99": 58.9 },
-      "confidence_distribution": { "high": 1, "medium": 1, "low": 1, "none": 0 },
+      "retrieval_latency_ms": {
+        "p50": 12.5,
+        "p95": 41.2,
+        "p99": 58.9
+      },
+      "confidence_distribution": {
+        "high": 1,
+        "medium": 1,
+        "low": 1,
+        "none": 0
+      },
       "grounded_rate": 0.667,
       "retrieval_hit_rate": 1.0,
       "error_rate": null,
@@ -742,7 +1038,9 @@
   },
   {
     "target": "params:diagnostics.report",
-    "payload": { "path": "C:/Users/x/Documents/mirrormind-report.txt" }
+    "payload": {
+      "path": "C:/Users/x/Documents/mirrormind-report.txt"
+    }
   },
   {
     "target": "result:diagnostics.report",
@@ -750,5 +1048,31 @@
       "path": "C:/Users/x/Documents/mirrormind-report.txt",
       "bytes_written": 4096
     }
+  },
+  {
+    "target": "event:toast.register",
+    "payload": {
+      "toast_id": "toast_ab12cd34ef56",
+      "reminder_id": "rem_1",
+      "scheduled_time": "2026-12-01T14:00:00+00:00",
+      "body": "Call the dentist"
+    }
+  },
+  {
+    "target": "event:toast.cancel",
+    "payload": {
+      "toast_id": "toast_ab12cd34ef56"
+    }
+  },
+  {
+    "target": "event:toast.fire",
+    "payload": {
+      "reminder_id": "rem_1",
+      "body": "Call the dentist"
+    }
+  },
+  {
+    "target": "event:toast.cancel_all",
+    "payload": {}
   }
 ]

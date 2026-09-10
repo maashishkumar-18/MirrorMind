@@ -17,8 +17,8 @@ Plan: `.claude/plans/memoized-snuggling-emerson.md`.
 | 4.3  | Golden eval pass — routing remediation + local llama3.1:8b validation | in progress |
 | 4.4a | disk-full + network-loss download simulation (roadmap acceptance wording) | **DONE** |
 | 4.4b | subprocess-kill fuzzing harness + `reliability` CI job | **DONE** (`8d7e497`) |
-| 4.5  | WCAG 2.1 AA / Narrator accessibility pass (former roadmap Step 2.4) | **DONE** |
-| 4.6  | Real WinRT ToastBridge | pending |
+| 4.5  | WCAG 2.1 AA / Narrator accessibility pass (former roadmap Step 2.4) | **DONE** (`8fddab5`) |
+| 4.6  | Real WinRT ToastBridge | **DONE** (code + `cargo check`; live delivery → Phase 5) |
 
 ---
 
@@ -299,3 +299,76 @@ label, heading, or state string remains hardcoded.
 `npm --prefix desktop run typecheck / lint / test (150) / build` — green.
 `e2e/flows/a11y.spec.ts` — 12 / 12 surfaces, 0 violations (re-run pending the
 box freeing up from the 4.3 eval).
+
+---
+
+## Step 4.6 — Real WinRT ToastBridge (commit pending)
+
+Fills the `src/features/toast_bridge.py` ABC with an OS-backed implementation,
+driven from Python over IPC — the backend never touches WinRT
+(`project_logic.md` §7).
+
+**IPC direction (no new channel).** The Python backend emits a normal
+`message_type:"event"` frame with `payload.method` ∈
+`{toast.register, toast.cancel, toast.fire, toast.cancel_all}` over stdio. The
+Rust stdout reader (`backend.rs::route_frame`, `FrameKind::Event` arm) checks
+`method.starts_with("toast.")` and hands the frame to `toast::handle` **instead
+of** `app.emit("backend:message", …)` — the webview never sees it. `toast_id`
+is **client-generated** by `IpcToastBridge` and used verbatim as the
+`ScheduledToastNotification.Tag`, so cancel needs no round-trip. New unit test
+`toast_events_classify_as_events_so_route_frame_can_intercept_them` (backend.rs).
+
+**Rust — `desktop/src-tauri/src/toast.rs`** (new). `windows` crate 0.58
+(`Data_Xml_Dom` / `Foundation` / `Foundation_Collections` / `UI_Notifications`),
+Windows-only (`[target.'cfg(windows)'.dependencies]`).
+
+- **One `ToastNotifier` per process** (the same-notifier rule carried from
+  1.5b) — held in a `thread_local` on the single stdout reader thread that calls
+  `handle`, which also sidesteps the `!Send` COM object. Created lazily via
+  `ToastNotificationManager::CreateToastNotifier()`.
+- `toast.register` → `CreateScheduledToastNotification(xml, delivery)` +
+  `SetTag(toast_id)` + `SetGroup("mirrormind-reminders")` + `AddToSchedule`.
+  ISO-8601 → WinRT `DateTime` via the `time` crate (already a dep).
+- `toast.cancel` / `toast.cancel_all` → `GetScheduledToastNotifications()`,
+  match by `Tag` (+ group), `RemoveFromSchedule` **per id** (no bulk API — the
+  constraint).
+- `toast.fire` → `ToastNotification::CreateToastNotification` + `Show` (immediate).
+- Every WinRT failure is logged and swallowed — a missing toast never breaks the
+  reminder write on the Python side.
+
+**Python — `src/features/toast_bridge.py`**: `IpcToastBridge(ToastBridge)` —
+one `emit("toast.<op>", {...})` per call; `emit` is
+`lambda method, params: transport.send(make_event(method, params))`, **injected**
+at `main._serve` (not imported), so this low-level module keeps no `src/backend`
+dependency. `resolve_bridge_from_env(emit=…)` now returns `IpcToastBridge` when
+an `emit` is given and no `RAGPIPE_FAKE_TOAST` seam is set;
+`FileRecordingToastBridge` still wins for the e2e; `NoOpToastBridge` is the
+headless default. `SessionWorker` / `SchedulerThread` / `ReminderHandler` /
+`action_dispatch` / `DataManager` already receive the bridge through the
+`toast_bridge` kwarg added in 4.1a.
+
+**Contracts**: `ToastRegisterEvent` / `ToastCancelEvent` / `ToastFireEvent` /
+`ToastCancelAllEvent` in `src/common/ipc/methods.py` + the zod mirror
+(`ipc/schema/methods.ts`, added to `EVENT_SCHEMAS`) + fixtures + the
+cross-language round-trip map.
+
+Also folds a stray `ruff` `UP038` (`isinstance(x, (int, float))` →
+`isinstance(x, int | float)`) in `tests/backend/test_ipc_contract_matrix.py`
+that slipped through 4.2.
+
+### Live verification — deferred to Phase 5
+
+A Windows `ScheduledToastNotification` needs a registered AUMID, which only
+exists once the app is **MSIX-packaged** (Phase 5). On an unpackaged
+`tauri dev` build `CreateToastNotifier()` typically fails (logged + swallowed).
+So the code path is real, compiles, and is wired end to end, but the "create a
+reminder → `GetScheduledToastNotifications` shows it → wipe → it is gone" smoke
+test runs against the packaged app in Phase 5 packaging verification.
+
+### Verification
+
+`export PATH=…/.cargo/bin` then in `desktop/src-tauri`: `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings`, `cargo check`, `cargo test`
+(8 passed) — all green with the `windows` crate. `pytest
+tests/features/test_toast_bridge.py` + `tests/backend/test_ipc*` — 181 passed.
+`npm --prefix ipc test` — 168.

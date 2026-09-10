@@ -6,6 +6,7 @@
 //! handshake on window close.
 
 mod backend;
+mod toast;
 
 use tauri::{Manager, RunEvent, WindowEvent};
 

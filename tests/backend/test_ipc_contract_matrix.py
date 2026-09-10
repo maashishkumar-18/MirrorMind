@@ -89,7 +89,7 @@ def test_invalid_params_produce_validation_error_not_crash(method, dispatcher_fa
     for name, f in fields.items():
         if f.is_required() and name in example:
             bad_payloads.append({k: v for k, v in example.items() if k != name})  # missing
-            wrong = 12345 if not isinstance(example[name], (int, float)) else "not-a-number"
+            wrong = 12345 if not isinstance(example[name], int | float) else "not-a-number"
             bad_payloads.append({**example, name: wrong})  # wrong type
             break
 
@@ -97,9 +97,9 @@ def test_invalid_params_produce_validation_error_not_crash(method, dispatcher_fa
         d, transport = _one_shot(dispatcher_factory, method, params=bad)
         errors = transport.by_type("error")
         assert errors, f"{method}: {bad} should have errored"
-        assert errors[0]["payload"]["code"] == "validation_error", (
-            f"{method}: {bad} → {errors[0]['payload']}"
-        )
+        assert (
+            errors[0]["payload"]["code"] == "validation_error"
+        ), f"{method}: {bad} → {errors[0]['payload']}"
         assert not d.shutdown_requested.is_set()
 
 

@@ -642,6 +642,31 @@ class AppRestoreStagedEvent(_Result):
     validated_snapshot_path: str
 
 
+# Toast events (Phase 4 Step 4.6) — backend → Tauri shell only. The Rust stdout
+# reader routes any `event` whose method starts with `toast.` to the WinRT
+# module (`src-tauri/src/toast.rs`) and does NOT forward it to the webview.
+# `toast_id` is client-generated and used verbatim as the
+# `ScheduledToastNotification.Tag`, so cancel needs no round-trip.
+class ToastRegisterEvent(_Result):
+    toast_id: str
+    reminder_id: str
+    scheduled_time: str
+    body: str
+
+
+class ToastCancelEvent(_Result):
+    toast_id: str
+
+
+class ToastFireEvent(_Result):
+    reminder_id: str
+    body: str
+
+
+class ToastCancelAllEvent(_Result):
+    pass
+
+
 # --------------------------------------------------------------------------
 # Registry
 # --------------------------------------------------------------------------

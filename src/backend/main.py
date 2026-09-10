@@ -120,7 +120,9 @@ def _serve(transport: StdioTransport) -> int:
             if recon.overdue or recon.pending_acknowledgment:
                 transport.send(make_event("app.reminders_pending", reconciliation_payload(recon)))
 
-        toast_bridge = resolve_bridge_from_env()
+        toast_bridge = resolve_bridge_from_env(
+            emit=lambda method, params: transport.send(make_event(method, params))
+        )
         worker = SessionWorker(
             db_path,
             key=key,

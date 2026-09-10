@@ -33,6 +33,17 @@ tokio = { version = "1", features = ["sync", "time"] }
 # already in the dependency graph via tauri).
 time = { version = "0.3", features = ["formatting", "parsing"] }
 
+# WinRT toast notifications (Phase 4 Step 4.6) — Windows.UI.Notifications for
+# ScheduledToastNotification (the OS fires the reminder even when the app is
+# closed; project_logic §9). Windows-only.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Data_Xml_Dom",
+  "Foundation",
+  "Foundation_Collections",
+  "UI_Notifications",
+] }
+
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1

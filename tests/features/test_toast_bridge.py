@@ -10,6 +10,7 @@ import pytest
 from src.features.toast_bridge import (
     FileRecordingToastBridge,
     InMemoryToastBridge,
+    IpcToastBridge,
     NoOpToastBridge,
     resolve_bridge_from_env,
 )
@@ -90,3 +91,46 @@ def test_resolve_bridge_from_env_returns_file_recorder_when_set(monkeypatch, tmp
     assert isinstance(bridge, FileRecordingToastBridge)
     bridge.register_toast("r", "2026-02-12T09:00:00Z", "x")
     assert target.exists()
+
+
+# --------------------------------------------------------------------------
+# Phase 4 Step 4.6 — the real IpcToastBridge (emits toast.* event frames)
+# --------------------------------------------------------------------------
+
+
+def test_ipc_bridge_emits_one_event_frame_per_call():
+    emitted: list[tuple[str, dict]] = []
+    bridge = IpcToastBridge(lambda method, params: emitted.append((method, params)))
+
+    tid = bridge.register_toast("rem_1", "2026-12-01T14:00:00+00:00", "Call the dentist")
+    bridge.cancel_toast(tid)
+    bridge.fire_toast("rem_1", "Call the dentist")
+    bridge.cancel_all()
+
+    assert [m for m, _ in emitted] == [
+        "toast.register",
+        "toast.cancel",
+        "toast.fire",
+        "toast.cancel_all",
+    ]
+    reg = emitted[0][1]
+    assert reg["toast_id"] == tid and reg["toast_id"].startswith("toast_")
+    assert reg == {
+        "toast_id": tid,
+        "reminder_id": "rem_1",
+        "scheduled_time": "2026-12-01T14:00:00+00:00",
+        "body": "Call the dentist",
+    }
+    assert emitted[1][1] == {"toast_id": tid}  # cancel names the same client id — no round-trip
+    assert emitted[3][1] == {}
+
+
+def test_resolve_bridge_prefers_fake_env_over_ipc(monkeypatch, tmp_path):
+    monkeypatch.setenv("RAGPIPE_FAKE_TOAST", str(tmp_path / "t.jsonl"))
+    assert isinstance(resolve_bridge_from_env(emit=lambda *a: None), FileRecordingToastBridge)
+
+
+def test_resolve_bridge_returns_ipc_when_emit_given(monkeypatch):
+    monkeypatch.delenv("RAGPIPE_FAKE_TOAST", raising=False)
+    assert isinstance(resolve_bridge_from_env(emit=lambda *a: None), IpcToastBridge)
+    assert isinstance(resolve_bridge_from_env(), NoOpToastBridge)

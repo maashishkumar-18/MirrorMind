@@ -435,6 +435,12 @@ fn route_frame(app: &AppHandle, frame: Value) {
             }
         }
         FrameKind::Event { method } => {
+            // toast.* events are handled internally against WinRT — never
+            // forwarded to the webview (Phase 4 Step 4.6).
+            if method.starts_with("toast.") {
+                crate::toast::handle(&method, &frame);
+                return;
+            }
             if let Some(bridge) = app.try_state::<BackendBridge>() {
                 bridge.exit_hint.lock().unwrap().observe(&method, &frame);
                 if method == "app.ready" {
@@ -697,6 +703,30 @@ mod tests {
             classify_frame(&json!({ "junk": 1 })),
             FrameKind::Passthrough
         );
+    }
+
+    #[test]
+    fn toast_events_classify_as_events_so_route_frame_can_intercept_them() {
+        // Phase 4 Step 4.6: route_frame checks `method.starts_with("toast.")`
+        // on the Event arm and hands the frame to `toast::handle` instead of
+        // emitting `backend:message`.
+        for method in [
+            "toast.register",
+            "toast.cancel",
+            "toast.cancel_all",
+            "toast.fire",
+        ] {
+            let frame = json!({
+                "message_type": "event",
+                "payload": { "method": method, "params": {} }
+            });
+            assert_eq!(
+                classify_frame(&frame),
+                FrameKind::Event {
+                    method: method.into()
+                }
+            );
+        }
     }
 
     #[test]

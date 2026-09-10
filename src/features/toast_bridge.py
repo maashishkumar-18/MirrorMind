@@ -18,6 +18,7 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 from src.features.base import new_id
@@ -144,12 +145,61 @@ class FileRecordingToastBridge(InMemoryToastBridge):
         self._record("cancel_all", {})
 
 
-def resolve_bridge_from_env() -> ToastBridge:
-    """The backend composition root's toast bridge. ``NoOpToastBridge`` unless
-    the ``RAGPIPE_FAKE_TOAST`` test seam names a recording file. The real WinRT
-    bridge (Phase 4 Step 4.6) will slot in here."""
+class IpcToastBridge(ToastBridge):
+    """The real bridge (Phase 4 Step 4.6). Emits one outbound ``toast.*`` event
+    frame per call over the stdio transport; the Tauri Rust shell
+    (``src-tauri/src/toast.rs``) handles it against WinRT
+    (``Windows.UI.Notifications``) — the backend never touches WinRT directly
+    (``project_logic.md`` §7).
+
+    ``toast_id`` is **client-generated** (this side) and used verbatim by Rust
+    as the ``ScheduledToastNotification.Tag``, so ``cancel_toast`` needs no
+    round-trip: it just names the same tag. ``emit`` is
+    ``lambda method, params: transport.send(make_event(method, params))`` wired
+    at the composition root — injected (not imported) so this low-level module
+    keeps no dependency on ``src/backend``.
+    """
+
+    def __init__(self, emit: Callable[[str, dict[str, str]], None]) -> None:
+        self._emit = emit
+
+    def register_toast(self, reminder_id: str, scheduled_time: str, body: str) -> str:
+        toast_id = new_id("toast")
+        self._emit(
+            "toast.register",
+            {
+                "toast_id": toast_id,
+                "reminder_id": reminder_id,
+                "scheduled_time": scheduled_time,
+                "body": body,
+            },
+        )
+        return toast_id
+
+    def cancel_toast(self, toast_id: str) -> None:
+        self._emit("toast.cancel", {"toast_id": toast_id})
+
+    def fire_toast(self, reminder_id: str, body: str) -> None:
+        self._emit("toast.fire", {"reminder_id": reminder_id, "body": body})
+
+    def cancel_all(self) -> None:
+        self._emit("toast.cancel_all", {})
+
+
+def resolve_bridge_from_env(
+    emit: Callable[[str, dict[str, str]], None] | None = None,
+) -> ToastBridge:
+    """The backend composition root's toast bridge:
+
+    * ``RAGPIPE_FAKE_TOAST=<path>`` → :class:`FileRecordingToastBridge` (e2e seam);
+    * else an ``emit`` callable given → :class:`IpcToastBridge` (the real bridge —
+      the Tauri shell is present);
+    * else :class:`NoOpToastBridge` (headless / tests).
+    """
     path = os.getenv(_FAKE_TOAST_ENV)
     if path:
         logger.warning("%s active — recording toast calls to %s", _FAKE_TOAST_ENV, path)
         return FileRecordingToastBridge(path)
+    if emit is not None:
+        return IpcToastBridge(emit)
     return NoOpToastBridge()

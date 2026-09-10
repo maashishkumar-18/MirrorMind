@@ -528,6 +528,22 @@ export const AppRestoreStagedEvent = z
   .object({ validated_snapshot_path: z.string() })
   .strict();
 
+// Toast events (Phase 4 Step 4.6) — backend → Tauri shell only; the Rust reader
+// routes `toast.*` events to the WinRT module and does not forward them here.
+export const ToastRegisterEvent = z
+  .object({
+    toast_id: z.string(),
+    reminder_id: z.string(),
+    scheduled_time: z.string(),
+    body: z.string(),
+  })
+  .strict();
+export const ToastCancelEvent = z.object({ toast_id: z.string() }).strict();
+export const ToastFireEvent = z
+  .object({ reminder_id: z.string(), body: z.string() })
+  .strict();
+export const ToastCancelAllEvent = z.object({}).strict();
+
 // --------------------------------------------------------------------------
 // Registries
 // --------------------------------------------------------------------------
@@ -606,6 +622,10 @@ export const EVENT_SCHEMAS = {
   "app.restore_staged": AppRestoreStagedEvent,
   "app.reminders_pending": AppRemindersPendingEvent,
   "model.download.progress": ModelDownloadProgressEvent,
+  "toast.register": ToastRegisterEvent,
+  "toast.cancel": ToastCancelEvent,
+  "toast.fire": ToastFireEvent,
+  "toast.cancel_all": ToastCancelAllEvent,
 } as const satisfies Record<string, z.ZodTypeAny>;
 
 export type EventName = keyof typeof EVENT_SCHEMAS;

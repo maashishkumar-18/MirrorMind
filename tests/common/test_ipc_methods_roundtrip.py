@@ -39,6 +39,10 @@ EVENT_MODELS: dict[str, type[BaseModel]] = {
     "app.restore_staged": m.AppRestoreStagedEvent,
     "app.reminders_pending": m.AppRemindersPendingEvent,
     "model.download.progress": m.ModelDownloadProgressEvent,
+    "toast.register": m.ToastRegisterEvent,
+    "toast.cancel": m.ToastCancelEvent,
+    "toast.fire": m.ToastFireEvent,
+    "toast.cancel_all": m.ToastCancelAllEvent,
 }
 
 
