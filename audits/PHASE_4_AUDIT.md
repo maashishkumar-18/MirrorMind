@@ -419,9 +419,20 @@ Phase 4; the binding pass is a full `eval/run_eval.py` run against
 
 - This box runs `llama3.1:8b` but a full 86-item run is ~4 h (Phase A ~1.5 h +
   Phase B faithfulness now honestly at 120s/call). A **24-item sample** run
-  (`--sample-size 24 --seed 11`) with all three fixes is in flight for
-  directional signal; the log so far shows conversation-recall questions
-  consistently routing `retrieval_query → semantic` (the prior failure mode).
+  (`--sample-size 24 --seed 11`) with all three fixes:
+
+  | metric | sample (n=24) | gate | prior calibration |
+  |---|---|---|---|
+  | `agentic_routing` | **0.903 PASS** | ≥ 0.9 | 0.61 / 0.64 |
+  | `faithfulness` | **0.917 PASS** (real `llm_check`, no fallback) | ≥ 0.6 | 0.93 / 0.87 |
+  | `temporal_accuracy` | 0.500 PASS | ≥ 0.45 | 0.50 / 0.64 |
+  | `refusal_rate` | 0.875 (7/8) — small-sample noise; the band is set for the full set's 20 unanswerable | 0.90–1.0 | 0.95 |
+
+  Every routing miss is now a `semantic` vs `structured` vs `hybrid` sub-choice
+  on an item `docs/eval_review.md` itself flags as arguable (q021 / q051 / q002
+  / q012) — **`retrieve_needed` never collapses to `false` any more**, the
+  primary failure mode. The refusal_rate "fail" is 1 miss over 8 unanswerable
+  (vs the 1-over-20 the 0.95 baseline was measured on); the full set has 20.
 - The **binding** gate-pass run is the `eval` CI job (`workflow_dispatch`,
   `ubuntu-latest` 16 GB — no swap thrash, faster CPU). It must be triggered
   (Actions → CI → Run workflow → `main`); its `eval-results` artifact, when
