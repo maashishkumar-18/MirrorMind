@@ -144,7 +144,13 @@ class GroundingValidator:
         context = "\n\n".join(c.content for c in chunks)[:6000]
         prompt = _LLM_GROUNDING_PROMPT.format(context=context, answer=answer[:4000])
         try:
-            raw = simple_generate(prompt, self._model, registry=self._registry).strip()
+            # 120s, not simple_generate's 30s default: a CPU 7B/8B grounding
+            # check routinely needs 40-90s and a timeout here silently degrades
+            # every faithfulness score to the keyword-overlap fallback (Phase 4
+            # Step 4.3 — same fix RetrievalAgent got in Step 1.4b).
+            raw = simple_generate(
+                prompt, self._model, timeout_seconds=120, registry=self._registry
+            ).strip()
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):

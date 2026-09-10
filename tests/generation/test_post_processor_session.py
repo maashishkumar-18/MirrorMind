@@ -103,6 +103,7 @@ def test_llm_check_grounding_uses_simple_generate(monkeypatch):
 
     def _fake(prompt, model=None, **kw):
         calls["prompt"] = prompt
+        calls["kw"] = kw
         return '{"grounded": true, "confidence": 0.88}'
 
     monkeypatch.setattr("src.common.llm_client.simple_generate", _fake)
@@ -111,6 +112,9 @@ def test_llm_check_grounding_uses_simple_generate(monkeypatch):
     assert grounded is True
     assert conf == pytest.approx(0.88)
     assert "launch moves to Friday" in calls["prompt"]
+    # Phase 4 Step 4.3: a CPU 7B/8B grounding check needs > 30s; the default
+    # timeout silently degrades every faithfulness score to keyword overlap.
+    assert calls["kw"]["timeout_seconds"] == 120
 
 
 def test_llm_check_falls_back_to_keyword_overlap_on_failure(monkeypatch):

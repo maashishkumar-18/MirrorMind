@@ -131,3 +131,40 @@ def test_retrieve_needed_false_is_passed_through(monkeypatch):
     out = RetrievalAgent().reason("hey there")
     assert out.retrieve_needed is False
     assert out.response == "Hey! How's it going?"
+
+
+# --------------------------------------------------------------------------
+# Phase 4 Step 4.3 — the retrieval_query consistency nudge
+# --------------------------------------------------------------------------
+
+
+def test_retrieval_query_with_retrieve_needed_false_is_nudged_on(monkeypatch):
+    _patch_generate(
+        monkeypatch,
+        json.dumps({**CLEAN, "action_type": "retrieval_query", "retrieve_needed": False}),
+    )
+    out = RetrievalAgent().reason("when did we say we'd move the launch?")
+    assert out.action_type == AgenticActionType.RETRIEVAL_QUERY
+    # a retrieval_query that needs no retrieval is a self-contradiction
+    assert out.retrieve_needed is True
+
+
+def test_recall_nudge_does_not_touch_conversation(monkeypatch):
+    _patch_generate(
+        monkeypatch,
+        json.dumps(
+            {**CLEAN, "action_type": "conversation", "retrieve_needed": False, "search_query": None}
+        ),
+    )
+    out = RetrievalAgent().reason("can you help me plan something later?")
+    assert out.retrieve_needed is False
+
+
+def test_recall_nudge_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("RAGPIPE_AGENT_RECALL_NUDGE", "0")
+    _patch_generate(
+        monkeypatch,
+        json.dumps({**CLEAN, "action_type": "retrieval_query", "retrieve_needed": False}),
+    )
+    out = RetrievalAgent().reason("when did we say we'd move the launch?")
+    assert out.retrieve_needed is False

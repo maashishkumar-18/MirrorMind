@@ -372,3 +372,62 @@ test runs against the packaged app in Phase 5 packaging verification.
 (8 passed) — all green with the `windows` crate. `pytest
 tests/features/test_toast_bridge.py` + `tests/backend/test_ipc*` — 181 passed.
 `npm --prefix ipc test` — 168.
+
+---
+
+## Step 4.3 — Golden eval pass: routing remediation (commit pending)
+
+**The gap** (`eval/gates.json._meta` + `docs/eval_review.md` #8): agentic-routing
+0.61/0.64 vs the roadmap-fixed 0.9 floor. Root cause, from two calibration runs:
+the local 8B model (a) emitted `action_type="retrieval_query"` with
+`retrieve_needed=false` — a self-contradiction that zeroes routing on plain
+recall questions — and (b) over-favoured the `structured` route on
+conversational recall ("when's Sam's birthday?" → queries todos/reminders,
+finds nothing).
+
+**Remediation (real, three parts):**
+
+1. **`src/retrieval/retrieval_agent.py` prompt rewrite** — explicit
+   `retrieve_needed` guidance ("when did / what did / how much was / did we /
+   what's on my… → almost always true"; "when in doubt on a question about the
+   past, choose true"), a sharpened `retrieval_route` definition (`semantic` =
+   the answer lives in something the user *said*; a topic noun does NOT make it
+   `structured`; `structured` = the user asks about a kept *list* by its
+   nature), and **8 labelled few-shot examples** (one per pattern).
+2. **A deterministic consistency nudge** in `RetrievalAgent.reason`: if the
+   model returns `action_type="retrieval_query"` with `retrieve_needed=false`,
+   force `retrieve_needed=true` (a retrieval query that needs no retrieval is a
+   contradiction). Tight by design — it does not touch `conversation` /
+   `none`. Reversible via `RAGPIPE_AGENT_RECALL_NUDGE=0`.
+3. **`src/generation/post_processor.py` — `GroundingValidator._llm_check` now
+   passes `timeout_seconds=120`** (was `simple_generate`'s 30s default). On CPU
+   an 8B grounding check needs 40–90s; the 30s timeout was silently degrading
+   **every** faithfulness score in the eval to the keyword-overlap fallback
+   (found while running the first full local eval). Same fix `RetrievalAgent`
+   got in Step 1.4b.
+
+`config/retrieval/router.yaml` is untouched — the nudge lives in the agent (it
+has no config binding; a whole config module for one boolean is overkill), so
+the plan's "gate in router.yaml" became the `RAGPIPE_AGENT_RECALL_NUDGE` env
+seam, consistent with the codebase's other `RAGPIPE_*` seams.
+
+**Validation.** `pytest tests/eval/test_harness_smoke.py` +
+`tests/retrieval/test_retrieval_agent.py` (14) + `tests/generation` (grounding
+timeout regression) — green. The gates are roadmap-**fixed** and enforced from
+Phase 4; the binding pass is a full `eval/run_eval.py` run against
+`llama3.1:8b`:
+
+- This box runs `llama3.1:8b` but a full 86-item run is ~4 h (Phase A ~1.5 h +
+  Phase B faithfulness now honestly at 120s/call). A **24-item sample** run
+  (`--sample-size 24 --seed 11`) with all three fixes is in flight for
+  directional signal; the log so far shows conversation-recall questions
+  consistently routing `retrieval_query → semantic` (the prior failure mode).
+- The **binding** gate-pass run is the `eval` CI job (`workflow_dispatch`,
+  `ubuntu-latest` 16 GB — no swap thrash, faster CPU). It must be triggered
+  (Actions → CI → Run workflow → `main`); its `eval-results` artifact, when
+  gates pass, gets committed under `eval/results/` and `eval/gates.json._meta`
+  updated. `golden_set_sha256` is unchanged — the golden set is frozen, only
+  the pipeline changed. The roadmap-fixed floors (`faithfulness.min` 0.6,
+  `agentic_routing.min` 0.9) are not moved.
+
+**Status: remediation landed; binding eval pass pending the CI `eval` dispatch.**
