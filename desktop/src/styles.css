@@ -1070,6 +1070,8 @@ h1 {
 
 .settings-danger {
   color: var(--danger-text);
+  /* override .settings-hint's 0.75 — a dimmed danger colour fails AA contrast */
+  opacity: 1;
   border-color: rgba(201, 75, 75, 0.5);
 }
 
