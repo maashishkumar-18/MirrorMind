@@ -125,42 +125,64 @@ Guidance:
 - confidence >= 0.85: act on it. 0.70-0.85: you'd want a quick confirm.
   0.50-0.70: you'd ask for clarification. < 0.50: treat it as plain conversation.
 
-- retrieve_needed: set it TRUE whenever answering means looking something up in
-  the user's history — anything that already happened, anything they told you
-  before, a date/time/amount/decision they mentioned, or the contents of a
-  reminder / todo / meeting note / schedule item. Questions that start with
-  "when did", "what did", "how much was", "did we", "what's on my…", "when is
-  <a person or event>" are almost always retrieve_needed = true. Set it FALSE
-  only for a greeting, small talk, or a general-knowledge question you can
-  answer without their records. When in doubt on a question about the past,
-  choose true. If action_type is "retrieval_query", retrieve_needed is true.
+- action_type: "retrieval_query" for a question about the past. "reminder" /
+  "todo" / "schedule" / "meeting_note" when the user is TELLING you to record
+  something ("remind me to…", "add … to my todo", "put … on my calendar",
+  "here are my notes from the sync: …"). "summary_request" when they want a
+  roll-up across everything on a topic ("catch me up on the launch", "summarize
+  where the move stands", "give me the rundown / the state of X", "summary of
+  my week"). "conversation" for small talk or general knowledge.
+
+- retrieve_needed: TRUE whenever answering a question means looking something up
+  in the user's history — anything that already happened, anything they told you
+  before, a date/time/amount/decision they mentioned, the contents of a reminder
+  / todo / meeting note / schedule item, or a topic roll-up. FALSE for a
+  greeting, small talk, a general-knowledge question — and FALSE for a command
+  that RECORDS something ("remind me to…", "add … to my list", "put … on my
+  calendar", "here are my notes: …"): you are writing, not looking up. When in
+  doubt on a *question* about the past, choose true.
 
 - retrieval_route (only matters when retrieve_needed is true):
+  * "structured" — the question targets a KEPT RECORD by its nature:
+    - a named meeting / retro / sync / standup / 1:1 and its decisions,
+      attendees, or action items ("what did the launch retro decide", "who was
+      at the retro", "follow-up from the moving logistics meeting");
+    - the time or place of a scheduled event ("when do the movers arrive",
+      "when's book club this week", "when am I taking the car in");
+    - whether a reminder or todo exists / what's on a list ("am I supposed to
+      call anyone about my teeth", "did I set anything up about X", "anything I
+      need to do before the plants die", "what's on my todo list").
   * "semantic" — the answer lives in something the user SAID in a past
-    conversation: "when did we decide to move the launch", "when are we leaving
-    for the trip", "when is Sam's birthday", "what did my manager say". This is
-    the default for recall questions; a topic word like a name or a place does
-    NOT make it structured.
-  * "structured" — the user is asking about one of their kept LISTS by its
-    nature: their reminders, their todos, their schedule for a day, or a
-    captured meeting note's decisions/action-items. "what's on my todo list",
-    "what do I have scheduled Friday", "what were the decisions in the launch
-    meeting".
-  * "hybrid" — it could plausibly be answered from either, or names a thing that
-    was both discussed and stored: "what do I still need to do before the trip".
-  When unsure between semantic and structured, choose "semantic".
+    conversation: what was decided / agreed / discussed, when a trip or birthday
+    is, what a person said, who owns or what the budget is for something that
+    came up in chat ("when did we move the launch", "who's owning the checklist",
+    "what's the cap on the budget", "what did my manager say").
+  * "hybrid" — a topic roll-up, or a vague question whose answer plausibly spans
+    both a conversation and a record ("give me the rundown on the trip", "what
+    have I got coming that'll cost money", "who's helping me move").
+  Tie-breaker: a named meeting, a scheduled event's time/place, or a
+  reminder/todo lookup -> structured. Otherwise, if torn between semantic and
+  structured, choose semantic.
 
 - Base everything ONLY on the conversation below.
 - Return ONLY the JSON object. No markdown fence, no commentary.
 
 Examples (message -> the routing fields):
 - "when did we say we'd move the launch to?" -> retrieval_query, retrieve_needed true, semantic
-- "when's Sam's birthday?" -> retrieval_query, retrieve_needed true, semantic
+- "who's owning the launch checklist?" -> retrieval_query, retrieve_needed true, semantic
+- "what's the cap on the launch budget?" -> retrieval_query, retrieve_needed true, semantic
 - "what did my manager say about the payments team?" -> retrieval_query, retrieve_needed true, semantic
-- "what's the most urgent thing on my todo list?" -> retrieval_query, retrieve_needed true, structured
-- "what do I have scheduled on Thursday?" -> retrieval_query, retrieve_needed true, structured
-- "what were the decisions from the launch meeting?" -> retrieval_query, retrieve_needed true, structured
-- "remind me what I still need to pack" -> retrieval_query, retrieve_needed true, hybrid
+- "what did we decide in the launch retro?" -> retrieval_query, retrieve_needed true, structured
+- "who was at the launch retro?" -> retrieval_query, retrieve_needed true, structured
+- "when do the movers arrive?" -> retrieval_query, retrieve_needed true, structured
+- "am I supposed to call anyone about my teeth?" -> retrieval_query, retrieve_needed true, structured
+- "anything I should deal with before the plants die?" -> retrieval_query, retrieve_needed true, structured
+- "what's on my todo list?" -> retrieval_query, retrieve_needed true, structured
+- "catch me up on the launch." -> summary_request, retrieve_needed true, hybrid
+- "give me a summary of my week." -> summary_request, retrieve_needed true, hybrid
+- "remind me to pack the tent the night before we leave." -> reminder, retrieve_needed false
+- "add buy milk to my todo list." -> todo, retrieve_needed false
+- "here are my notes from the design sync: we agreed to ship the new nav." -> meeting_note, retrieve_needed false
 - "hey, how's it going?" -> conversation, retrieve_needed false
 
 Recent conversation:

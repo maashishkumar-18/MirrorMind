@@ -337,3 +337,74 @@ q061, q082); 5 coverage/routing follow-ups; 1 timezone risk raised and now confi
 resolved by real calibration data; 2 genuine pipeline weaknesses (q076 refusal gap,
 temporal retrieval-routing) confirmed by two independent real runs as concrete
 evidence the eval set does its job.
+
+---
+
+## Phase 4 Step 4.3 — full-86 post-remediation run (2026-09-10, `335bd9b`, run #14)
+
+First full-86 gated run on `llama3.1:8b` after the 4.3 agent-prompt remediation
+(`d489e6f`) and the `_llm_check` timeout fix. Artifact:
+`eval/results/eval_20260910T205844Z.{json,md}` (kept as the pre-fix-2 baseline).
+
+| gate | value | floor | verdict |
+|---|---|---|---|
+| faithfulness | **0.842** | ≥ 0.60 (roadmap-fixed) | **PASS** (was 0.61/0.64 pre-4.3 — the timeout fix landed it) |
+| agentic_routing | **0.826** | ≥ 0.90 (roadmap-fixed) | **FAIL** (was 0.61/0.64 — big gain, still short) |
+| refusal_rate | 0.650 | 0.95 ± 0.05 (calibrated) | FAIL |
+| temporal_accuracy | 0.571 | ≥ 0.45 (calibrated) | PASS |
+
+### agentic_routing — 41/86 items < 1.0, breakdown
+
+**~15 genuine model errors** (tune toward these):
+- Named-record lookups the model routed `semantic` instead of `structured`:
+  q031/q032/q035/q036 (a "retro"/"sync" is still a meeting), q037/q042 (a
+  scheduled event's time), q021/q048/q050 (does a reminder exist).
+- q002/q003/q012 — conversation-recall the model routed `structured` (latched on
+  "checklist"/"budget"/"book" as if they were lists).
+- q062/q063/q064 — creation commands ("remind me to…", "add … to my todo", "put
+  … on my calendar") given `retrieve_needed=true`; they record, they don't look up.
+- q065 — a pasted transcript ("here are my notes from the sync: …") classified
+  `conversation` instead of `meeting_note`.
+- q055/q056 — "summarize / give me the rundown" classified `retrieval_query`
+  instead of `summary_request`.
+
+**~10 debatable / label-noise** — the unanswerable hard-negatives (q067–q085):
+the golden set routes 8 of them `hybrid`, q077 `semantic`, q083 `structured`, for
+near-identical question shapes; the model answers `semantic`/`structured`
+consistently and reasonably. Tuning to the `hybrid` majority would be gaming and
+would break q077/q083. **Recommendation: do not chase these; if routing can't
+clear 0.90 without them, that is a gate/label conversation, not a model fix.**
+
+**~15 genuinely 2-way** — paraphrase questions whose facts span a conversation
+and a record (q049/q051/q052/q053/q054); the golden set picks `hybrid`, the model
+picks `semantic`. Its own notes say "any reasonable subset scores as correct"
+(q049) — the scoring does not honour that. Mixed signal.
+
+### refusal_rate 0.650 — part scoring gap, part real
+
+- **Scoring gap (fixed here):** q074 ("Your manager's name **is not mentioned in
+  our past conversations**"), q085 ("Priya's email address **isn't mentioned…**"),
+  q075 ("No, **you didn't decide** on a camera model") are textbook refusals that
+  `REFUSAL_PATTERNS` did not match (it only caught "I don't have…"). Added two
+  patterns → these three flip to refused → 0.650 → **0.80** on the same answers.
+- **Real gap (~4 items):** q068/q069/q076/q086 — the generator answers an
+  unanswerable question from a *tangential* retrieved chunk ("We're flying direct
+  to Lisbon" for "which airline?"). The 4.3 change made retrieval fire on every
+  unanswerable item (correct per the golden set: `expected_retrieve_needed=true`),
+  which handed the generator chunks to over-extrapolate from. This is the q076
+  weakness from the earlier review, now at scale — a generation-prompt follow-up
+  (refuse on a present-but-null field), tracked separately.
+
+### Changes made (fix-2, this commit)
+1. `eval/run_eval.py::REFUSAL_PATTERNS` — +2 patterns for the "X isn't mentioned
+   in our past conversations" / "you didn't decide" refusal phrasings.
+2. `src/retrieval/retrieval_agent.py::_build_prompt` — route guidance rebalanced:
+   explicit `structured` triggers (named meeting/retro/sync, a scheduled event's
+   time/place, reminder/todo existence), `retrieve_needed=false` for record-
+   creation commands, `summary_request` for roll-up phrasings; 16 labelled
+   few-shots (was 8) targeting the miss patterns above. Tie-breaker still favours
+   `semantic` when genuinely torn.
+
+Calibrated bands (`refusal_rate.baseline`, `temporal_accuracy.min`) are **not**
+re-anchored yet — that waits for a clean post-fix-2 run so the anchor reflects
+the intended pipeline, not a transitional one.

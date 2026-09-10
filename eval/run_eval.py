@@ -113,6 +113,20 @@ REFUSAL_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(r"\b(?:no|not any) (?:mention|record|information|reference) of\b", re.IGNORECASE),
+    # "<topic> is/was/isn't mentioned in our past conversations / your notes" —
+    # llama phrases the template's intent this way just as often as "I don't
+    # have …" (q074, q085). Same refusal, different verb.
+    re.compile(
+        r"(?:is|are|was|were|isn'?t|aren'?t|wasn'?t|weren'?t|not) .{0,40}?"
+        r"mentioned .{0,30}?(?:past (?:conversation|chat)s?|your notes|our (?:conversation|chat)s?)",
+        re.IGNORECASE,
+    ),
+    # "you didn't decide / we never settled on / that was never decided" — a
+    # direct "no, that didn't happen" to a "did I/we …?" question (q075).
+    re.compile(
+        r"\b(?:you|we) (?:did ?n'?t|never) (?:decide|settle|choose|pick|land on|finalize)",
+        re.IGNORECASE,
+    ),
 )
 
 
