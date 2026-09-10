@@ -17,6 +17,7 @@ Skipped (not failed) when Node isn't available locally.
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -60,15 +61,27 @@ def _model_for(target: str) -> type[BaseModel]:
 
 
 def _run_zod_validator(target: str, payload: object) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["npx", "tsx", "schema/validate_methods_stdin.ts"],
-        input=json.dumps({"target": target, "payload": payload}),
-        capture_output=True,
-        text=True,
-        cwd=str(IPC_DIR),
-        shell=True,  # npx.cmd resolution on Windows requires the shell
-        timeout=30,
-    )
+    # One `npx tsx` cold-start per fixture — under memory pressure (torch loaded
+    # by earlier test files in a full run) the spawn itself can transiently
+    # fail. Retry a couple of times before treating it as a real mismatch.
+    payload_json = json.dumps({"target": target, "payload": payload})
+    last: subprocess.CompletedProcess | None = None
+    for attempt in range(3):
+        proc = subprocess.run(
+            ["npx", "tsx", "schema/validate_methods_stdin.ts"],
+            input=payload_json,
+            capture_output=True,
+            text=True,
+            cwd=str(IPC_DIR),
+            shell=True,  # npx.cmd resolution on Windows requires the shell
+            timeout=60,
+        )
+        if proc.returncode == 0:
+            return proc
+        last = proc
+        time.sleep(1.5 * (attempt + 1))
+    assert last is not None
+    return last
 
 
 def test_every_contract_and_event_has_a_fixture() -> None:
