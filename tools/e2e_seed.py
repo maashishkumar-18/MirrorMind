@@ -38,6 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from db.connection import open_session_db  # noqa: E402
+from db.migration_runner import MigrationRunner  # noqa: E402
 
 
 def _now() -> str:
@@ -73,6 +74,10 @@ def main(argv: list[str]) -> int:
     db_path, spec_path = argv
     spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
     key = os.getenv("RAGPIPE_DB_KEY") or None
+
+    # Forward-only + idempotent (project_logic §11) — safe whether the backend
+    # has run yet or not, so a flow can seed before the first launch.
+    MigrationRunner(db_path, key=key, snapshot_dir=Path(db_path).parent / "snapshots").run()
 
     conn = open_session_db(db_path, key)
     try:

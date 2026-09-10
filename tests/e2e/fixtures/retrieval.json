@@ -1,0 +1,21 @@
+{
+  "rules": [
+    {
+      "when": { "all": ["reasoning core of a personal ai companion", "[user]: what did we agree"] },
+      "respond": "{\"action_type\": \"retrieval_query\", \"confidence\": 0.4, \"retrieve_needed\": true, \"retrieval_route\": \"semantic\", \"search_query\": \"Q4 planning call agreement\", \"response\": \"Let me check our past chats.\"}"
+    },
+    {
+      "when": { "all": ["reasoning core of a personal ai companion", "[user]: on the q4 planning call"] },
+      "respond": "{\"action_type\": \"conversation\", \"confidence\": 0.2, \"retrieve_needed\": false, \"retrieval_route\": \"semantic\", \"search_query\": null, \"response\": \"Got it — noted.\"}"
+    },
+    {
+      "when": { "any": ["you are a personal ai companion with access to the user's own past"] },
+      "respond": "On the Q4 planning call we agreed to ship on Friday and Priya owns the checklist. {{regex:(\\[Session session_\\w+ · approx\\. [^\\]]+\\])}}"
+    },
+    {
+      "when": { "any": ["you classify a conversation between a person"] },
+      "respond": "{\"topics\": [\"Q4 planning call\", \"launch date\"], \"action_types\": [], \"entities\": [\"Priya\"], \"sentiment\": \"neutral\", \"confidence\": 0.9}"
+    }
+  ],
+  "default": "{\"action_type\": \"conversation\", \"confidence\": 0.2, \"retrieve_needed\": false, \"retrieval_route\": \"semantic\", \"search_query\": null, \"response\": \"Okay.\"}"
+}

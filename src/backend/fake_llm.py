@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,12 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _ENV_VAR = "RAGPIPE_FAKE_LLM"
+
+# `{{regex:PATTERN}}` inside a `respond` string is replaced by capture group 1 of
+# PATTERN matched against the ORIGINAL-CASE combined prompt (empty on no match).
+# Lets a canned generation echo the real `[Session <id> · approx. <ts>]` header
+# that ContextBuilder injected — the id isn't knowable when the fixture is written.
+_TEMPLATE_RE = re.compile(r"\{\{regex:(.+?)\}\}")
 
 
 class _Rule:
@@ -77,11 +84,20 @@ class FakeLLMFixture:
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls(raw)
 
+    @staticmethod
+    def _expand(respond: str, prompt: str) -> str:
+        def _sub(m: re.Match[str]) -> str:
+            found = re.search(m.group(1), prompt)
+            return found.group(1) if found and found.groups() else ""
+
+        return _TEMPLATE_RE.sub(_sub, respond)
+
     def respond_to(self, system_prompt: str, user_prompt: str) -> str:
-        haystack = f"{system_prompt}\n{user_prompt}".lower()
+        prompt = f"{system_prompt}\n{user_prompt}"
+        haystack = prompt.lower()
         for rule in self._rules:
             if rule.matches(haystack):
-                return rule.respond
+                return self._expand(rule.respond, prompt)
         if self._default is not None:
             logger.warning(
                 "fake-LLM: no rule matched; using default. prompt head=%r", user_prompt[:200]

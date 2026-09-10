@@ -1,0 +1,9 @@
+{
+  "rules": [
+    {
+      "when": { "any": ["you extract structured facts from a meeting transcript"] },
+      "respond": "{\"attendees\": [\"Priya\", \"Sam\"], \"topics\": [\"Q4 launch\"], \"decisions\": [\"Launch moves to Friday\", \"Priya owns the launch checklist\"], \"action_items\": [{\"task\": \"Send the updated launch checklist\", \"owner\": \"Priya\", \"deadline\": \"Wednesday\"}], \"follow_ups\": [\"Confirm marketing is ready by Thursday\"]}"
+    }
+  ],
+  "default": "{\"action_type\": \"conversation\", \"confidence\": 0.2, \"retrieve_needed\": false, \"retrieval_route\": \"semantic\", \"search_query\": null, \"response\": \"Okay.\"}"
+}

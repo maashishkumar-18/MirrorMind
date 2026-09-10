@@ -31,7 +31,7 @@ from db.connection import open_session_db
 from db.health import check_integrity
 from db.migration_runner import MigrationRunner
 from observability.tracing import shutdown_tracing
-from src.backend import fake_llm
+from src.backend import fake_llm, fake_models
 from src.backend.dispatcher import Dispatcher
 from src.backend.keys import resolve_db_key
 from src.backend.lifecycle import ShutdownCoordinator
@@ -83,8 +83,12 @@ def _serve(transport: StdioTransport) -> int:
     degraded = not integrity.ok
 
     active_downloads: set[str] = set()
-    ollama = OllamaManager(active_downloads=active_downloads)
-    models = ModelManager(ollama, active_downloads=active_downloads)
+    _fake = fake_models.build(active_downloads)  # None unless RAGPIPE_FAKE_MODELS is set
+    if _fake is not None:
+        ollama, models = _fake
+    else:
+        ollama = OllamaManager(active_downloads=active_downloads)
+        models = ModelManager(ollama, active_downloads=active_downloads)
     backups = BackupManager(db_path, key=key)
 
     coordinator = ShutdownCoordinator()

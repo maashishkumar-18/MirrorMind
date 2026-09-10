@@ -37,6 +37,8 @@ export interface Backend {
   start(): void;
   /** Kill + respawn against the same data dir — exercises reconciliation. */
   restart(): Promise<void>;
+  /** Kill the sidecar without tearing down the bridge (so `seed` can write). */
+  stopChild(): Promise<void>;
   /** Wait until the frontend store has seen `app.ready`. */
   waitReady(): Promise<void>;
   /** Apply a `tools.e2e_seed` spec to the DB (backend must be stopped). */
@@ -50,17 +52,37 @@ export interface Backend {
 export const test = base.extend<{
   /** Per-flow: basename of a file under tests/e2e/fixtures/ (no extension). */
   fakeLlmFixture: string | undefined;
+  /** Per-flow: stub model management (RAGPIPE_FAKE_MODELS) for the download flow. */
+  fakeModels: boolean;
+  /** Per-flow: pre-set the active model so model-gated routes pass. */
+  activeModel: string | undefined;
   backend: Backend;
 }>({
   fakeLlmFixture: [undefined, { option: true }],
+  fakeModels: [false, { option: true }],
+  activeModel: [undefined, { option: true }],
 
-  backend: async ({ page, fakeLlmFixture }, use) => {
+  backend: async ({ page, fakeLlmFixture, fakeModels, activeModel }, use) => {
     const dataDir = mkdtempSync(join(tmpdir(), "mm-e2e-"));
     const toastFile = join(dataDir, "toast-calls.jsonl");
     const dbPath = join(dataDir, "session.db");
     const fakeLlm = fakeLlmFixture ? join(FIXTURES_DIR, `${fakeLlmFixture}.json`) : undefined;
 
-    const bridge = new BridgeServer({ python: PYTHON, dataDir, dbKey: DB_KEY, fakeLlm, toastFile });
+    if (activeModel) {
+      writeFileSync(
+        join(dataDir, "app_config.json"),
+        JSON.stringify({ version: 3, active_model: activeModel }),
+      );
+    }
+
+    const bridge = new BridgeServer({
+      python: PYTHON,
+      dataDir,
+      dbKey: DB_KEY,
+      fakeLlm,
+      toastFile,
+      extraEnv: fakeModels ? { RAGPIPE_FAKE_MODELS: "1" } : {},
+    });
     const port = await bridge.listen();
 
     await page.addInitScript((p) => {
@@ -73,6 +95,7 @@ export const test = base.extend<{
       dbPath,
       start: () => bridge.start(),
       restart: () => bridge.restart(),
+      stopChild: () => bridge.kill(),
       waitReady: async () => {
         await page.waitForFunction(
           () => {

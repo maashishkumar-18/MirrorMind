@@ -11,8 +11,8 @@ Plan: `.claude/plans/memoized-snuggling-emerson.md`.
 
 | Step | Scope | Status |
 |---|---|---|
-| 4.1a | E2E harness — fake-LLM seam, fake-toast seam, Playwright bridge | **DONE** |
-| 4.1b | The five required end-to-end flows | pending |
+| 4.1a | E2E harness — fake-LLM seam, fake-toast seam, Playwright bridge | **DONE** (`f35d53b`) |
+| 4.1b | The five required end-to-end flows | **DONE** |
 | 4.2  | IPC contract verification (every method, valid + invalid, version N vs N+1) | pending |
 | 4.3  | Golden eval pass — routing remediation + CI eval dispatch | pending |
 | 4.4a | disk-full + network-loss download simulation (roadmap acceptance wording) | pending |
@@ -107,11 +107,38 @@ New `e2e` job (`.github/workflows/ci.yml`, `windows-latest`): checkout w/ LFS
 - `black` / `ruff` / `mypy src observability db` clean; `desktop` typecheck /
   lint / test (149) / build green.
 
-### Carried into 4.1b
+---
 
-The five flows + their per-flow `RAGPIPE_FAKE_LLM` fixtures. The memory-retrieval
-flow seeds its session through two `chat.send` calls (real `all-MiniLM`
-re-ingest) rather than `e2e_seed`. If sidecar warm-up (embeddings + reranker)
-proves too slow for the < 5 min budget, add a `RAGPIPE_FAKE_RETRIEVAL` seam
-injecting the existing stub agent/router/orchestrator into the `SessionWorker`
-from `main.py`.
+## Step 4.1b — the five flows (commit pending)
+
+`desktop/e2e/flows/*.spec.ts`, one `RAGPIPE_FAKE_LLM` fixture per flow under
+`tests/e2e/fixtures/`. All assertions go through the rendered views + a final DB
+/ toast-file check. The whole suite (6 specs incl. the 4.1a smoke) runs in
+**~44 s** locally, well under the 5-minute budget; sidecar warm-up
+(`all-MiniLM` + cross-encoder) is fast enough that no `RAGPIPE_FAKE_RETRIEVAL`
+seam was needed.
+
+New harness affordances (`support/harness.ts`): `activeModel` option writes a
+minimal `app_config.json` before launch so model-gated routes pass;
+`fakeModels` option sets `RAGPIPE_FAKE_MODELS`; `backend.stopChild()` +
+`backend.seed()` (which now runs `MigrationRunner` itself, so a flow can seed
+before the first launch). New backend seam **`src/backend/fake_models.py`** —
+`_FakeOllamaManager` + an `_InstantPullStreamer` that marks a model installed
+and reports success; `main._serve` uses it when `RAGPIPE_FAKE_MODELS` is set.
+`fake_llm.py` gained `{{regex:PATTERN}}` templating in a rule's `respond` so a
+canned generation can echo the real `[Session <id> · approx. <ts>]` header that
+`ContextBuilder` injected (the id isn't knowable when the fixture is written).
+
+| Flow | Spec | What it exercises |
+|---|---|---|
+| Reminder | `reminder.spec.ts` | Chat → Tier-2 `DisambiguationPopup` → confirm → `action_dispatch` creates the row + `FileRecordingToastBridge` records a `register` → Reminders view → `stopChild` + `seed` a past `scheduled_time` → relaunch → `reconcile_on_launch` marks it overdue → complete → leaves the active list |
+| Meeting note | `meeting-note.spec.ts` | Meetings view → paste transcript → `meetings.capture` (faked extraction) → the note card renders the extracted decisions + action items |
+| Memory retrieval | `memory-retrieval.spec.ts` | turn 1 (`conversation`) → async `_reingest` embeds it with real `all-MiniLM` → turn 2 (`retrieve_needed`, `semantic`) → `RetrievalRouter` finds the chunk → `ContextBuilder` → faked generation echoes the citation header → `.chat-citation` renders with the session id + timestamp; orchestrator logs `grounded=True, citations=1` |
+| Model download | `model-download.spec.ts` | no active model → `/first-run` → Download (instant via `RAGPIPE_FAKE_MODELS`) → outcome banner → Activate → lands on `/chat` |
+| Missed-fire reconciliation | `missed-fire.spec.ts` | `seed` a past-due reminder with `fired_at IS NULL` → launch → `app.reminders_pending` → Reminders view shows it under "Overdue" |
+
+### Verification
+
+- `npm run test:e2e` — 6/6 pass, ~44 s (build adds ~40 s in CI).
+- `pytest tests/backend/test_fake_models.py` + `test_main` + `tests/models/` green;
+  `black` / `ruff` / `mypy` clean; desktop typecheck / lint / test / build green.

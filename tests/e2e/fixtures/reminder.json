@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "when": { "all": ["reasoning core of a personal ai companion", "call the dentist"] },
+      "respond": "{\"action_type\": \"reminder\", \"confidence\": 0.78, \"retrieve_needed\": false, \"retrieval_route\": \"semantic\", \"search_query\": null, \"response\": \"Want me to set that reminder?\"}"
+    },
+    {
+      "when": { "any": ["the user wants to set a reminder"] },
+      "respond": "{\"title\": \"Call the dentist\", \"scheduled_time\": \"2026-12-01T14:00:00+00:00\", \"notes\": null}"
+    },
+    {
+      "when": { "any": ["you classify a conversation between a person"] },
+      "respond": "{\"topics\": [\"dentist reminder\"], \"action_types\": [\"reminder\"], \"entities\": [], \"sentiment\": \"neutral\", \"confidence\": 0.9}"
+    }
+  ],
+  "default": "{\"action_type\": \"conversation\", \"confidence\": 0.2, \"retrieve_needed\": false, \"retrieval_route\": \"semantic\", \"search_query\": null, \"response\": \"Okay.\"}"
+}
