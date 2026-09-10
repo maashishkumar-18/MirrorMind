@@ -493,20 +493,31 @@ defect:
      HuggingFace download mid-test). `memory-retrieval` uses it and drops from
      ~44s -> ~10s; real embedding + hybrid search + the vector store stay live.
 
-   **Round 3** (`memory-retrieval` still red on the cold runner — run #10 /
-   `e2fe935`; every other job green): the flow embeds **twice** on the worker
-   thread mid-test — the async `_reingest` of turn 1, then the turn-2 query — and
-   on a cold CI runner the first `embed_batch` pays a 30-60s `SentenceTransformer`
-   load that `stubRerank` did not remove. The 60s citation wait + 150s test cap
-   could not absorb it (local runs pass — models are warm there). Fix: a new
-   `RAGPIPE_E2E_STUB_EMBED` seam
+   **Round 3** — `RAGPIPE_E2E_STUB_EMBED` seam
    (`src/backend/fake_retrieval.py::maybe_stub_embedder`, wired in
    `SessionWorker._build` next to the rerank stub) swaps the
    `EmbeddingGenerator.provider` for `_FakeEmbeddingProvider` — deterministic
    near-unit vectors, no `torch` import, no model load. The SEMANTIC route still
    runs the **real** `SQLiteVectorStore` + BM25 + `RetrievalRouter` +
    `ContextBuilder` + faked generation; with a single seeded chunk the fake dense
-   side only needs to surface it (cosine ~1.0 for any pair), and ranking quality
-   is covered by the eval + `tests/retrieval/` suites. `memory-retrieval.spec.ts`
-   sets `stubEmbed: true` and drops from failing-at-150s to **~9s** locally.
-   `harness.ts` gains the `stubEmbed` fixture option.
+   side only needs to surface it (cosine ~1.0 for any pair), ranking quality
+   covered by the eval + `tests/retrieval/` suites. `harness.ts` gains the
+   `stubEmbed` option; `memory-retrieval.spec.ts` sets it. Local: 150s-fail →
+   ~9s.
+
+   **Round 4** (`ffd831b` still red — run #11; every other job green): the round-3
+   log showed the backend *did* produce `grounded=True, citations=1` — but only
+   after a **62s silent gap** in `_reingest`, and the 60s citation wait had
+   already expired (the retry then OOM-crashed the page). Root cause: `_reingest`
+   → chunker → `count_tokens` → `transformers.AutoTokenizer.from_pretrained(<the
+   LFS-vendored all-MiniLM path>)` — a *local* path, but `transformers` still does
+   a Hugging Face Hub revision check unless told not to, and that hangs ~60s on a
+   CI runner with slow/blocked outbound HTTPS. (Same shape as the round-2
+   cross-encoder stall.) Fix: `bridge-server.mjs` spawns the backend with
+   **`HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1`** — every model MirrorMind
+   uses is vendored, so the backend must never reach `huggingface.co`; offline =
+   pure local load, no network. `memory-retrieval.spec.ts` also gets
+   `test.setTimeout(240_000)` + 90s element waits as headroom for a cold 2-core
+   runner. The `stubEmbed`/`stubRerank` seams stay (they still remove the genuine
+   model-load compute — ~15-40s on a 2-core runner — and make retrieval
+   deterministic).

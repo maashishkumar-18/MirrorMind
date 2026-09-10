@@ -66,6 +66,14 @@ export class BridgeServer {
       LANGFUSE_SECRET_KEY: "",
       PYTHONIOENCODING: "utf-8",
       PYTHONUNBUFFERED: "1",
+      // Every model MirrorMind uses is vendored (LFS) — the backend must never
+      // reach huggingface.co. Without this, transformers' `AutoTokenizer.from_
+      // pretrained(<local path>)` still does a hub revision check that hangs
+      // ~60s on a CI runner with slow/blocked outbound HTTPS (the silent gap
+      // that timed out the memory-retrieval reingest). Offline = pure local load.
+      HF_HUB_OFFLINE: "1",
+      TRANSFORMERS_OFFLINE: "1",
+      HF_HUB_DISABLE_TELEMETRY: "1",
       ...(this.opts.fakeLlm ? { RAGPIPE_FAKE_LLM: this.opts.fakeLlm } : {}),
       ...(this.opts.toastFile ? { RAGPIPE_FAKE_TOAST: this.opts.toastFile } : {}),
       ...(this.opts.extraEnv ?? {}),

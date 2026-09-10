@@ -22,6 +22,10 @@ test("ask about a past conversation → grounded answer with a session citation"
   page,
   backend,
 }) => {
+  // This is the one flow that runs the real ingestion + retrieval pipeline
+  // (chunk → tokenize → store → semantic route → context build → generate);
+  // give a cold, 2-core CI runner generous headroom.
+  test.setTimeout(240_000);
   backend.start();
   await page.goto("/chat");
   await backend.waitReady();
@@ -35,7 +39,7 @@ test("ask about a past conversation → grounded answer with a session citation"
     "On the Q4 planning call we agreed to ship on Friday and Priya owns the checklist.",
   );
   await send.click();
-  await expect(page.locator(".chat-msg[data-role='assistant']")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(".chat-msg[data-role='assistant']")).toBeVisible({ timeout: 90_000 });
 
   // The re-ingest of turn 1 is an async worker followup; a second chat.history
   // round trip only returns once that followup (metadata + embed) has drained,
@@ -47,7 +51,7 @@ test("ask about a past conversation → grounded answer with a session citation"
   await send.click();
 
   const citation = page.locator(".chat-citation").last();
-  await expect(citation).toBeVisible({ timeout: 60_000 });
+  await expect(citation).toBeVisible({ timeout: 90_000 });
   await expect(citation).toContainText("Session");
   await expect(citation).toContainText("approx.");
   // the tooltip/title carries the full session id
