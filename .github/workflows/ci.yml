@@ -38,6 +38,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
+      # desktop imports `@ipc/methods` -> ../ipc/schema/methods.ts, which imports
+      # `zod`; bundler resolution walks up from that file, so `ipc/node_modules`
+      # must exist (it is NOT desktop's node_modules).
+      - run: npm ci --prefix ipc
       - run: npm ci --prefix desktop
       - run: npm run typecheck --prefix desktop
       - run: npm run lint --prefix desktop
@@ -79,6 +83,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - run: pip install -r requirements-dev.txt
+      - run: npm ci --prefix ipc # ../ipc/schema/methods.ts (zod) — see build-frontend
       - run: npm ci --prefix desktop
       - run: npm run test:e2e:install --prefix desktop
       - name: Run e2e flows

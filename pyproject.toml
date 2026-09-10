@@ -1,6 +1,11 @@
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
+# Repo root on sys.path for every invocation form (`pytest`, not just
+# `python -m pytest`) — `tests/conftest.py` imports `db` / `src`, and
+# `tests/backend/test_*` import `tests.backend.conftest`. No `__init__.py`
+# anywhere under tests/ (keep it that way — one broke CI in Phase 4).
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -8,7 +13,7 @@ markers = [
     "unit: fast, isolated, no I/O or network",
     "integration: multiple components together, may use tmp_path or in-memory sqlite",
     "characterization: pins current pre-migration behavior of a KEEP-AS-IS/MODIFY component; must never assert document-era behavior that Phase 1 is expected to change",
-    "reliability: Phase 4 Step 4.4 — download-failure + subprocess-kill fuzzing; the kill-fuzz body is heavy (spawns real backend subprocesses) and is deselected by default (see tests/reliability/conftest.py)",
+    "reliability: Phase 4 Step 4.4 — download-failure + subprocess-kill fuzzing; the kill-fuzz body spawns real backend subprocesses and is module-skipped unless RELIABILITY_ITERATIONS is set (tests/reliability/test_kill_recover.py)",
 ]
 addopts = "--strict-markers -ra --cov=src --cov=observability --cov=db --cov-report=term-missing --cov-report=xml --cov-fail-under=0"
 asyncio_mode = "strict"
