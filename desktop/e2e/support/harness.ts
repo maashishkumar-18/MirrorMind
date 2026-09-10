@@ -65,9 +65,11 @@ export const test = base.extend<{
   /** Per-flow: swap the cross-encoder for a deterministic fake (no HF
    *  download) — real embedding + hybrid search kept. */
   stubRerank: boolean;
-  /** Per-flow: swap the embedding provider for a deterministic fake (no
-   *  torch / sentence-transformers load, 30-60s cold on CI) — real vector
-   *  store + BM25 + router + generation kept. */
+  /** Per-flow: swap the embedding provider for a deterministic fake AND use a
+   *  char-ratio token estimate (RAGPIPE_E2E_STUB_TOKENIZER) — together these
+   *  keep `import transformers` / torch / sentence-transformers out of the
+   *  sidecar entirely (that cold import is 60-240s on a memory-pressured CI
+   *  runner). Real vector store + BM25 + router + generation kept. */
   stubEmbed: boolean;
   /** Per-flow: make `_reingest` a no-op (real agent kept) so the async
    *  re-ingest followup can't block the next worker call on a slow runner.
@@ -108,7 +110,9 @@ export const test = base.extend<{
         ...(fakeModels ? { RAGPIPE_FAKE_MODELS: "1" } : {}),
         ...(stubIngest ? { RAGPIPE_E2E_STUB_INGEST: "1" } : {}),
         ...(stubRerank ? { RAGPIPE_E2E_STUB_RERANK: "1" } : {}),
-        ...(stubEmbed ? { RAGPIPE_E2E_STUB_EMBED: "1" } : {}),
+        ...(stubEmbed
+          ? { RAGPIPE_E2E_STUB_EMBED: "1", RAGPIPE_E2E_STUB_TOKENIZER: "1" }
+          : {}),
       },
     });
     const port = await bridge.listen();

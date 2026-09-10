@@ -505,19 +505,31 @@ defect:
    `stubEmbed` option; `memory-retrieval.spec.ts` sets it. Local: 150s-fail →
    ~9s.
 
-   **Round 4** (`ffd831b` still red — run #11; every other job green): the round-3
-   log showed the backend *did* produce `grounded=True, citations=1` — but only
-   after a **62s silent gap** in `_reingest`, and the 60s citation wait had
-   already expired (the retry then OOM-crashed the page). Root cause: `_reingest`
-   → chunker → `count_tokens` → `transformers.AutoTokenizer.from_pretrained(<the
-   LFS-vendored all-MiniLM path>)` — a *local* path, but `transformers` still does
-   a Hugging Face Hub revision check unless told not to, and that hangs ~60s on a
-   CI runner with slow/blocked outbound HTTPS. (Same shape as the round-2
-   cross-encoder stall.) Fix: `bridge-server.mjs` spawns the backend with
-   **`HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1`** — every model MirrorMind
-   uses is vendored, so the backend must never reach `huggingface.co`; offline =
-   pure local load, no network. `memory-retrieval.spec.ts` also gets
-   `test.setTimeout(240_000)` + 90s element waits as headroom for a cold 2-core
-   runner. The `stubEmbed`/`stubRerank` seams stay (they still remove the genuine
-   model-load compute — ~15-40s on a 2-core runner — and make retrieval
-   deterministic).
+   **Round 4** (`ffd831b`, run #11) — belt-and-braces: `bridge-server.mjs` spawns
+   the sidecar with `HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1` +
+   `HF_HUB_DISABLE_TELEMETRY=1` (every model is vendored — the backend must never
+   reach `huggingface.co`), and `memory-retrieval.spec.ts` gets
+   `test.setTimeout(240_000)` + 90s element waits. **Not enough on its own.**
+
+   **Round 5** (`634cea4`, run #12 — the actual fix). The Playwright *trace*
+   settled it: the assistant bubble for turn 1 was visible in **10 ms**; then
+   **240 s elapsed inside `await backend.warmup()`** (the call that drains the
+   async `_reingest` before turn 2), then turn 2 sent into a backend the frontend
+   had already given up on (`backend_unavailable`, "reconnecting"). So the stall
+   is `_reingest`, and `import transformers` is confirmed lazy — after
+   `import src.backend.session_worker`, `sys.modules` has **no** `transformers` /
+   `torch` / `sentence_transformers`. With `stubEmbed` (no sentence-transformers)
+   + `stubRerank` (no CrossEncoder), the *first and only* trigger for
+   `import transformers` (→ `import torch`, ~1-2 GB, thousands of files) is
+   `_reingest` → chunker → `count_tokens` → `get_tokenizer()` →
+   `from transformers import AutoTokenizer`. That cold import, on a CI runner
+   already running `vite preview` + chromium, is 60-240 s (it *escalated*
+   run-over-run as suite memory pressure grew: 62→95→240 s). Fix: a
+   `RAGPIPE_E2E_STUB_TOKENIZER` seam in `src/ingestion/tokenizer.py` —
+   `count_tokens` returns a `(len+3)//4 + 2` char-ratio estimate instead of
+   loading the HF tokenizer, so the sidecar does **zero** ML-library imports for
+   this flow. Bundled into the `stubEmbed` harness option (they are one concept —
+   "no ML libs for embed/tokenize"). Chunk-boundary math only needs an approximate
+   count; real chunking (regex splitter) / enrichment / vector store / BM25 /
+   router / context builder / citation render all stay live. `pytest` never sets
+   the env, so the `test` job is untouched.
