@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { useBackendStore } from "../store/backend";
 import { useModelStore } from "../store/model";
+import { selectAppGate } from "../ui/gateState";
 import { call, describeIpcError, ipcErrorUi, IpcCallError } from "./client";
 
 const invokeMock = vi.mocked(invoke);
@@ -83,6 +84,14 @@ describe("call()", () => {
       detail: { code: "version_mismatch" },
     });
     expect(useBackendStore.getState().versionMismatch).toBe(true);
+  });
+
+  it("version N vs N+1: the full chain lands on the 'Please restart' gate (Step 4.2)", async () => {
+    invokeMock.mockResolvedValue(errorEnvelope("version_mismatch", "got 2, expected 1"));
+    await expect(call("app.status", {})).rejects.toBeInstanceOf(IpcCallError);
+    const gate = selectAppGate(useBackendStore.getState());
+    expect(gate?.kind).toBe("version-mismatch");
+    expect(gate?.title).toBe("Please restart MirrorMind");
   });
 
   it("a no_model_active error frame flips useModelStore.modelSetupRequired (and still throws)", async () => {

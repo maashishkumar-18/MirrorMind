@@ -12,8 +12,8 @@ Plan: `.claude/plans/memoized-snuggling-emerson.md`.
 | Step | Scope | Status |
 |---|---|---|
 | 4.1a | E2E harness — fake-LLM seam, fake-toast seam, Playwright bridge | **DONE** (`f35d53b`) |
-| 4.1b | The five required end-to-end flows | **DONE** |
-| 4.2  | IPC contract verification (every method, valid + invalid, version N vs N+1) | pending |
+| 4.1b | The five required end-to-end flows | **DONE** (`d99cd6f`) |
+| 4.2  | IPC contract verification (every method, valid + invalid, version N vs N+1) | **DONE** |
 | 4.3  | Golden eval pass — routing remediation + CI eval dispatch | pending |
 | 4.4a | disk-full + network-loss download simulation (roadmap acceptance wording) | pending |
 | 4.4b | subprocess-kill fuzzing harness + `reliability` CI job | pending |
@@ -142,3 +142,42 @@ canned generation can echo the real `[Session <id> · approx. <ts>]` header that
 - `npm run test:e2e` — 6/6 pass, ~44 s (build adds ~40 s in CI).
 - `pytest tests/backend/test_fake_models.py` + `test_main` + `tests/models/` green;
   `black` / `ruff` / `mypy` clean; desktop typecheck / lint / test / build green.
+
+---
+
+## Step 4.2 — IPC contract verification (commit pending)
+
+**`tests/backend/test_ipc_contract_matrix.py`** (new, **86 cases**) — data-driven
+over every method in `METHOD_CONTRACTS`, run through the real `Dispatcher` with
+the conftest fakes (`FakeSessionWorker` / `FakeModelManager` / `CollectingTransport`):
+
+- **valid**: canonical params from `ipc/fixtures/methods_examples.json` (the same
+  fixtures the cross-language round-trip test uses — no drift) → exactly one
+  `response` frame, no `error`, the result validates against the `*Result`
+  model. Skips 6 methods with an external handler precondition (a writable path,
+  an installed model, a staged snapshot) or a process-exit side effect
+  (`app.shutdown` / `backup.restore` / `data.export` / `data.wipe` /
+  `model.activate` / `diagnostics.report`) — those are covered in
+  `test_handlers.py` / `test_main.py`; 4.2 still checks their params + version
+  contract below.
+- **invalid** (per method, as separate parametrized cases): extra field
+  (`extra="forbid"`), missing required, wrong type → a `validation_error` frame,
+  and `dispatcher.shutdown_requested` stays clear (the loop never crashes).
+- **unknown method** → `unknown_method`; **`None` line** (a non-JSON stdin line
+  surfaces as `None`) → `validation_error` + the next message still processes;
+  **malformed envelope** (no `payload.method`) → `validation_error`.
+- **version N vs N+1**: `version = CURRENT_IPC_VERSION + 1` on 4 representative
+  methods → `version_mismatch` frame, loop survives.
+
+**Frontend** (`desktop/src/ipc/client.test.ts`, +1) — the full chain for the
+roadmap's "please restart" acceptance: a `version_mismatch` error frame →
+`useBackendStore.setVersionMismatch()` → `selectAppGate` returns
+`{ kind: "version-mismatch", title: "Please restart MirrorMind" }`. (The
+individual links were already covered by `client.test.ts` /
+`gateState.test.ts`; this ties them end to end.) The cross-language Pydantic↔zod
+shape parity is `tests/common/test_ipc_methods_roundtrip.py`, unchanged.
+
+### Verification
+
+`pytest tests/backend/test_ipc_contract_matrix.py` — 86 passed. Full suite
+948 → 1034 passed. `desktop` test 150 → 151. `black` / `ruff` / `mypy` clean.
