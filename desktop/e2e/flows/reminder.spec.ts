@@ -7,7 +7,7 @@ import { test, expect } from "../support/harness";
  * registered) → appears in the Reminders view → mock the clock past its time →
  * relaunch → it shows as overdue → complete → it leaves the active list.
  */
-test.use({ activeModel: "llama3.1:8b", fakeLlmFixture: "reminder" });
+test.use({ activeModel: "llama3.1:8b", fakeLlmFixture: "reminder", stubIngest: true });
 
 test("natural-language reminder → disambiguate → confirm → overdue → complete", async ({
   page,
@@ -16,6 +16,7 @@ test("natural-language reminder → disambiguate → confirm → overdue → com
   backend.start();
   await page.goto("/chat");
   await backend.waitReady();
+  await backend.warmup();
 
   await page.getByRole("textbox", { name: "Message" }).fill("Remind me to call the dentist");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -23,7 +24,7 @@ test("natural-language reminder → disambiguate → confirm → overdue → com
   const popup = page.getByRole("dialog", { name: "Confirm what you meant" });
   await expect(popup).toBeVisible({ timeout: 30_000 });
   await popup.getByRole("button", { name: "Set a reminder" }).click();
-  await expect(popup).toBeHidden({ timeout: 30_000 });
+  await expect(popup).toBeHidden({ timeout: 60_000 });
 
   // The toast was registered on create.
   await expect

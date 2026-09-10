@@ -164,6 +164,18 @@ export class BridgeServer {
     });
   }
 
+  /** Fire one IPC method directly (test setup — bypasses the page). Resolves
+   * with the response/error frame. */
+  async rpc(method, params = {}) {
+    return this._send({
+      version: 1,
+      message_type: "request",
+      request_id: `harness-${Math.random().toString(36).slice(2)}`,
+      timestamp: new Date().toISOString(),
+      payload: { method, params },
+    });
+  }
+
   _handle(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "content-type");

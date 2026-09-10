@@ -442,3 +442,35 @@ Phase 4; the binding pass is a full `eval/run_eval.py` run against
   `agentic_routing.min` 0.9) are not moved.
 
 **Status: remediation landed; binding eval pass pending the CI `eval` dispatch.**
+
+---
+
+## CI hardening (post-first-real-run — commits `b5d19ad`, `3e9701c`, +)
+
+The repo was local-only until Phase 4, so GitHub Actions had never executed.
+The first real run surfaced four latently-broken jobs — none a Phase-4 code
+defect:
+
+1. **`test` / `reliability`** — the `tests/reliability/__init__.py` (4.4b) was
+   the only `__init__.py` anywhere under `tests/`; it broke pytest's rootdir
+   `sys.path` insertion under a plain `pytest` invocation so `tests/conftest.py`
+   could not `import db`. Removed it; added `pythonpath = ["."]` to
+   `[tool.pytest.ini_options]`.
+2. **`build-frontend` / `e2e`** — `desktop` imports `@ipc/methods` ->
+   `../ipc/schema/methods.ts` -> `import zod`; bundler resolution walks up from
+   *that* file, so `ipc/node_modules` must exist (it is not `desktop`'s).
+   Added `npm ci --prefix ipc` to both jobs. The missing module cascaded into
+   ~10 spurious type errors and killed the e2e `webServer` (build fails ->
+   preview never starts).
+3. **round-trip flake** — `npx tsx` cold-start per fixture transiently fails
+   under a full-suite run's memory pressure (5/98 flaked; all 98 pass run
+   alone). `_run_zod_validator` now retries 3× with backoff.
+4. **e2e chat flows on a cold runner** — the `SessionWorker` warm-up (all-MiniLM
+   + cross-encoder, 20-40s cold) plus the async `_reingest` followup blocking
+   the next worker call timed out `reminder` + `memory-retrieval`. Fixes:
+   `backend.warmup()` (a `chat.history` round trip only resolves once the
+   worker drains warm-up) called after `waitReady()` in the chat flows; a new
+   `RAGPIPE_E2E_STUB_INGEST` seam (no-ops `_reingest`, keeps the real fake-LLM
+   agent) for `reminder` + `meeting`; `memory-retrieval` does a second
+   `warmup()` between turns to wait for the real re-ingest; per-test timeout
+   90s -> 150s. 18/18 local.

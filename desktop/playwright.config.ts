@@ -12,7 +12,7 @@ export default defineConfig({
   workers: 1, // each test spawns a Python sidecar — keep memory bounded
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  timeout: 90_000,
+  timeout: 150_000,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://localhost:4173",

@@ -59,18 +59,33 @@ class _StubSlotExtractor:
         return {}
 
 
+_STUB_INGEST_ENV = "RAGPIPE_E2E_STUB_INGEST"
+
+
 def enabled() -> bool:
     return bool(os.getenv(_ENV_VAR))
 
 
 def session_worker_kwargs() -> dict[str, Any]:
-    """Injection kwargs for ``SessionWorker`` — ``{}`` unless the seam is set."""
-    if not enabled():
-        return {}
-    return {
-        "agent": _StubAgent(),
-        "router": _StubRouter(),
-        "orchestrator": _StubOrchestrator(),
-        "pipeline": _StubPipeline(),
-        "slot_extractor": _StubSlotExtractor(),
-    }
+    """Injection kwargs for ``SessionWorker``.
+
+    * ``RAGPIPE_FAKE_RETRIEVAL`` → stub the whole pipeline (agent / router /
+      orchestrator / slot extractor / ingest) for a sub-second warm-up (the
+      kill-fuzz harness).
+    * ``RAGPIPE_E2E_STUB_INGEST`` → stub **only** re-ingestion, keeping the real
+      agent (fake LLM) / router / orchestrator. The async ``_reingest`` followup
+      otherwise blocks the next user call for seconds on a cold CI runner — the
+      e2e flows that don't test memory retrieval set this.
+    * neither → ``{}``.
+    """
+    if enabled():
+        return {
+            "agent": _StubAgent(),
+            "router": _StubRouter(),
+            "orchestrator": _StubOrchestrator(),
+            "pipeline": _StubPipeline(),
+            "slot_extractor": _StubSlotExtractor(),
+        }
+    if os.getenv(_STUB_INGEST_ENV):
+        return {"pipeline": _StubPipeline()}
+    return {}

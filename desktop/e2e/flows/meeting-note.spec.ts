@@ -6,7 +6,7 @@ import { test, expect } from "../support/harness";
  * Meetings view → paste a synthetic transcript → Capture → the note appears
  * with the extracted decisions and action items.
  */
-test.use({ activeModel: "llama3.1:8b", fakeLlmFixture: "meeting" });
+test.use({ activeModel: "llama3.1:8b", fakeLlmFixture: "meeting", stubIngest: true });
 
 test("capture a transcript and see the extracted decisions + action items", async ({
   page,
@@ -15,6 +15,7 @@ test("capture a transcript and see the extracted decisions + action items", asyn
   backend.start();
   await page.goto("/meetings");
   await backend.waitReady();
+  await backend.warmup();
 
   await page
     .getByRole("textbox", { name: "Meeting transcript" })
