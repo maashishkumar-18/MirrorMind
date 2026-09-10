@@ -143,6 +143,28 @@ jobs:
         if: always()
         with: { name: eval-results, path: eval/results/ }
 
+  # Subprocess-kill fuzzing (Phase 4 Step 4.4b): 100 kill-and-recover cycles
+  # against a real backend sidecar (LLM + retrieval stubbed). Long-running, so
+  # push-to-main + manual only, never on PRs. `pytest` alone runs 3 iterations.
+  reliability:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements-dev.txt
+      - name: 100 kill-and-recover cycles
+        env:
+          RELIABILITY_ITERATIONS: "100"
+          LANGFUSE_PUBLIC_KEY: ""
+          LANGFUSE_SECRET_KEY: ""
+        run: pytest tests/reliability/ -q -m reliability -o addopts="" --junitxml=reliability.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: reliability-report, path: reliability.xml }
+
   # Protected-branch signing: structure only, no secrets exist until Phase 5.
   # Gates structurally on push+release only (never pull_request) so signing
   # secrets are never reachable from PR-level CI.

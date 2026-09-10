@@ -8,6 +8,7 @@ markers = [
     "unit: fast, isolated, no I/O or network",
     "integration: multiple components together, may use tmp_path or in-memory sqlite",
     "characterization: pins current pre-migration behavior of a KEEP-AS-IS/MODIFY component; must never assert document-era behavior that Phase 1 is expected to change",
+    "reliability: Phase 4 Step 4.4 — download-failure + subprocess-kill fuzzing; the kill-fuzz body is heavy (spawns real backend subprocesses) and is deselected by default (see tests/reliability/conftest.py)",
 ]
 addopts = "--strict-markers -ra --cov=src --cov=observability --cov=db --cov-report=term-missing --cov-report=xml --cov-fail-under=0"
 asyncio_mode = "strict"

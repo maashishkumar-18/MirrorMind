@@ -13,10 +13,10 @@ Plan: `.claude/plans/memoized-snuggling-emerson.md`.
 |---|---|---|
 | 4.1a | E2E harness — fake-LLM seam, fake-toast seam, Playwright bridge | **DONE** (`f35d53b`) |
 | 4.1b | The five required end-to-end flows | **DONE** (`d99cd6f`) |
-| 4.2  | IPC contract verification (every method, valid + invalid, version N vs N+1) | **DONE** |
-| 4.3  | Golden eval pass — routing remediation + CI eval dispatch | pending |
-| 4.4a | disk-full + network-loss download simulation (roadmap acceptance wording) | pending |
-| 4.4b | subprocess-kill fuzzing harness + `reliability` CI job | pending |
+| 4.2  | IPC contract verification (every method, valid + invalid, version N vs N+1) | **DONE** (`44afa30`) |
+| 4.3  | Golden eval pass — routing remediation + local llama3.1:8b validation | in progress |
+| 4.4a | disk-full + network-loss download simulation (roadmap acceptance wording) | **DONE** |
+| 4.4b | subprocess-kill fuzzing harness + `reliability` CI job | **DONE** |
 | 4.5  | WCAG 2.1 AA / Narrator accessibility pass (former roadmap Step 2.4) | pending |
 | 4.6  | Real WinRT ToastBridge | pending |
 
@@ -181,3 +181,69 @@ shape parity is `tests/common/test_ipc_methods_roundtrip.py`, unchanged.
 
 `pytest tests/backend/test_ipc_contract_matrix.py` — 86 passed. Full suite
 948 → 1034 passed. `desktop` test 150 → 151. `black` / `ruff` / `mypy` clean.
+
+---
+
+## Step 4.4 — Reliability testing (commit pending)
+
+### 4.4a — download failure modes
+
+`tests/reliability/test_download_failure_modes.py` (new, 6 cases) lifts the
+Step 1.6 unit assertions to the roadmap Step 4.4 acceptance wording, in one
+place, over the scripted `PullStreamer` + `FakeOllama` from `tests/models`:
+
+- **disk-full** (3 message variants) → the exact
+  `Not enough disk space — free … and try again.` and **zero partial
+  artifacts**: `/api/delete` was issued for the model, `verify_model_integrity`
+  is `False`, `_active_downloads` is clear.
+- **network-loss that resumes** → `resumes == 1`, `restarts == 0`, no
+  `restarting` phase event, model ends verified.
+- **network-loss that cannot resume** → exhausts `_MAX_ATTEMPTS`, terminal
+  `ModelDownloadError`, zero partial artifacts.
+- **layer inconsistency** → one clean delete-and-restart, then a clean terminal
+  failure, zero partial artifacts.
+
+### 4.4b — subprocess-kill fuzzing
+
+**`tests/reliability/fuzz_supervisor.py`** — a `Sidecar` harness: spawns a real
+`python -m src.backend.main` with the LLM (`RAGPIPE_FAKE_LLM`) **and** retrieval
+(`RAGPIPE_FAKE_RETRIEVAL`, a new seam — `src/backend/fake_retrieval.py` injects
+stub agent/router/orchestrator/pipeline/slot_extractor so the `SessionWorker`
+skips the `all-MiniLM` + cross-encoder loads and a backend spawns in ~1 s),
+does newline-`IPCEnvelope` framing on its stdio, `SIGKILL`s it, relaunches.
+
+**`tests/reliability/test_kill_recover.py`** — `RELIABILITY_ITERATIONS` cycles
+(module-skipped unless the env is set; the dedicated CI job sets **100**, a dev
+sets 3). Kill lands deterministically in one of three windows per iteration:
+IPC processing / a `messages` INSERT that has not committed
+(`RAGPIPE_FUZZ_STALL_BEFORE_COMMIT_MS`, a `SessionRepository` seam) / mid-send.
+After the kill it **relaunches** (the real recovery path — the app's on-launch
+`check_integrity` is the corruption oracle) and asserts:
+
+- the relaunch emits `app.ready`, not `app.integrity_failed` (WAL recovery of
+  the interrupted write left a consistent DB) and reaches ready within 40 s
+  (no silent hang);
+- every acknowledged `chat.send` still has its user + assistant rows (zero
+  acknowledged-write loss);
+- the crashed session was finalized on relaunch (`finalize_dangling_sessions`);
+- a direct `PRAGMA integrity_check` after a clean shutdown is `ok`.
+
+> Note — a *bare external* reopen of the DB immediately after `TerminateProcess`
+> can transiently raise `disk I/O error` on Windows (the killed process's file
+> handle lingers a beat); `_open_with_retry` absorbs it. The **backend's own**
+> relaunch always recovers cleanly. No corruption was observed across the
+> kill windows.
+
+**CI:** new `reliability` job (`windows-latest`, `push` to `main` +
+`workflow_dispatch`, never on PRs) — `RELIABILITY_ITERATIONS=100`, uploads a
+JUnit report. Not in the `sign` needs (long-running, not a merge gate).
+
+`src/backend/session_repository.py` gains one guarded `_fuzz_stall()` call
+inside the `append_message` transaction; `src/backend/main.py` threads
+`fake_retrieval.session_worker_kwargs()` (`{}` in the app).
+
+### Verification
+
+`RELIABILITY_ITERATIONS=3 pytest tests/reliability/ -m reliability` — 9 passed
+(~43 s). Bare `pytest tests/reliability/` — 6 passed, 3 skipped. `black` /
+`ruff` clean.

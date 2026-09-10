@@ -31,7 +31,7 @@ from db.connection import open_session_db
 from db.health import check_integrity
 from db.migration_runner import MigrationRunner
 from observability.tracing import shutdown_tracing
-from src.backend import fake_llm, fake_models
+from src.backend import fake_llm, fake_models, fake_retrieval
 from src.backend.dispatcher import Dispatcher
 from src.backend.keys import resolve_db_key
 from src.backend.lifecycle import ShutdownCoordinator
@@ -127,6 +127,7 @@ def _serve(transport: StdioTransport) -> int:
             app_config_path=None,
             on_ready=_emit_reminders_pending,
             toast_bridge=toast_bridge,
+            **fake_retrieval.session_worker_kwargs(),  # {} unless RAGPIPE_FAKE_RETRIEVAL
         )
         worker.start()
         the_worker = worker

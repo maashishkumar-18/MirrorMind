@@ -10,10 +10,26 @@ feature handlers. Owned and only ever called by the single-threaded
 
 from __future__ import annotations
 
+import os
+import time
+
 from src.common.types import SessionMessage
 from src.features.base import TableHandler, new_id, now_iso
 
 _VALID_CLOSE_REASONS = ("idle_timeout", "explicit", "app_shutdown")
+
+
+def _fuzz_stall() -> None:
+    """Test seam (Phase 4 Step 4.4b): widen the window a subprocess-kill can land
+    in *while a message INSERT is uncommitted*, so the fuzz harness can prove a
+    mid-write SIGKILL leaves a consistent DB (WAL rollback). No-op in the app."""
+    ms = os.getenv("RAGPIPE_FUZZ_STALL_BEFORE_COMMIT_MS")
+    if ms:
+        try:
+            time.sleep(int(ms) / 1000.0)
+        except ValueError:
+            pass
+
 
 #: chat.history returns at most this many of a session's newest turns (oldest-first
 #: after the cap). Sessions are already bounded by idle-close + chat.new, so this is
@@ -87,6 +103,7 @@ class SessionRepository(TableHandler):
                 "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (new_id("msg"), session_id, turn_index, role, content, now, now),
             )
+            _fuzz_stall()  # inside the `with` block — the INSERT is not yet committed
         return turn_index
 
     def recent_turns(self, session_id: str, limit: int) -> list[SessionMessage]:
