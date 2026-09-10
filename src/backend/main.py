@@ -31,6 +31,7 @@ from db.connection import open_session_db
 from db.health import check_integrity
 from db.migration_runner import MigrationRunner
 from observability.tracing import shutdown_tracing
+from src.backend import fake_llm
 from src.backend.dispatcher import Dispatcher
 from src.backend.keys import resolve_db_key
 from src.backend.lifecycle import ShutdownCoordinator
@@ -45,7 +46,7 @@ from src.common.ipc.envelope import CURRENT_IPC_VERSION
 from src.common.types import ReconciliationResult
 from src.features.backup_manager import BackupManager
 from src.features.scheduler import SchedulerThread
-from src.features.toast_bridge import NoOpToastBridge
+from src.features.toast_bridge import resolve_bridge_from_env
 from src.models.app_config import AppConfig
 from src.models.model_manager import ModelManager
 from src.models.ollama_manager import OllamaManager
@@ -115,8 +116,13 @@ def _serve(transport: StdioTransport) -> int:
             if recon.overdue or recon.pending_acknowledgment:
                 transport.send(make_event("app.reminders_pending", reconciliation_payload(recon)))
 
+        toast_bridge = resolve_bridge_from_env()
         worker = SessionWorker(
-            db_path, key=key, app_config_path=None, on_ready=_emit_reminders_pending
+            db_path,
+            key=key,
+            app_config_path=None,
+            on_ready=_emit_reminders_pending,
+            toast_bridge=toast_bridge,
         )
         worker.start()
         the_worker = worker
@@ -134,7 +140,7 @@ def _serve(transport: StdioTransport) -> int:
 
         coordinator.register("session_worker", _stop_worker)
 
-        scheduler = SchedulerThread(db_path, NoOpToastBridge(), key=key)
+        scheduler = SchedulerThread(db_path, toast_bridge, key=key)
         scheduler.start()
         sched = scheduler
 
@@ -185,6 +191,8 @@ def main(
     out_stream: BinaryIO | None = None,
 ) -> int:
     configure_logging()
+    # Test seam — must run before any pipeline component is constructed (R1).
+    fake_llm.install_if_configured()
     transport = StdioTransport(in_stream, out_stream)
     guard = SingleInstanceGuard()
     if not guard.acquire():

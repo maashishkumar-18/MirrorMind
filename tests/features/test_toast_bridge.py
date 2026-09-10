@@ -3,9 +3,16 @@ Unit tests for the Toast bridge doubles (src/features/toast_bridge.py) —
 Phase 1 Step 1.5b.
 """
 
+import json
+
 import pytest
 
-from src.features.toast_bridge import InMemoryToastBridge, NoOpToastBridge
+from src.features.toast_bridge import (
+    FileRecordingToastBridge,
+    InMemoryToastBridge,
+    NoOpToastBridge,
+    resolve_bridge_from_env,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -45,3 +52,41 @@ def test_cancel_all_is_recorded_by_the_in_memory_bridge():
     bridge.cancel_all()
     assert ("cancel_all", {}) in bridge.calls
     assert [op for op, _ in bridge.calls] == ["register", "cancel_all"]
+
+
+# --------------------------------------------------------------------------
+# Phase 4 Step 4.1 — the e2e recording bridge + env resolver
+# --------------------------------------------------------------------------
+
+
+def test_file_recording_bridge_appends_one_json_line_per_call(tmp_path):
+    path = tmp_path / "nested" / "toast-calls.jsonl"  # parent is created
+    bridge = FileRecordingToastBridge(path)
+    tid = bridge.register_toast("rem_1", "2026-02-12T09:00:00Z", "Call the dentist")
+    bridge.cancel_toast(tid)
+    bridge.fire_toast("rem_1", "Call the dentist")
+    bridge.cancel_all()
+
+    lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert [entry["op"] for entry in lines] == ["register", "cancel", "fire", "cancel_all"]
+    assert lines[0]["args"] == {
+        "reminder_id": "rem_1",
+        "scheduled_time": "2026-02-12T09:00:00Z",
+        "body": "Call the dentist",
+    }
+    # still behaves like InMemoryToastBridge for in-process assertions
+    assert [op for op, _ in bridge.calls] == ["register", "cancel", "fire", "cancel_all"]
+
+
+def test_resolve_bridge_from_env_defaults_to_noop(monkeypatch):
+    monkeypatch.delenv("RAGPIPE_FAKE_TOAST", raising=False)
+    assert isinstance(resolve_bridge_from_env(), NoOpToastBridge)
+
+
+def test_resolve_bridge_from_env_returns_file_recorder_when_set(monkeypatch, tmp_path):
+    target = tmp_path / "toast.jsonl"
+    monkeypatch.setenv("RAGPIPE_FAKE_TOAST", str(target))
+    bridge = resolve_bridge_from_env()
+    assert isinstance(bridge, FileRecordingToastBridge)
+    bridge.register_toast("r", "2026-02-12T09:00:00Z", "x")
+    assert target.exists()

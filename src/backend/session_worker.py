@@ -53,7 +53,7 @@ from src.features.data_admin import DataManager
 from src.features.meeting_note_handler import MeetingNoteHandler
 from src.features.reminder_handler import ReminderHandler
 from src.features.schedule_handler import ScheduleHandler
-from src.features.toast_bridge import NoOpToastBridge
+from src.features.toast_bridge import NoOpToastBridge, ToastBridge
 from src.features.todo_handler import TodoHandler
 from src.generation.config import (
     ChatTurn,
@@ -213,6 +213,7 @@ class SessionWorker(threading.Thread):
         history_turns: int = HISTORY_TURNS,
         idle_minutes: float | None = None,
         on_ready: Callable[[ReconciliationResult], None] | None = None,
+        toast_bridge: ToastBridge | None = None,
         agent: RetrievalAgent | None = None,
         router: RetrievalRouter | None = None,
         orchestrator: GenerationOrchestrator | None = None,
@@ -228,6 +229,10 @@ class SessionWorker(threading.Thread):
         # settings.update takes effect with no restart); a test can pin it.
         self._idle_minutes_override = idle_minutes
         self._on_ready = on_ready
+        # Toast registration for reminders created via chat / feature CRUD.
+        # NoOp until the real WinRT bridge (Step 4.6); the e2e harness passes a
+        # FileRecordingToastBridge.
+        self._toast_bridge: ToastBridge = toast_bridge or NoOpToastBridge()
         # Injection seams — tests pass fakes so the worker never loads the
         # all-MiniLM / cross-encoder models. When all four are injected the
         # per-model rebuild is skipped. Mirrors bootstrap_pipeline()'s style.
@@ -684,7 +689,7 @@ class SessionWorker(threading.Thread):
             utterance,
             conn=self._conn,
             session_id=self._session_id,
-            bridge=NoOpToastBridge(),
+            bridge=self._toast_bridge,
             model=self._bound_model,
         )
 
@@ -695,10 +700,9 @@ class SessionWorker(threading.Thread):
     # ------------------------------------------------------------------
 
     def _reminders(self) -> ReminderHandler:
-        # NoOpToastBridge: the real WinRT bridge is a later step, so these
-        # create/reschedule paths do not (yet) register OS toasts — same as
-        # action_dispatch today.
-        return ReminderHandler(connection=self._conn, bridge=NoOpToastBridge())
+        # NoOp until the real WinRT bridge (Step 4.6); the e2e harness injects a
+        # FileRecordingToastBridge so create/reschedule toast calls are visible.
+        return ReminderHandler(connection=self._conn, bridge=self._toast_bridge)
 
     def _prune_reconciliation(self, reminder_id: str) -> None:
         """Drop a reminder id from the cached on-launch reconciliation lists
@@ -835,7 +839,7 @@ class SessionWorker(threading.Thread):
     def _data_manager(self) -> DataManager:
         return DataManager(
             connection=self._conn,
-            bridge=NoOpToastBridge(),
+            bridge=self._toast_bridge,
             app_config=AppConfig.load(self._app_config_path),
         )
 

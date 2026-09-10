@@ -13,6 +13,7 @@ venv/
 .ruff_cache/
 coverage.xml
 .coverage
+.coverage.*
 
 # Eval run outputs — regenerated each run, uploaded as CI artifacts instead
 # of being committed (see .github/workflows/ci.yml)
@@ -43,6 +44,9 @@ desktop/src-tauri/target/
 desktop/src-tauri/gen/
 # dev-only isolated backend state dir spawned by the Tauri shell
 desktop/.dev-data/
+# Playwright e2e (Phase 4 Step 4.1) — reports/artifacts, regenerated each run
+desktop/playwright-report/
+desktop/test-results/
 
 # Local tooling state, not project source
 .claude/

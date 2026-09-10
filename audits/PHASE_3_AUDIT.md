@@ -33,18 +33,27 @@ get appended to *this* file when they exist.
 
 ## Carried forward — for the Phase 3 audit and Phase 4
 
-- **Real WinRT `ToastBridge`** — still stubbed (`NoOpToastBridge` everywhere). No
-  OS toast is ever scheduled yet, so the `action_dispatch` / feature-CRUD create
-  paths and `data.wipe`'s `cancel_all()` are all inert on the toast side. When it
-  lands, `cancel_all()` must iterate `RemoveFromSchedule` per id (no bulk API)
-  from the *same* `ToastNotifier` instance that scheduled each toast.
+> **Phase 4 is now in progress** — see `audits/PHASE_4_AUDIT.md`. Items below are
+> repointed there as they close.
+
+- **Real WinRT `ToastBridge`** — still stubbed (`NoOpToastBridge` in production;
+  Step 4.1a added `FileRecordingToastBridge` + `resolve_bridge_from_env()` as the
+  e2e seam and a `SessionWorker(toast_bridge=)` kwarg — the slot the real bridge
+  goes in). No OS toast is scheduled yet, so `action_dispatch` / feature-CRUD
+  create paths and `data.wipe`'s `cancel_all()` are inert on the toast side.
+  **Now Phase 4 Step 4.6:** `cancel_all()` must iterate `RemoveFromSchedule` per
+  id (no bulk API) from the *same* `ToastNotifier` instance that scheduled each
+  toast.
 - **`diagnostics.metrics` `error_rate` / `compute_ms`** — reported as `null`
   ("not tracked yet, v1.1"). `SessionWorker._record_metrics` would need to also
   write `refused` / `total_time_ms` / `compute_ms`.
 - **WCAG 2.1 AA / Narrator accessibility pass** (former roadmap Step 2.4) — not
-  started; a whole-frontend item folded forward into Phase 3's tail / Phase 4.
-- **Subprocess-kill fuzzing test** (roadmap Step 4.4) — 100 iterations on
-  `windows-latest`, kills during IPC processing / DB write / Ollama inference.
+  started. **Now Phase 4 Step 4.5** (axe-core over the e2e harness + string
+  externalization to `desktop/src/strings.ts` + a manual Narrator checklist in
+  `docs/accessibility_review.md`).
+- **Subprocess-kill fuzzing test** (roadmap Step 4.4) — **now Phase 4 Step 4.4b**:
+  100 iterations on a dedicated `windows-latest` CI job, kills during IPC
+  processing / DB write / Ollama inference; low-iteration local `pytest` default.
 - **`tauri dev` live coverage gaps** — the native save dialog, `data.wipe` ->
   `window.location.reload`, the `backup.restore` -> exit 5 -> supervisor swap
   round-trip from the Settings panel, and the `opener` reveal / `mailto` scope

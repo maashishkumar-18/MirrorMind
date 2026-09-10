@@ -66,6 +66,30 @@ jobs:
       - run: cargo check
       - run: cargo test
 
+  # End-to-end flows (Phase 4 Step 4.1): Playwright drives the built React
+  # frontend against a REAL spawned Python backend (LLM stubbed via
+  # RAGPIPE_FAKE_LLM). The Tauri Rust shell is not in the loop.
+  e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: true } # the SessionWorker loads the LFS-vendored all-MiniLM-L6-v2
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: pip install -r requirements-dev.txt
+      - run: npm ci --prefix desktop
+      - run: npm run test:e2e:install --prefix desktop
+      - name: Run e2e flows
+        working-directory: desktop
+        env:
+          MIRRORMIND_BACKEND_PYTHON: python
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: e2e-report, path: desktop/playwright-report/ }
+
   test:
     runs-on: windows-latest
     steps:
@@ -123,7 +147,7 @@ jobs:
   # Gates structurally on push+release only (never pull_request) so signing
   # secrets are never reachable from PR-level CI.
   sign:
-    needs: [lint-python, lint-ipc-schema, test, build-frontend, desktop-rust]
+    needs: [lint-python, lint-ipc-schema, test, build-frontend, desktop-rust, e2e]
     if: github.ref == 'refs/heads/release' && github.event_name == 'push'
     runs-on: windows-latest
     environment: production-signing
