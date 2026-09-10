@@ -32,7 +32,9 @@ line-length = 100
 target-version = "py311"
 # src/ingestion/parser.py is deleted whole-file in Phase 1 Step 1.2 (RAG_MIGRATION_AUDIT.md
 # SCRAP list) — not worth linting into shape now.
-extend-exclude = ["src/ingestion/parser.py"]
+# *.ipynb: Colab/Jupyter notebooks (eval/colab_run_eval.ipynb) use `!`/`%` magics and
+# per-cell imports that ruff's script rules don't fit; not production code.
+extend-exclude = ["src/ingestion/parser.py", "*.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

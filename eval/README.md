@@ -109,6 +109,14 @@ python -m eval.run_eval --sample-size 15 --seed 7
 python -m eval.run_eval --calibrate
 ```
 
+**On a GPU, not this CPU box:** `eval/colab_run_eval.ipynb` — a self-contained
+Google Colab notebook that clones the repo, installs deps + Ollama, pulls
+`llama3.1:8b`, and runs the full gated eval on a T4 in ~12-20 min (vs ~75 min on
+the `ubuntu-latest` CI runner). It prints the gate verdicts + routing-miss
+breakdown and downloads the `eval/results/eval_<ts>.{json,md}` artifact to commit.
+Open it via
+`https://colab.research.google.com/github/maashishkumar-18/MirrorMind/blob/main/eval/colab_run_eval.ipynb`.
+
 | Flag | Meaning |
 |---|---|
 | `--sample-size N` / `--seed N` | evaluate a reproducible random subset |
