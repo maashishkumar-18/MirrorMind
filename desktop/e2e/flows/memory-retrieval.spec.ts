@@ -7,7 +7,7 @@ import { test, expect } from "../support/harness";
  * a question is asked that should retrieve from it. The response must cite the
  * session with its ID and timestamp.
  */
-test.use({ activeModel: "llama3.1:8b", fakeLlmFixture: "retrieval" });
+test.use({ activeModel: "llama3.1:8b", fakeLlmFixture: "retrieval", stubRerank: true });
 
 test("ask about a past conversation → grounded answer with a session citation", async ({
   page,

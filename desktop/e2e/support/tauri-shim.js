@@ -34,11 +34,28 @@
   async function invoke(cmd, args = {}) {
     switch (cmd) {
       case "ipc_request": {
-        const resp = await fetch(`${BASE}/rpc`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(args.envelope),
-        });
+        // Honour the per-call timeout the way the real Rust `ipc_request` does —
+        // reject with a BridgeError so client.ts routes it to its normal
+        // timeout handling instead of hanging forever.
+        const ms = typeof args.timeoutMs === "number" ? args.timeoutMs : 0;
+        const ctrl = new AbortController();
+        const timer = ms > 0 ? setTimeout(() => ctrl.abort(), ms) : null;
+        let resp;
+        try {
+          resp = await fetch(`${BASE}/rpc`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(args.envelope),
+            signal: ctrl.signal,
+          });
+        } catch (e) {
+          return Promise.reject({
+            kind: e && e.name === "AbortError" ? "timeout" : "transport",
+            message: String(e),
+          });
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
         const frame = await resp.json();
         if (frame && frame.__bridgeError) {
           return Promise.reject(frame.__bridgeError);

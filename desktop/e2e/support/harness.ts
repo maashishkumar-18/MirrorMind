@@ -61,6 +61,9 @@ export const test = base.extend<{
   fakeModels: boolean;
   /** Per-flow: pre-set the active model so model-gated routes pass. */
   activeModel: string | undefined;
+  /** Per-flow: swap the cross-encoder for a deterministic fake (no HF
+   *  download) — real embedding + hybrid search kept. */
+  stubRerank: boolean;
   /** Per-flow: make `_reingest` a no-op (real agent kept) so the async
    *  re-ingest followup can't block the next worker call on a slow runner.
    *  For flows that don't test memory retrieval. */
@@ -71,8 +74,9 @@ export const test = base.extend<{
   fakeModels: [false, { option: true }],
   activeModel: [undefined, { option: true }],
   stubIngest: [false, { option: true }],
+  stubRerank: [false, { option: true }],
 
-  backend: async ({ page, fakeLlmFixture, fakeModels, activeModel, stubIngest }, use) => {
+  backend: async ({ page, fakeLlmFixture, fakeModels, activeModel, stubIngest, stubRerank }, use) => {
     const dataDir = mkdtempSync(join(tmpdir(), "mm-e2e-"));
     const toastFile = join(dataDir, "toast-calls.jsonl");
     const dbPath = join(dataDir, "session.db");
@@ -94,6 +98,7 @@ export const test = base.extend<{
       extraEnv: {
         ...(fakeModels ? { RAGPIPE_FAKE_MODELS: "1" } : {}),
         ...(stubIngest ? { RAGPIPE_E2E_STUB_INGEST: "1" } : {}),
+        ...(stubRerank ? { RAGPIPE_E2E_STUB_RERANK: "1" } : {}),
       },
     });
     const port = await bridge.listen();

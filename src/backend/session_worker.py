@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import src.backend.action_dispatch as action_dispatch
+import src.backend.fake_retrieval as fake_retrieval
 import src.backend.settings as backend_settings
 from db.connection import open_session_db
 from db.health import IntegrityResult, check_quick
@@ -360,6 +361,7 @@ class SessionWorker(threading.Thread):
         else:
             self._embedder = EmbeddingGenerator(enable_logging=False)
             self._reranker = Reranker()
+            fake_retrieval.maybe_stub_reranker(self._reranker)  # RAGPIPE_E2E_STUB_RERANK
             self._router = RetrievalRouter(
                 self._store, self._structured, reranker=self._reranker, embedder=self._embedder
             )

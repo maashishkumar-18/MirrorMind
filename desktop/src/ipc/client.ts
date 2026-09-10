@@ -35,9 +35,13 @@ const TIMEOUT_MS: Record<CallableMethod, number> = {
   "model.download": 0,
   "backup.list": 30000,
   "backup.restore": 30000,
-  "chat.new": 10000,
-  "chat.history": 10000,
-  "chat.confirm_action": 10000,
+  "chat.new": 15000,
+  // chat.history waits on the worker thread — which may still be finishing
+  // warm-up (embedding + cross-encoder model load) on a cold first launch.
+  "chat.history": 30000,
+  // confirm_action can run a slot-extraction LLM call + feature dispatch — same
+  // budget as chat.send, not the old 10s.
+  "chat.confirm_action": 120000,
   "chat.send": 120000,
   // feature views (Step 3.3) — plain SQLite CRUD on the worker thread
   "reminders.list": 10000,

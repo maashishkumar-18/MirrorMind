@@ -60,6 +60,30 @@ class _StubSlotExtractor:
 
 
 _STUB_INGEST_ENV = "RAGPIPE_E2E_STUB_INGEST"
+_STUB_RERANK_ENV = "RAGPIPE_E2E_STUB_RERANK"
+
+
+class _FakeCrossEncoder:
+    """Deterministic stand-in for the sentence-transformers CrossEncoder — no
+    HuggingFace download. Mirrors ``eval/run_eval.py::_FakeCrossEncoder``. Used
+    by the memory-retrieval e2e flow so a cold CI runner never has to fetch
+    ``cross-encoder/ms-marco-MiniLM-L-6-v2`` mid-test."""
+
+    def predict(self, pairs: Any, **_: Any) -> Any:
+        import numpy as np
+
+        return np.arange(len(pairs), 0, -1, dtype=float)
+
+
+def maybe_stub_reranker(reranker: Any) -> None:
+    """When ``RAGPIPE_E2E_STUB_RERANK`` is set, swap the cross-encoder model on
+    ``reranker`` for :class:`_FakeCrossEncoder` (real embedding + hybrid search
+    + store stay intact). No-op otherwise."""
+    if not os.getenv(_STUB_RERANK_ENV) or reranker is None:
+        return
+    backend = getattr(reranker, "backend", None)
+    if backend is not None and hasattr(backend, "_model"):
+        backend._model = _FakeCrossEncoder()
 
 
 def enabled() -> bool:

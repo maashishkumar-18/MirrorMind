@@ -474,3 +474,19 @@ defect:
    agent) for `reminder` + `meeting`; `memory-retrieval` does a second
    `warmup()` between turns to wait for the real re-ingest; per-test timeout
    90s -> 150s. 18/18 local.
+
+   **Round 2** (the first e2e fixes weren't enough on the cold runner):
+   - `desktop/src/ipc/client.ts` — `chat.confirm_action` timeout **10s -> 120s**
+     (a latent product bug: a Tier-2 confirm can run a slot-extraction LLM call,
+     so it needs `chat.send`'s budget, not 10s); `chat.history` 10s -> 30s
+     (worker may still be warming). `chat.new` 10s -> 15s.
+   - `desktop/e2e/support/tauri-shim.js` — the injected `invoke("ipc_request")`
+     now **honours `timeoutMs`** via `AbortController`, rejecting with a
+     `{kind:"timeout"}` BridgeError exactly as the real Rust command does.
+     Previously a hung backend call hung the fetch forever -> the client
+     promise never settled -> the disambiguation popup never closed.
+   - `RAGPIPE_E2E_STUB_RERANK` (`src/backend/fake_retrieval.py::maybe_stub_reranker`,
+     wired in `SessionWorker._build`) — swaps the cross-encoder for a
+     deterministic `_FakeCrossEncoder` (no `cross-encoder/ms-marco-MiniLM-L-6-v2`
+     HuggingFace download mid-test). `memory-retrieval` uses it and drops from
+     ~44s -> ~10s; real embedding + hybrid search + the vector store stay live.
