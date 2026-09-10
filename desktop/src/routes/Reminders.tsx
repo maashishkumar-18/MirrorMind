@@ -13,6 +13,7 @@ import {
   groupReminders,
   isoToDatetimeLocal,
 } from "./remindersView";
+import { S } from "../strings";
 
 function errText(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -112,19 +113,19 @@ export function Reminders() {
   return (
     <div className="feature-view">
       <header className="feature-header">
-        <h1>Reminders</h1>
+        <h1>{S.features.reminders.title}</h1>
       </header>
 
       <form className="feature-create" onSubmit={submitCreate}>
         <input
-          aria-label="New reminder"
-          placeholder="Remind me to call John on Tuesday at 2pm"
+          aria-label={S.features.reminders.createLabel}
+          placeholder={S.features.reminders.createPlaceholder}
           value={draft}
           disabled={creating}
           onChange={(e) => setDraft(e.target.value)}
         />
         <button type="submit" disabled={creating || !draft.trim()}>
-          Add
+          {S.features.reminders.add}
         </button>
       </form>
 
@@ -132,7 +133,7 @@ export function Reminders() {
         <div className="feature-create-fallback" role="status">
           {outcome.kind === "disambiguation" ? (
             <>
-              <p>Did you mean:</p>
+              <p>{S.features.didYouMean}</p>
               <div className="feature-choice-row">
                 {outcome.options.map((opt) => (
                   <button
@@ -147,27 +148,27 @@ export function Reminders() {
               </div>
             </>
           ) : outcome.kind === "conflict" ? (
-            <p>{outcome.answer} — open the Schedule view to resolve it.</p>
+            <p>{outcome.answer} {S.features.conflictHint}</p>
           ) : (
             <p>{outcome.text}</p>
           )}
           <button type="button" className="feature-dismiss" onClick={() => setOutcome(null)}>
-            Dismiss
+            {S.features.dismiss}
           </button>
         </div>
       )}
 
-      {error && <p className="feature-error">Couldn&apos;t load reminders: {error}</p>}
-      {loading && active.length === 0 && <p className="feature-loading">Loading…</p>}
+      {error && <p className="feature-error">{S.features.reminders.loadError}: {error}</p>}
+      {loading && active.length === 0 && <p className="feature-loading">{S.features.loading}</p>}
       {!loading && active.length === 0 && !error && (
-        <p className="feature-empty">Nothing here yet.</p>
+        <p className="feature-empty">{S.features.empty}</p>
       )}
 
-      <Group title="Overdue" reminders={groups.overdue} overdue pendingIds={pendingIds}
+      <Group title={S.features.reminders.groups.overdue} reminders={groups.overdue} overdue pendingIds={pendingIds}
         onComplete={complete} onDelete={remove} onReschedule={reschedule} />
-      <Group title="Today" reminders={groups.today} pendingIds={pendingIds}
+      <Group title={S.features.reminders.groups.today} reminders={groups.today} pendingIds={pendingIds}
         onComplete={complete} onDelete={remove} onReschedule={reschedule} />
-      <Group title="Upcoming" reminders={groups.upcoming} pendingIds={pendingIds}
+      <Group title={S.features.reminders.groups.upcoming} reminders={groups.upcoming} pendingIds={pendingIds}
         onComplete={complete} onDelete={remove} onReschedule={reschedule} />
     </div>
   );
@@ -203,7 +204,7 @@ function Group({
           >
             <input
               type="checkbox"
-              aria-label={`Complete ${r.title}`}
+              aria-label={S.features.complete(r.title)}
               checked={false}
               onChange={() => onComplete(r)}
             />
@@ -211,12 +212,12 @@ function Group({
               <span className="feature-row-title">{r.title}</span>
               <span className="feature-row-meta">
                 {formatWhen(r.scheduled_time)}
-                {pendingIds.has(r.id) && <em className="reminder-pending"> · needs acknowledgment</em>}
+                {pendingIds.has(r.id) && <em className="reminder-pending"> · {S.features.reminders.needsAck}</em>}
               </span>
               {r.notes && <span className="feature-row-notes">{r.notes}</span>}
             </div>
             <label className="feature-row-reschedule">
-              <span className="visually-hidden">Reschedule {r.title}</span>
+              <span className="visually-hidden">{S.features.reschedule(r.title)}</span>
               <input
                 type="datetime-local"
                 defaultValue={isoToDatetimeLocal(r.scheduled_time)}

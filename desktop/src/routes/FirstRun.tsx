@@ -7,6 +7,7 @@ import { useModelStore } from "../store/model";
 import { ModelCatalogList } from "../ui/ModelCatalogList";
 import { Starting } from "../ui/Starting";
 import { firstRunInitial, firstRunReducer } from "./firstRunReducer";
+import { S } from "../strings";
 
 function msg(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -42,8 +43,8 @@ export function FirstRun() {
   if (phase === "degraded") {
     return (
       <div className="screen">
-        <h1>Recovery mode</h1>
-        <p>MirrorMind needs a backup restored before you can set up a model.</p>
+        <h1>{S.firstRun.recoveryTitle}</h1>
+        <p>{S.firstRun.recoveryBody}</p>
       </div>
     );
   }
@@ -67,8 +68,8 @@ export function FirstRun() {
 
   return (
     <div className="screen">
-      <h1>Choose a model</h1>
-      <p>Pick a model to download. You can add or switch models later in Settings.</p>
+      <h1>{S.firstRun.chooseTitle}</h1>
+      <p>{S.firstRun.chooseBody}</p>
 
       <ModelCatalogList
         variant="first-run"
@@ -82,7 +83,7 @@ export function FirstRun() {
         <p className="first-run-error">
           {s.activateError}{" "}
           <button type="button" onClick={() => dispatch({ type: "activate/reset" })}>
-            Dismiss
+            {S.loading.dismiss}
           </button>
         </p>
       )}

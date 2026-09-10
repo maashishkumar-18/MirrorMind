@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { disambigLabel } from "../routes/chatView";
+import { S } from "../strings";
 
 /**
  * Tier-2 disambiguation (project_logic §3): a small card over the transcript —
@@ -36,15 +37,15 @@ export function DisambiguationPopup({
         className="disambig-card"
         role="dialog"
         aria-modal="true"
-        aria-label="Confirm what you meant"
+        aria-label={S.disambiguation.label}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="disambig-head">
-          <span>What would you like me to do?</span>
+          <span>{S.disambiguation.prompt}</span>
           <button
             type="button"
             className="disambig-close"
-            aria-label="Dismiss"
+            aria-label={S.disambiguation.dismiss}
             onClick={onDismiss}
           >
             ×

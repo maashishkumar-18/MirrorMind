@@ -13,6 +13,7 @@ import {
   timeLabel,
   weekStart,
 } from "./scheduleView";
+import { S } from "../strings";
 
 function errText(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -128,7 +129,7 @@ export function Schedule() {
   return (
     <div className="feature-view">
       <header className="feature-header">
-        <h1>Schedule</h1>
+        <h1>{S.features.schedule.title}</h1>
         <div className="schedule-toggle" role="tablist">
           <button
             type="button"
@@ -136,7 +137,7 @@ export function Schedule() {
             aria-selected={view === "day"}
             onClick={() => useScheduleStore.getState().setView("day")}
           >
-            Day
+            {S.features.schedule.day}
           </button>
           <button
             type="button"
@@ -144,38 +145,38 @@ export function Schedule() {
             aria-selected={view === "week"}
             onClick={() => useScheduleStore.getState().setView("week")}
           >
-            Week
+            {S.features.schedule.week}
           </button>
         </div>
       </header>
 
       <div className="schedule-nav">
-        <button type="button" onClick={() => step(-1)} aria-label="Previous">
+        <button type="button" onClick={() => step(-1)} aria-label={S.features.schedule.prev}>
           ‹
         </button>
         <span>
           {view === "day"
             ? formatDayLabel(anchor)
-            : `Week of ${formatDayLabel(weekStart(anchor))}`}
+            : S.features.schedule.weekOf(formatDayLabel(weekStart(anchor)))}
         </span>
-        <button type="button" onClick={() => step(1)} aria-label="Next">
+        <button type="button" onClick={() => step(1)} aria-label={S.features.schedule.next}>
           ›
         </button>
         <button type="button" onClick={() => useScheduleStore.getState().setAnchor(new Date().toISOString().slice(0, 10))}>
-          Today
+          {S.features.schedule.today}
         </button>
       </div>
 
       <form className="feature-create" onSubmit={submitEdit}>
         <input
-          aria-label="Natural-language schedule edit"
-          placeholder="Schedule a review with Sam 3-4pm Thursday"
+          aria-label={S.features.schedule.editLabel}
+          placeholder={S.features.schedule.editPlaceholder}
           value={draft}
           disabled={busy}
           onChange={(e) => setDraft(e.target.value)}
         />
         <button type="submit" disabled={busy || !draft.trim()}>
-          Apply
+          {S.features.schedule.apply}
         </button>
       </form>
 
@@ -191,10 +192,10 @@ export function Schedule() {
           </p>
           <div className="feature-choice-row">
             <button type="button" disabled={busy} onClick={overwrite}>
-              Overwrite
+              {S.features.schedule.overwrite}
             </button>
             <button type="button" disabled={busy} onClick={clearConflict}>
-              Keep existing
+              {S.features.schedule.keepExisting}
             </button>
           </div>
         </div>
@@ -204,7 +205,7 @@ export function Schedule() {
         <div className="feature-create-fallback" role="status">
           {outcome.kind === "disambiguation" ? (
             <>
-              <p>Did you mean:</p>
+              <p>{S.features.didYouMean}</p>
               <div className="feature-choice-row">
                 {outcome.options.map((opt) => (
                   <button
@@ -222,19 +223,19 @@ export function Schedule() {
             <p>{outcome.kind === "message" ? outcome.text : outcome.answer}</p>
           )}
           <button type="button" className="feature-dismiss" onClick={() => setOutcome(null)}>
-            Dismiss
+            {S.features.dismiss}
           </button>
         </div>
       )}
 
-      {error && <p className="feature-error">Couldn&apos;t load the schedule: {error}</p>}
-      {loading && days.length === 0 && <p className="feature-loading">Loading…</p>}
+      {error && <p className="feature-error">{S.features.schedule.loadError}: {error}</p>}
+      {loading && days.length === 0 && <p className="feature-loading">{S.features.loading}</p>}
 
       {days.map((d) => (
         <section key={d.date} className="schedule-day">
           {view === "week" && <h2>{formatDayLabel(d.date)}</h2>}
           {d.items.length === 0 ? (
-            <p className="feature-empty">Nothing scheduled.</p>
+            <p className="feature-empty">{S.features.schedule.empty}</p>
           ) : (
             <ul className="schedule-timeline">
               {layoutDay(d.items).map((slot) => (

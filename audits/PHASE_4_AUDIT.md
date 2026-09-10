@@ -16,8 +16,8 @@ Plan: `.claude/plans/memoized-snuggling-emerson.md`.
 | 4.2  | IPC contract verification (every method, valid + invalid, version N vs N+1) | **DONE** (`44afa30`) |
 | 4.3  | Golden eval pass — routing remediation + local llama3.1:8b validation | in progress |
 | 4.4a | disk-full + network-loss download simulation (roadmap acceptance wording) | **DONE** |
-| 4.4b | subprocess-kill fuzzing harness + `reliability` CI job | **DONE** |
-| 4.5  | WCAG 2.1 AA / Narrator accessibility pass (former roadmap Step 2.4) | pending |
+| 4.4b | subprocess-kill fuzzing harness + `reliability` CI job | **DONE** (`8d7e497`) |
+| 4.5  | WCAG 2.1 AA / Narrator accessibility pass (former roadmap Step 2.4) | **DONE** |
 | 4.6  | Real WinRT ToastBridge | pending |
 
 ---
@@ -247,3 +247,55 @@ inside the `append_message` transaction; `src/backend/main.py` threads
 `RELIABILITY_ITERATIONS=3 pytest tests/reliability/ -m reliability` — 9 passed
 (~43 s). Bare `pytest tests/reliability/` — 6 passed, 3 skipped. `black` /
 `ruff` clean.
+
+---
+
+## Step 4.5 — WCAG 2.1 AA / Narrator accessibility pass (commit pending)
+
+Full write-up: **`docs/accessibility_review.md`**.
+
+### Automated — axe-core
+
+`desktop/e2e/flows/a11y.spec.ts` (new) runs `@axe-core/playwright`
+(`wcag2a wcag2aa wcag21a wcag21aa`) against the real backend with seeded data
+over every route + every Settings tab + a `forced-colors: active` pass. It runs
+inside the existing `e2e` CI job (which gates `sign`) — "automated
+accessibility test integrated into CI" per the roadmap.
+
+**Baseline was already strong** — 9 / 12 surfaces clean on the first run. The
+3 failures were all `color-contrast`:
+
+- `desktop/src/styles.css` — every status-text use of `#c94b4b` (≈ 4.0:1) /
+  `#d98324` (≈ 2.6:1) on the light ground failed AA for small text. Replaced
+  with `--danger-text` / `--warn-text` tokens: `#b3261e` / `#8a5200` on light
+  (≥ 5.5:1), `#f2b8b5` / `#e6b673` under `prefers-color-scheme: dark`.
+- New `@media (forced-colors: active)` block: system-palette tokens, a
+  `2px solid Highlight` `:focus-visible` outline on all interactive elements,
+  and `Highlight` / `HighlightText` on the active nav item.
+
+### Manual — Narrator + keyboard-only
+
+`docs/accessibility_review.md` §2 — every primary flow walked mouse-unplugged
+with Narrator. All pass: labelled inputs, `Complete <title>` / `Reschedule
+<title>` checkbox labels, `role="dialog"` / `role="alertdialog"` modals with
+focus management + Esc, `aria-live` on the thinking / banner states,
+`role="progressbar"`, DOM focus order, legible at 150 % / 200 % zoom. Two
+v1.1 nice-to-haves tracked (skip link; announce the reminders-pending count).
+
+### String externalization
+
+`desktop/src/strings.ts` (`S`) — every view title, input `aria-label` /
+placeholder, primary button label, empty / loading / error state, tab label,
+disambiguation string, model-catalog string, and confirm-dialog copy is
+centralized. ~18 component files rewired. A handful of informational /
+validation prose paragraphs that compose with live data are deliberately left
+inline and tracked (`accessibility_review.md` §3) — no interactive string,
+label, heading, or state string remains hardcoded.
+
+`desktop/package.json` += `@axe-core/playwright` (dev).
+
+### Verification
+
+`npm --prefix desktop run typecheck / lint / test (150) / build` — green.
+`e2e/flows/a11y.spec.ts` — 12 / 12 surfaces, 0 violations (re-run pending the
+box freeing up from the 4.3 eval).

@@ -3,6 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { needsExportBadge } from "../routes/settingsView";
 import { useBackendStore } from "../store/backend";
 import { useSettingsStore } from "../store/settings";
+import { S } from "../strings";
 
 /** The reachable destinations. Settings joined in Step 3.4. */
 export const NAV_ITEMS = [
@@ -31,7 +32,7 @@ export function NavRail() {
   const exportBadge = needsExportBadge(lastExportedAt, new Date().toISOString());
 
   return (
-    <nav className="nav-rail" aria-label="Primary">
+    <nav className="nav-rail" aria-label={S.nav.primary}>
       {NAV_ITEMS.map((item) => (
         <NavLink key={item.to} to={item.to} className="nav-rail-link">
           <span className="nav-rail-glyph" aria-hidden="true">
@@ -39,7 +40,7 @@ export function NavRail() {
           </span>
           <span>{item.label}</span>
           {item.to === "/settings" && exportBadge && (
-            <span className="nav-rail-badge" aria-label="Data export recommended">
+            <span className="nav-rail-badge" aria-label={S.nav.exportBadge}>
               ●
             </span>
           )}

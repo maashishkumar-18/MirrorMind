@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { call, IpcCallError } from "../ipc/client";
 import { useMeetingStore, type MeetingNote } from "../store/meetings";
 import { actionItemLine, formatMeetingDate, summarizeMeeting } from "./meetingsView";
+import { S } from "../strings";
 
 function errText(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -52,27 +53,27 @@ export function Meetings() {
   return (
     <div className="feature-view">
       <header className="feature-header">
-        <h1>Meetings</h1>
+        <h1>{S.features.meetings.title}</h1>
       </header>
 
       <form className="meeting-capture" onSubmit={capture}>
         <textarea
-          aria-label="Meeting transcript"
-          placeholder="Paste or type a transcript, then Capture…"
+          aria-label={S.features.meetings.transcriptLabel}
+          placeholder={S.features.meetings.transcriptPlaceholder}
           rows={4}
           value={transcript}
           disabled={capturing}
           onChange={(e) => setTranscript(e.target.value)}
         />
         <button type="submit" disabled={capturing || !transcript.trim()}>
-          {capturing ? "Capturing…" : "Capture"}
+          {capturing ? S.features.meetings.capturing : S.features.meetings.capture}
         </button>
       </form>
 
       {error && <p className="feature-error">{error}</p>}
       {loading && meetings.length === 0 && <p className="feature-loading">Loading…</p>}
       {!loading && meetings.length === 0 && !error && (
-        <p className="feature-empty">Nothing here yet.</p>
+        <p className="feature-empty">{S.features.empty}</p>
       )}
 
       <ul className="feature-list">
@@ -96,17 +97,17 @@ export function Meetings() {
 
                 {open && (
                   <div className="meeting-detail">
-                    <Detail label="Attendees" items={m.attendees} />
-                    <Detail label="Topics" items={m.topics} />
-                    <Detail label="Decisions" items={m.decisions} />
+                    <Detail label={S.features.meetings.detail.attendees} items={m.attendees} />
+                    <Detail label={S.features.meetings.detail.topics} items={m.topics} />
+                    <Detail label={S.features.meetings.detail.decisions} items={m.decisions} />
                     <Detail
-                      label="Action items"
+                      label={S.features.meetings.detail.actionItems}
                       items={m.action_items.map(actionItemLine)}
                     />
-                    <Detail label="Follow-ups" items={m.follow_ups} />
+                    <Detail label={S.features.meetings.detail.followUps} items={m.follow_ups} />
                     {m.raw_transcript && (
                       <details className="meeting-transcript">
-                        <summary>Transcript</summary>
+                        <summary>{S.features.meetings.transcript}</summary>
                         <pre>{m.raw_transcript}</pre>
                       </details>
                     )}

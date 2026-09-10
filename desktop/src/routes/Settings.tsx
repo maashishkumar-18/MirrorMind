@@ -6,6 +6,7 @@ import { SettingsDiagnostics } from "./SettingsDiagnostics";
 import { SettingsGeneral } from "./SettingsGeneral";
 import { SettingsModels } from "./SettingsModels";
 import { activeTab, SETTINGS_TAB_LABELS, SETTINGS_TABS, type SettingsTab } from "./settingsView";
+import { S } from "../strings";
 
 /**
  * Settings (Phase 3 Step 3.4). One route; the active panel is a `?tab=` param
@@ -20,8 +21,8 @@ export function Settings() {
 
   return (
     <div className="settings-view">
-      <h1>Settings</h1>
-      <nav className="settings-tabs" aria-label="Settings sections">
+      <h1>{S.settings.title}</h1>
+      <nav className="settings-tabs" aria-label={S.nav.settingsSections}>
         {SETTINGS_TABS.map((t) => (
           <button
             key={t}

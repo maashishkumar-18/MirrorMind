@@ -2,6 +2,42 @@
   color-scheme: light dark;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   line-height: 1.5;
+
+  /* Status text colours — WCAG 2.1 AA (>= 4.5:1) on the light ground.
+     The prior #c94b4b / #d98324 failed for small text (Phase 4 Step 4.5). */
+  --danger-text: #b3261e;
+  --warn-text: #8a5200;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --danger-text: #f2b8b5;
+    --warn-text: #e6b673;
+  }
+}
+
+/* Windows high-contrast / forced-colors: defer to the system palette and keep
+   focus + the active nav item unmistakable. */
+@media (forced-colors: active) {
+  :root {
+    --danger-text: LinkText;
+    --warn-text: CanvasText;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .nav-rail-link[aria-current="page"] {
+    background: Highlight;
+    color: HighlightText;
+  }
 }
 
 * {
@@ -251,7 +287,7 @@ h1 {
 
 .first-run-error {
   font-size: 0.9rem;
-  color: #c94b4b;
+  color: var(--danger-text);
 }
 
 /* --- chat interface (3.2) --- */
@@ -614,7 +650,7 @@ h1 {
 }
 
 .feature-error {
-  color: #c94b4b;
+  color: var(--danger-text);
   font-size: 0.88rem;
 }
 
@@ -737,7 +773,7 @@ h1 {
 }
 
 .todo-priority[data-level="0"] {
-  color: #c94b4b;
+  color: var(--danger-text);
 }
 .todo-priority[data-level="1"] {
   color: #8a6d1a;
@@ -915,7 +951,7 @@ h1 {
 /* --- settings (3.4) --- */
 .nav-rail-badge {
   margin-left: auto;
-  color: #d98324;
+  color: var(--warn-text);
   font-size: 0.7rem;
   line-height: 1;
 }
@@ -1033,7 +1069,7 @@ h1 {
 }
 
 .settings-danger {
-  color: #c94b4b;
+  color: var(--danger-text);
   border-color: rgba(201, 75, 75, 0.5);
 }
 
@@ -1057,11 +1093,11 @@ h1 {
 
 .diag-log-line[data-level="ERROR"],
 .diag-log-line[data-level="CRITICAL"] {
-  color: #c94b4b;
+  color: var(--danger-text);
 }
 
 .diag-log-line[data-level="WARNING"] {
-  color: #d98324;
+  color: var(--warn-text);
 }
 
 .diag-metric-bars {

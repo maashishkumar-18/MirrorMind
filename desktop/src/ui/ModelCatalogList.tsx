@@ -1,5 +1,6 @@
 import { formatBytes, formatEta, formatSpeed, rowAction } from "../routes/modelRow";
 import { useModelStore } from "../store/model";
+import { S } from "../strings";
 
 /**
  * The bundled-model catalog list — rows with Download / Activate|Switch /
@@ -41,23 +42,23 @@ export function ModelCatalogList({
       )
     : [];
 
-  const activateLabel = variant === "settings" ? "Switch" : "Activate";
+  const activateLabel = variant === "settings" ? S.firstRun.switch : S.firstRun.activate;
 
   return (
     <>
       {ollamaRunning === false && catalog !== null && (
-        <p className="first-run-notice">The model service isn&apos;t running — downloads are paused.</p>
+        <p className="first-run-notice">{S.firstRun.servicePaused}</p>
       )}
 
       {catalogError ? (
         <p className="first-run-error">
-          Couldn&apos;t load the model list: {catalogError}{" "}
+          {S.firstRun.catalogError}: {catalogError}{" "}
           <button type="button" onClick={onRetry}>
-            Retry
+            {S.loading.retry}
           </button>
         </p>
       ) : catalog === null ? (
-        <p>Loading models…</p>
+        <p>{S.firstRun.loadingModels}</p>
       ) : (
         <ul className="model-list">
           {rows.map((entry) => {
@@ -67,9 +68,9 @@ export function ModelCatalogList({
               <li key={entry.name} className="model-row">
                 <div className="model-row-head">
                   <strong>{entry.display_name}</strong>
-                  {entry.recommended && <span className="pill">Recommended</span>}
+                  {entry.recommended && <span className="pill">{S.firstRun.recommended}</span>}
                   <span className="model-row-meta">
-                    {formatBytes(entry.size_bytes)} · {entry.min_ram_gb} GB RAM
+                    {formatBytes(entry.size_bytes)} · {entry.min_ram_gb} {S.firstRun.ramSuffix}
                   </span>
                 </div>
                 <p className="model-row-desc">{entry.description}</p>
@@ -80,7 +81,7 @@ export function ModelCatalogList({
                     disabled={!!downloadingModel || !ollamaRunning}
                     onClick={() => onDownload(entry.name)}
                   >
-                    Download
+                    {S.firstRun.download}
                   </button>
                 )}
                 {(action === "downloading" || isThis) && (
@@ -98,7 +99,7 @@ export function ModelCatalogList({
                     <span className="progress-label">
                       {downloadProgress?.name === entry.name
                         ? `${Math.round(downloadProgress.percent)}% · ${formatSpeed(downloadProgress.speed_mbps)} · ${formatEta(downloadProgress.eta_seconds)} · ${downloadProgress.phase}`
-                        : "starting…"}
+                        : S.firstRun.downloadStarting}
                     </span>
                   </div>
                 )}
@@ -108,10 +109,10 @@ export function ModelCatalogList({
                     disabled={!!activatingName || !!downloadingModel}
                     onClick={() => onActivate(entry.name)}
                   >
-                    {activatingName === entry.name ? "Activating…" : activateLabel}
+                    {activatingName === entry.name ? S.firstRun.activating : activateLabel}
                   </button>
                 )}
-                {action === "active" && <span className="model-row-active">Currently active</span>}
+                {action === "active" && <span className="model-row-active">{S.firstRun.currentlyActive}</span>}
               </li>
             );
           })}
@@ -120,12 +121,12 @@ export function ModelCatalogList({
 
       {downloadOutcome && (
         <p className="first-run-outcome">
-          ✓ Downloaded {downloadOutcome.name}
+          ✓ {S.firstRun.downloaded(downloadOutcome.name)}
           {downloadOutcome.verified
-            ? " · integrity verified"
-            : " · couldn't verify — try re-downloading"}{" "}
+            ? ` ${S.firstRun.integrityVerified}`
+            : ` ${S.firstRun.integrityUnverified}`}{" "}
           <button type="button" onClick={clearDownloadFeedback}>
-            Dismiss
+            {S.loading.dismiss}
           </button>
         </p>
       )}
@@ -133,7 +134,7 @@ export function ModelCatalogList({
         <p className="first-run-error">
           {downloadError}{" "}
           <button type="button" onClick={clearDownloadFeedback}>
-            Dismiss
+            {S.loading.dismiss}
           </button>
         </p>
       )}

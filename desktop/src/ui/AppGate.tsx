@@ -2,6 +2,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import { useBackendStore } from "../store/backend";
 import { selectAppGate } from "./gateState";
+import { S } from "../strings";
 
 export function AppGate() {
   const gate = useBackendStore(useShallow(selectAppGate));
@@ -17,7 +18,7 @@ export function AppGate() {
       <div className="app-gate-card">
         <h1 id="app-gate-title">{gate.title}</h1>
         <p>{gate.message}</p>
-        <p className="app-gate-hint">Close and reopen MirrorMind.</p>
+        <p className="app-gate-hint">Close and reopen {S.app.name}.</p>
       </div>
     </div>
   );

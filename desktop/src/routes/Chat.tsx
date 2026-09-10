@@ -10,6 +10,7 @@ import {
   isBoundary,
   withBoundaries,
 } from "./chatView";
+import { S } from "../strings";
 
 function msg(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -112,7 +113,7 @@ export function Chat() {
       .catch((e) => {
         useSessionStore.getState().dismissDisambiguation();
         if (e instanceof IpcCallError && e.detail.code === "no_pending_action") {
-          useSessionStore.setState({ error: "That prompt expired — send your message again." });
+          useSessionStore.setState({ error: S.chat.promptExpired });
         }
       })
       .finally(() => setConfirmBusy(false));
@@ -136,31 +137,31 @@ export function Chat() {
   return (
     <div className="chat-view">
       <header className="chat-header">
-        <h1>Chat</h1>
+        <h1>{S.chat.title}</h1>
         <button type="button" onClick={newConversation} disabled={sending}>
-          New conversation
+          {S.chat.newConversation}
         </button>
       </header>
 
       <div className="chat-log">
         {historyLoading ? (
-          <p className="chat-log-loading">Loading your conversation…</p>
+          <p className="chat-log-loading">{S.chat.loadingHistory}</p>
         ) : hydrated && messages.length === 0 ? (
           <p className="chat-empty">
-            Start a conversation — ask about anything you&apos;ve talked about before.
+            {S.chat.empty}
           </p>
         ) : !hydrated && !historyLoading ? (
           <p className="chat-log-loading">
-            Couldn&apos;t load your conversation.{" "}
+            {S.chat.historyError}{" "}
             <button type="button" onClick={loadHistory}>
-              Retry
+              {S.loading.retry}
             </button>
           </p>
         ) : (
           rows.map((row) =>
             isBoundary(row) ? (
               <div key={row.id} className="chat-boundary" role="separator">
-                <span>New conversation</span>
+                <span>{S.chat.newConversation}</span>
               </div>
             ) : (
               <Message key={row.id} m={row} onRetry={retry} />
@@ -170,7 +171,7 @@ export function Chat() {
 
         {sending && (
           <div className="chat-msg chat-typing" data-role="assistant" role="status" aria-live="polite">
-            <span>MirrorMind is thinking</span>
+            <span>{S.chat.thinking}</span>
             <span className="banner-dots" aria-hidden="true" />
           </div>
         )}
@@ -182,26 +183,26 @@ export function Chat() {
         <p className="chat-offline">
           {error}{" "}
           <button type="button" onClick={() => useSessionStore.getState().clearError()}>
-            Dismiss
+            {S.loading.dismiss}
           </button>
         </p>
       )}
       {offline && (
-        <p className="chat-offline">Chat is unavailable while MirrorMind recovers.</p>
+        <p className="chat-offline">{S.chat.offline}</p>
       )}
 
       <form className="chat-composer" onSubmit={onSubmit}>
         <textarea
-          aria-label="Message"
-          placeholder="Ask MirrorMind anything…"
+          aria-label={S.chat.messageLabel}
+          placeholder={S.chat.messagePlaceholder}
           value={draft}
           rows={2}
           disabled={sending || offline}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
         />
-        <button type="submit" aria-label="Send message" disabled={sending || offline || !draft.trim()}>
-          Send
+        <button type="submit" aria-label={S.chat.send} disabled={sending || offline || !draft.trim()}>
+          {S.chat.sendShort}
         </button>
       </form>
 
@@ -258,7 +259,7 @@ function Message({ m, onRetry }: { m: SessionMessage; onRetry: (m: SessionMessag
 
       {m.status === "failed" && (
         <button type="button" className="chat-retry" onClick={() => onRetry(m)}>
-          Retry
+          {S.loading.retry}
         </button>
       )}
     </div>

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { call, IpcCallError } from "../ipc/client";
 import { useModelStore } from "../store/model";
 import { ModelCatalogList } from "../ui/ModelCatalogList";
+import { S } from "../strings";
 
 function msg(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -57,7 +58,7 @@ export function SettingsModels() {
 
   return (
     <section className="settings-panel">
-      <h2>Models</h2>
+      <h2>{S.settings.models.title}</h2>
       <p className="settings-hint">
         {activeModel ? `Active model: ${activeModel}` : "No model is active yet."}
       </p>

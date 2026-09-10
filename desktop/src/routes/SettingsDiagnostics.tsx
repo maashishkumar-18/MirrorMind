@@ -12,6 +12,7 @@ import {
   reportMailto,
   type LogLevel,
 } from "./diagnosticsView";
+import { S } from "../strings";
 
 function msg(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -96,15 +97,15 @@ export function SettingsDiagnostics() {
 
   return (
     <section className="settings-panel">
-      <h2>Diagnostics</h2>
+      <h2>{S.settings.diagnostics.title}</h2>
 
-      <h3>Recent activity</h3>
+      <h3>{S.settings.diagnostics.recentActivity}</h3>
       {metricsError ? (
         <p className="first-run-error">{metricsError}</p>
       ) : !metrics ? (
-        <p className="settings-hint">Loading…</p>
+        <p className="settings-hint">{S.settings.hintLoading}</p>
       ) : metrics.sample_size === 0 ? (
-        <p className="settings-hint">No chat activity recorded yet.</p>
+        <p className="settings-hint">{S.settings.diagnostics.noActivity}</p>
       ) : (
         <>
           <p className="settings-hint">Over the last {metrics.sample_size} messages:</p>
@@ -137,7 +138,7 @@ export function SettingsDiagnostics() {
         </>
       )}
 
-      <h3>Logs</h3>
+      <h3>{S.settings.diagnostics.logs}</h3>
       <div className="settings-actions">
         <label>
           Level{" "}
@@ -158,7 +159,7 @@ export function SettingsDiagnostics() {
         <>
           <div className="diag-log">
             {logs.length === 0 ? (
-              <div className="diag-log-line">No entries.</div>
+              <div className="diag-log-line">{S.settings.diagnostics.noEntries}</div>
             ) : (
               logs.map((e, i) => (
                 <div key={i} className="diag-log-line" data-level={e.level}>
@@ -175,7 +176,7 @@ export function SettingsDiagnostics() {
         </>
       )}
 
-      <h3>Report a problem</h3>
+      <h3>{S.settings.diagnostics.reportProblem}</h3>
       <p className="settings-hint">
         Saves a redacted copy of the log (no message content — only events and
         errors), then opens an email so you can attach it and describe the issue.
@@ -183,7 +184,7 @@ export function SettingsDiagnostics() {
       </p>
       <div className="settings-actions">
         <button type="button" onClick={() => void reportProblem()}>
-          Report a problem
+          {S.settings.diagnostics.reportProblem}
         </button>
         {report && (
           <span className={report.kind === "ok" ? "settings-ok" : "first-run-error"}>

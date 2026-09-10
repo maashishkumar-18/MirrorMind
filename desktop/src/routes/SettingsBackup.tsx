@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { call, IpcCallError } from "../ipc/client";
 import { formatBytes } from "./modelRow";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { S } from "../strings";
 
 function msg(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -62,15 +63,15 @@ export function SettingsBackup() {
   if (restarted) {
     return (
       <section className="settings-panel">
-        <h2>Backup &amp; Recovery</h2>
-        <p className="settings-hint">Restarting to apply this backup…</p>
+        <h2>{S.settings.backup.title}</h2>
+        <p className="settings-hint">{S.settings.backup.restarting}</p>
       </section>
     );
   }
 
   return (
     <section className="settings-panel">
-      <h2>Backup &amp; Recovery</h2>
+      <h2>{S.settings.backup.title}</h2>
       <p className="settings-hint">
         MirrorMind keeps a rolling set of daily encrypted snapshots. Restoring one
         replaces your current data and restarts the app.
@@ -79,9 +80,9 @@ export function SettingsBackup() {
       {error && <p className="first-run-error">{error}</p>}
 
       {snapshots === null ? (
-        <p className="settings-hint">Loading…</p>
+        <p className="settings-hint">{S.settings.hintLoading}</p>
       ) : snapshots.length === 0 ? (
-        <p className="settings-hint">No snapshots yet.</p>
+        <p className="settings-hint">{S.settings.backup.noSnapshots}</p>
       ) : (
         <ul className="settings-list">
           {snapshots.map((s) => (
@@ -100,7 +101,7 @@ export function SettingsBackup() {
 
       {confirmPath && (
         <ConfirmDialog
-          title="Restore from this backup?"
+          title={S.settings.backup.restoreTitle}
           body={
             <p>
               This replaces all of your current data with the contents of the
@@ -108,7 +109,7 @@ export function SettingsBackup() {
               that snapshot will be lost.
             </p>
           }
-          confirmLabel="Restore and restart"
+          confirmLabel={S.settings.backup.restoreConfirm}
           danger
           busy={restoring}
           onConfirm={restore}

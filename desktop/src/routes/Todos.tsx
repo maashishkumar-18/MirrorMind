@@ -4,6 +4,7 @@ import { call, IpcCallError } from "../ipc/client";
 import { useTodoStore, type Todo } from "../store/todos";
 import { actionLabel, interpretCreateResult, type CreateOutcome } from "./featureCreate";
 import { priorityLabel, priorityRank, splitTodos } from "./todosView";
+import { S } from "../strings";
 
 function errText(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -95,13 +96,13 @@ export function Todos() {
   return (
     <div className="feature-view">
       <header className="feature-header">
-        <h1>To-dos</h1>
+        <h1>{S.features.todos.title}</h1>
       </header>
 
       <form className="feature-create" onSubmit={submitCreate}>
         <input
-          aria-label="New to-do"
-          placeholder="Add a todo: draft the Q3 report, high priority"
+          aria-label={S.features.todos.createLabel}
+          placeholder={S.features.todos.createPlaceholder}
           value={draft}
           disabled={creating}
           onChange={(e) => setDraft(e.target.value)}
@@ -115,7 +116,7 @@ export function Todos() {
         <div className="feature-create-fallback" role="status">
           {outcome.kind === "disambiguation" ? (
             <>
-              <p>Did you mean:</p>
+              <p>{S.features.didYouMean}</p>
               <div className="feature-choice-row">
                 {outcome.options.map((opt) => (
                   <button
@@ -130,12 +131,12 @@ export function Todos() {
               </div>
             </>
           ) : outcome.kind === "conflict" ? (
-            <p>{outcome.answer} — open the Schedule view to resolve it.</p>
+            <p>{outcome.answer} {S.features.conflictHint}</p>
           ) : (
             <p>{outcome.text}</p>
           )}
           <button type="button" className="feature-dismiss" onClick={() => setOutcome(null)}>
-            Dismiss
+            {S.features.dismiss}
           </button>
         </div>
       )}
@@ -155,14 +156,14 @@ export function Todos() {
           aria-selected={tab === "completed"}
           onClick={() => setTab("completed")}
         >
-          Completed ({completed.length})
+          {S.features.todos.completed(completed.length)}
         </button>
       </div>
 
       {error && <p className="feature-error">Couldn&apos;t load to-dos: {error}</p>}
-      {loading && todos.length === 0 && <p className="feature-loading">Loading…</p>}
+      {loading && todos.length === 0 && <p className="feature-loading">{S.features.loading}</p>}
       {!loading && shown.length === 0 && !error && (
-        <p className="feature-empty">Nothing here yet.</p>
+        <p className="feature-empty">{S.features.empty}</p>
       )}
 
       <ul className="feature-list">
@@ -170,7 +171,7 @@ export function Todos() {
           <li key={t.id} className="feature-row" data-priority={t.priority ?? undefined}>
             <input
               type="checkbox"
-              aria-label={`Complete ${t.title}`}
+              aria-label={S.features.complete(t.title)}
               checked={t.completed_at != null}
               disabled={t.completed_at != null}
               onChange={() => complete(t)}
@@ -199,7 +200,7 @@ export function Todos() {
                     value={t.priority ?? ""}
                     onChange={(e) => setPriority(t, e.target.value)}
                   >
-                    <option value="">No priority</option>
+                    <option value="">{S.features.todos.noPriority}</option>
                     {PRIORITIES.map((p) => (
                       <option key={p} value={p}>
                         {priorityLabel(p)}

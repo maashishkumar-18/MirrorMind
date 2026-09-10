@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { call, IpcCallError } from "../ipc/client";
 import { useSettingsStore } from "../store/settings";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { S } from "../strings";
 
 function msg(e: unknown): string {
   return e instanceof IpcCallError ? e.message : String(e);
@@ -84,7 +85,7 @@ export function SettingsData() {
 
   return (
     <section className="settings-panel">
-      <h2>Data &amp; Privacy</h2>
+      <h2>{S.settings.data.title}</h2>
 
       {info ? (
         <>
@@ -93,7 +94,7 @@ export function SettingsData() {
 
           <div className="settings-actions">
             <button type="button" disabled={exporting} onClick={() => void exportData()}>
-              {exporting ? "Exporting…" : "Export all data"}
+              {exporting ? S.settings.data.exporting : S.settings.data.export}
             </button>
             {status && (
               <span className={status.kind === "ok" ? "settings-ok" : "first-run-error"}>
@@ -116,12 +117,12 @@ export function SettingsData() {
       ) : status?.kind === "err" ? (
         <p className="first-run-error">{status.text}</p>
       ) : (
-        <p className="settings-hint">Loading…</p>
+        <p className="settings-hint">{S.settings.hintLoading}</p>
       )}
 
       {confirmWipe && (
         <ConfirmDialog
-          title="Delete all your data?"
+          title={S.settings.data.wipeTitle}
           body={
             <p>
               This soft-deletes every reminder, to-do, meeting note, schedule entry,
@@ -129,7 +130,7 @@ export function SettingsData() {
               undone — export first if you might want the data back.
             </p>
           }
-          confirmLabel="Delete everything"
+          confirmLabel={S.settings.data.wipeConfirm}
           danger
           busy={wiping}
           onConfirm={wipe}
