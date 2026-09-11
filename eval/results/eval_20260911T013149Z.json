@@ -1,0 +1,3950 @@
+{
+  "run_metadata": {
+    "timestamp": "2026-09-11T01:31:49.324585+00:00",
+    "duration_seconds": 481.4,
+    "sample_size": 86,
+    "total_items_in_golden_set": 86,
+    "seed": 42,
+    "model": "llama3.1:8b",
+    "golden_set_sha256": "66bee3bd19a72e914bb01bdf02e7ffb38d0b2dbfe95b9549abf2b2bc1482275f",
+    "calibrate_mode": false
+  },
+  "aggregate": {
+    "faithfulness_mean": 0.8385964912280701,
+    "correctness_mean": 0.5232957442273691,
+    "agentic_routing": 0.9224806201550387,
+    "refusal_rate": 0.9,
+    "temporal_accuracy": 0.6428571428571429,
+    "n_answerable_scored": 57,
+    "n_unanswerable": 20,
+    "n_temporal_scored": 14,
+    "by_category": {
+      "action_request": {
+        "n": 5,
+        "agentic_routing": 1.0,
+        "faithfulness": null,
+        "correctness": null
+      },
+      "conversation": {
+        "n": 4,
+        "agentic_routing": 1.0,
+        "faithfulness": null,
+        "correctness": null
+      },
+      "conversation_recall": {
+        "n": 18,
+        "agentic_routing": 0.9814814814814815,
+        "faithfulness": 0.9444444444444444,
+        "correctness": 0.6895463571245087
+      },
+      "meeting": {
+        "n": 6,
+        "agentic_routing": 0.9444444444444445,
+        "faithfulness": 0.8333333333333334,
+        "correctness": 0.5367930489321234
+      },
+      "paraphrase_recall": {
+        "n": 11,
+        "agentic_routing": 0.7878787878787878,
+        "faithfulness": 0.890909090909091,
+        "correctness": 0.49329502099502653
+      },
+      "reminder": {
+        "n": 6,
+        "agentic_routing": 1.0,
+        "faithfulness": 0.8333333333333334,
+        "correctness": 0.2878719246340176
+      },
+      "schedule": {
+        "n": 7,
+        "agentic_routing": 1.0,
+        "faithfulness": 0.8571428571428571,
+        "correctness": 0.451869298777883
+      },
+      "summary_request": {
+        "n": 3,
+        "agentic_routing": 1.0,
+        "faithfulness": 1.0,
+        "correctness": 0.7168918647243054
+      },
+      "todo": {
+        "n": 6,
+        "agentic_routing": 0.9444444444444445,
+        "faithfulness": 0.3333333333333333,
+        "correctness": 0.2880045391264416
+      },
+      "unanswerable": {
+        "n": 20,
+        "agentic_routing": 0.8333333333333334,
+        "faithfulness": null,
+        "correctness": null
+      }
+    },
+    "by_answerability": {
+      "answerable": {
+        "n": 57,
+        "agentic_routing": 0.9415204678362573,
+        "faithfulness": 0.8385964912280701,
+        "correctness": 0.5232957442273691
+      },
+      "unanswerable": {
+        "n": 29,
+        "agentic_routing": 0.8850574712643678,
+        "faithfulness": null,
+        "correctness": null
+      }
+    },
+    "by_disambiguation_tier": {
+      "tier_1": {
+        "n": 65,
+        "agentic_routing": 0.9384615384615385,
+        "faithfulness": 0.8048780487804879,
+        "correctness": 0.5557228432123706
+      },
+      "tier_2": {
+        "n": 15,
+        "agentic_routing": 0.8222222222222223,
+        "faithfulness": 0.9266666666666666,
+        "correctness": 0.4458829109659682
+      },
+      "tier_3": {
+        "n": 2,
+        "agentic_routing": 1.0,
+        "faithfulness": 0.9,
+        "correctness": 0.3549771847633215
+      },
+      "tier_4": {
+        "n": 4,
+        "agentic_routing": 1.0,
+        "faithfulness": null,
+        "correctness": null
+      }
+    }
+  },
+  "gates": {
+    "passed": true,
+    "detail": [
+      "  PASS faithfulness: 0.839 >= 0.6",
+      "  PASS agentic_routing: 0.922 >= 0.9",
+      "  PASS refusal_rate: |0.900 - 0.9| <= 0.10",
+      "  PASS temporal_accuracy: 0.643 >= 0.45"
+    ]
+  },
+  "items": [
+    {
+      "id": "q001",
+      "question": "when did we say we'd move the product launch to?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Friday",
+      "generated_answer": "We moved the product launch to Friday. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]\n\nThis was decided after marketing wasn't ready for the original launch date, which was Wednesday. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "move the product launch to"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.7454492449760437,
+        "agentic_routing": 1.0,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 7477.6,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q002",
+      "question": "who's owning the launch checklist?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Priya",
+      "generated_answer": "Priya is owning the launch checklist. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "launch checklist owner"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.75285205245018,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3136.4,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q003",
+      "question": "what's the cap on the launch budget?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "5000 dollars",
+      "generated_answer": "The launch budget is capped at $5000. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "launch budget cap"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.49062152206897736,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3312.7,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q004",
+      "question": "why did we push the launch back?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Marketing wasn't ready; moving it gave marketing two more days.",
+      "generated_answer": "We pushed the launch back because marketing isn't ready for the original date, which was Wednesday. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]\n\nLet's move the launch to Friday instead, which gives marketing two more days to get ready. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "launch push back reason"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.6081119358539582,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4883.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q005",
+      "question": "when are we leaving for the Portugal trip?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Saturday morning",
+      "generated_answer": "We're leaving on Saturday morning. That's what we decided earlier. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Portugal trip departure date"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.7368008345365524,
+        "agentic_routing": 1.0,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3846.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q006",
+      "question": "who's booking the hotel for Portugal?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Sam",
+      "generated_answer": "Sam is booking the hotel for Portugal. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "who's booking the hotel for Portugal"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.7448896765708923,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3366.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q007",
+      "question": "are we bringing the tent to Portugal, and why?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Yes, in case of a night on the coast.",
+      "generated_answer": "We are bringing the tent to Portugal. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]\n\nYou mentioned it because you want to have the option to do a night on the coast. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "tent to Portugal"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.4682444499598609,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5047.1,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q008",
+      "question": "how are we getting around once we're in Portugal?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "A rental car picked up at the airport.",
+      "generated_answer": "We've got a few options already planned out. We'll be picking up a rental car at the airport, so we'll have a car for at least part of the trip [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]. We can use the car to get to the hotel, which is near the old town, and then we can use public transportation or walk around the city [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00].",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "getting around in Portugal"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.7034571170806885,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 6021.3,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q009",
+      "question": "who's helping me pack the kitchen for the move?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Dana",
+      "generated_answer": "Dana is helping you pack the kitchen for the move [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "who's helping me pack the kitchen for the move"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.746185690164566,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4120.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q010",
+      "question": "what am I carrying myself during the move instead of letting the movers take it?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "The record player.",
+      "generated_answer": "You're carrying the record player yourself in the car. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "what am I carrying myself during the move"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.776498943567276,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4617.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q011",
+      "question": "what book did book club pick?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Project Hail Mary",
+      "generated_answer": "The book club picked Project Hail Mary. [Session s4 · approx. 2026-09-11T01:23:56.256015+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "book club pick"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s4::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.884883850812912,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3791.6,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q012",
+      "question": "how far through the book am I supposed to be by the meeting?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "About halfway.",
+      "generated_answer": "You need to be about halfway through Project Hail Mary by the meeting on Thursday evening. [Session s4 · approx. 2026-09-11T01:23:56.256015+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "book progress by meeting"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s4::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.606161542236805,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 4360.9,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q013",
+      "question": "what did my manager say about me moving to the payments team?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Not now — revisit it in Q2 once the current project ships.",
+      "generated_answer": "Your manager said it's not a no, but not now. She wants you to revisit the idea in Q2 once the current project ships.\n\n[Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "manager comment on moving to payments team"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.8596105575561523,
+        "agentic_routing": 1.0,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4434.1,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q014",
+      "question": "what did Priya tell me the payments team is actually like?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "More on-call, but more interesting work.",
+      "generated_answer": "Priya said it's more on-call, but also more interesting work. [Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Priya payments team description"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.8037069737911224,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4139.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q015",
+      "question": "how much did the shop quote for the new brakes?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "About 400 dollars for the front pads and rotors.",
+      "generated_answer": "The shop quoted $400 for the new brake pads and rotors.\n\n[Session s7 · approx. 2026-09-11T01:23:56.470807+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "the shop quote for the new brakes"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s7::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.7125691970189412,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3979.8,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q016",
+      "question": "what was I thinking of getting Sam for his birthday?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "A starter camera, or a nice lens if he already has a body.",
+      "generated_answer": "A starter camera or a nice lens for Sam's photography hobby. That's what I suggested earlier. [Session s10 · approx. 2026-09-11T01:23:56.624945+00:00]\n\nYou mentioned he already has a camera body, so a nice lens might be a great option. [Session s10 · approx. 2026-09-11T01:23:56.624945+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Sam's birthday gift"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s10::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.8285279436544939,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5996.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q017",
+      "question": "when is Sam's birthday?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "March 3rd",
+      "generated_answer": "Sam's birthday is on March 3rd. [Session s10 · approx. 2026-09-11T01:23:56.624945+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Sam's birthday"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s10::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.7697820961475372,
+        "agentic_routing": 1.0,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3913.9,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q018",
+      "question": "what's Sam's job on the launch besides the checklist stuff?",
+      "category": "conversation_recall",
+      "answerable": true,
+      "ground_truth": "Prep the announcement blog post.",
+      "generated_answer": "I don't have anything about Sam's job on the launch in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Sam's job on the launch besides the checklist"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s10::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.1734807997941971,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 4072.3,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q019",
+      "question": "do I have a reminder about the tent?",
+      "category": "reminder",
+      "answerable": true,
+      "ground_truth": "Yes — pack the tent for Portugal.",
+      "generated_answer": "No, I don't see a reminder about a tent in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "reminder about the tent"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.27516167362531024,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3421.8,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q020",
+      "question": "is there a reminder about the car?",
+      "category": "reminder",
+      "answerable": true,
+      "ground_truth": "Yes — renew the car insurance.",
+      "generated_answer": "No, there's no reminder about the car. I don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "reminder about the car"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.3719222813844681,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3554.1,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q021",
+      "question": "am I supposed to call anyone about my teeth?",
+      "category": "reminder",
+      "answerable": true,
+      "ground_truth": "Yes — call Dr. Okafor to book the dental cleaning.",
+      "generated_answer": "I don't have anything about your teeth in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "am I supposed to call anyone about my teeth"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.19143430888652802,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4423.6,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q022",
+      "question": "which bill do I have a reminder to pay?",
+      "category": "reminder",
+      "answerable": true,
+      "ground_truth": "The electricity bill.",
+      "generated_answer": "I don't have any information about bills or payments in our past conversations or your notes. However, I do see that you have a budget of 5000 for the launch, and there's a note about no unapproved overage [meeting_notes · approx. 2026-02-02T09:15:00Z].",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "reminder to pay a bill"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.30905295411745703,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5482.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q023",
+      "question": "is there a reminder to get in touch with Marcus?",
+      "category": "reminder",
+      "answerable": true,
+      "ground_truth": "Yes — text Marcus about book club.",
+      "generated_answer": "No, I don't have a reminder to get in touch with Marcus. I don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "reminder to get in touch with Marcus"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.38770643870035804,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4164.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q024",
+      "question": "what reminders do I have coming up this week?",
+      "category": "reminder",
+      "answerable": true,
+      "ground_truth": "Water the plants, and pay the electricity bill.",
+      "generated_answer": "You have a reminder to get fresh basil and pine nuts for pesto pasta this weekend. That's the only reminder I have for you.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "reminders this week"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t5",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.19195389108998434,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 3749.4,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q025",
+      "question": "what's on my todo list for the trip?",
+      "category": "todo",
+      "answerable": true,
+      "ground_truth": "Buy sunscreen and a cooler.",
+      "generated_answer": "You have a todo to keep the whole Portugal trip under $1200, including flights. [todos record · approx. 2026-02-04T20:30:00Z]\n\nThat's the only trip-related todo I have in our past conversations.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "todo list for trip"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t5",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.1680152103304863,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5062.4,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q026",
+      "question": "what's my highest-priority work todo?",
+      "category": "todo",
+      "answerable": true,
+      "ground_truth": "Finish the launch checklist.",
+      "generated_answer": "I don't have any information about your work todos in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "highest-priority work todo"
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.06320823729038239,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3220.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q027",
+      "question": "do I have a todo about the movers?",
+      "category": "todo",
+      "answerable": true,
+      "ground_truth": "Yes — pay the movers deposit (50% up front).",
+      "generated_answer": "Yes, you have a todo about the movers. Specifically, you need to pay the movers deposit, which is 50 percent up front.\n\n[source: [todos record · approx. 2026-02-06T18:00:00Z]]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "movers"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.9324910044670105,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4590.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q028",
+      "question": "what am I behind on returning?",
+      "category": "todo",
+      "answerable": true,
+      "ground_truth": "The library books — two are already overdue.",
+      "generated_answer": "You're behind on delivering the current milestone, as per your manager's request in our 1:1 meeting on the 10th. [meeting_notes record · approx. 2026-02-10T11:00:00Z]\n\nI don't have anything about that in our past conversations or your notes regarding what you need to return.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "what am I behind on returning"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.13753662684134074,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5505.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q029",
+      "question": "what groceries are on my list right now?",
+      "category": "todo",
+      "answerable": true,
+      "ground_truth": "Fresh basil and pine nuts.",
+      "generated_answer": "I don't have anything about your grocery list in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "groceries on my list"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.07834119349718094,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3462.8,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q030",
+      "question": "how urgent is the movers deposit — what priority did I put on it?",
+      "category": "todo",
+      "answerable": true,
+      "ground_truth": "High priority.",
+      "generated_answer": "I don't have anything about the movers deposit or its priority in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "movers deposit priority"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.3484349623322487,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3720.6,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q031",
+      "question": "what did we decide in the launch retro?",
+      "category": "meeting",
+      "answerable": true,
+      "ground_truth": "Launch moves to Friday, Priya owns the checklist, and the budget is capped at 5000 dollars.",
+      "generated_answer": "We decided to move the launch to Friday to give marketing two more days. This was agreed upon during the launch retro planning meeting. [meeting_notes record · approx. 2026-02-02T09:15:00Z]\n\nPriya owns the launch checklist end to end. [meeting_notes record · approx. 2026-02-02T09:15:00Z]\n\nSam will prep the announcement blog post. [meeting_notes record · approx. 2026-02-02T09:15:00Z]\n\nThe budget stays at 5000 with no unapproved overage. [meeting_notes record · approx. 2026-02-02T09:15:00Z]\n\nPriya will send the updated checklist by Wednesday. [meeting_notes record · approx. 2026-02-02T09:15:00Z]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "launch retro decision"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.707062025864919,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 8732.9,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q032",
+      "question": "who was at the launch retro?",
+      "category": "meeting",
+      "answerable": true,
+      "ground_truth": "Me, Priya, and Sam.",
+      "generated_answer": "You had a launch retro meeting with Priya and Sam. Priya and Sam were the attendees, besides you. [meeting_notes record · approx. 2026-02-02T09:15:00Z]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "launch retro attendees"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.7018804848194122,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4128.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q033",
+      "question": "what's Priya's action item from the launch meeting and when's it due?",
+      "category": "meeting",
+      "answerable": true,
+      "ground_truth": "Send the updated launch checklist, due Wednesday.",
+      "generated_answer": "I don't have anything about Priya or the launch meeting in our past conversations or your notes.\n\nHowever, I can suggest checking the meeting notes or emails related to the launch meeting to find Priya's action item and its due date.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "Priya's action item from the launch meeting and due date"
+      },
+      "chunks": [
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.4345400759152004,
+        "agentic_routing": 1.0,
+        "temporal": 0.0
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5156.1,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q034",
+      "question": "what was the outcome of my 1:1 about payments, according to my notes?",
+      "category": "meeting",
+      "answerable": true,
+      "ground_truth": "Revisit the move in Q2 after the current project ships; no commitment yet.",
+      "generated_answer": "According to your notes, here's what I found:\n\n* You told your manager you want to move to the payments team, and it wasn't a flat-out \"no\", but not a \"yes\" either. [Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]\n* Your manager suggested revisiting the topic in Q2, after the current project ships. [Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]\n* Priya, who already switched to the payments team last year, said it's more on-call but with more interesting work. [Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]\n\nLet me know if you'd like me to elaborate on any of these points!",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "outcome of 1:1 about payments"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.6152810603380203,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 9234.1,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q035",
+      "question": "what's the follow-up from the moving logistics meeting with Dana?",
+      "category": "meeting",
+      "answerable": true,
+      "ground_truth": "Book the building moving elevator for the morning of the 15th.",
+      "generated_answer": "According to our moving logistics meeting with Dana [meeting_notes · approx. 2026-02-06T18:00:00Z], the follow-up is that Dana will pack the kitchen the weekend before the movers arrive [meeting_notes · approx. 2026-02-06T18:00:00Z].",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "moving logistics meeting with Dana follow-up"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.2875076002544827,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5474.7,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q036",
+      "question": "does the launch retro say anything about what marketing has to do?",
+      "category": "meeting",
+      "answerable": true,
+      "ground_truth": "Confirm marketing is ready by Thursday.",
+      "generated_answer": "According to the meeting notes, marketing has two more days to prepare for the launch, which is now scheduled for Friday. This is mentioned in the following text: \"Attendees: me, Priya, Sam. We agreed the launch moves to Friday to give marketing two more days.\"\n\n[meeting_notes record · approx. 2026-02-02T09:15:00Z]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "launch retro marketing"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.47448704640070594,
+        "agentic_routing": 1.0,
+        "temporal": 0.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 5537.1,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q037",
+      "question": "when do the movers arrive?",
+      "category": "schedule",
+      "answerable": true,
+      "ground_truth": "The 15th at 8am.",
+      "generated_answer": "I don't have anything about that in our past conversations or your notes.\n\nHowever, I can suggest checking your schedule or reminders for any relevant information.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "when do the movers arrive"
+      },
+      "chunks": [
+        {
+          "chunk_id": "schedule_items:si3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.09794383496046066,
+        "agentic_routing": 1.0,
+        "temporal": 0.0
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3991.6,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q038",
+      "question": "what time is the dental cleaning?",
+      "category": "schedule",
+      "answerable": true,
+      "ground_truth": "The 20th at 2pm.",
+      "generated_answer": "The dental cleaning is scheduled for Friday the 20th at 2pm. [schedule_items · approx. 2026-02-20T14:00:00Z]\n\nAlso, don't forget to call Dr. Okafor to book the appointment, as it's overdue. [reminders · approx. 2026-02-11T08:45:00Z]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "dental cleaning time"
+      },
+      "chunks": [
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.6909848004579544,
+        "agentic_routing": 1.0,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5409.8,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q039",
+      "question": "when's book club this week and where?",
+      "category": "schedule",
+      "answerable": true,
+      "ground_truth": "Thursday the 19th at 7pm, at Marcus's place.",
+      "generated_answer": "I don't have any information about book club in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "book club this week and where"
+      },
+      "chunks": [
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t5",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.07608193159103394,
+        "agentic_routing": 1.0,
+        "temporal": 0.0
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3677.7,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q040",
+      "question": "what time is the team standup?",
+      "category": "schedule",
+      "answerable": true,
+      "ground_truth": "9am.",
+      "generated_answer": "The team standup is at 9am. That's when we have our daily video call. [schedule_items · approx. 2026-02-20T09:00:00Z]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "team standup time"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si5",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.7785074710845947,
+        "agentic_routing": 1.0,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4209.4,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q041",
+      "question": "where am I dropping the car off?",
+      "category": "schedule",
+      "answerable": true,
+      "ground_truth": "Miller's Auto.",
+      "generated_answer": "You're dropping the car off at Miller's Auto on Monday the 16th at 8am. They're going to replace the front brake pads and rotors, and it's going to cost about $400. [schedule_items · approx. 2026-02-16T08:00:00Z]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "car drop off location"
+      },
+      "chunks": [
+        {
+          "chunk_id": "reminders:r4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.711332768201828,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5138.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q042",
+      "question": "when am I taking the car to the shop?",
+      "category": "schedule",
+      "answerable": true,
+      "ground_truth": "Monday the 16th at 8am.",
+      "generated_answer": "You're taking the car to the shop on Monday the 16th. Specifically, you need to drop it off at 8am that day for new brakes. Miller's Auto will be doing the work, which includes replacing the front pads and rotors, and it's estimated to cost around $400. [schedule_items · approx. 2026-02-16T08:00:00Z]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "car shop appointment date"
+      },
+      "chunks": [
+        {
+          "chunk_id": "reminders:r4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.6373419463634491,
+        "agentic_routing": 1.0,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5464.6,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q043",
+      "question": "what do I have scheduled on Friday the 20th?",
+      "category": "schedule",
+      "answerable": true,
+      "ground_truth": "Team standup at 9am and the dental cleaning at 2pm.",
+      "generated_answer": "I don't see anything in our past conversations or your notes about your schedule for Friday the 20th.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "Friday the 20th"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.17089233878586027,
+        "agentic_routing": 1.0,
+        "temporal": 0.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 3762.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q044",
+      "question": "what's the spending limit for the trip?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "1200 dollars for the whole thing, flights included.",
+      "generated_answer": "You mentioned earlier that you don't want to go over $1200 for the whole trip, including flights. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "spending limit for the trip"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s7::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.6883612275123596,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 5226.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q045",
+      "question": "how much am I allowed to blow on Portugal total?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "Under 1200 dollars.",
+      "generated_answer": "You're not allowed to go over $1200 for the whole trip, including flights. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Portugal total budget"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.37467030684153235,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 4445.8,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q046",
+      "question": "is there anything I need to grab from the shop before the weekend?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "Fresh basil and pine nuts.",
+      "generated_answer": "You might want to pick up some sunscreen and a cooler for the Portugal trip. I have you down to buy those in your to-do list. [todos record · approx. 2026-02-04T20:30:00Z]\n\nAlso, you might want to check if you need to water the plants before the weekend, since it's been a while since you last did it. [reminders record · approx. 2026-02-01T00:00:00Z]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "anything I need to grab from the shop before the weekend"
+      },
+      "chunks": [
+        {
+          "chunk_id": "schedule_items:si3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.23009975850582123,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 6773.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q047",
+      "question": "what's the most on-fire thing at work right now?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "Finishing the launch checklist — it's marked high priority.",
+      "generated_answer": "The current project that Priya is working on is a priority, and you're planning to revisit the move to the payments team in Q2 after it ships. Priya said it's more on-call but more interesting work. [Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]\n\nAlso, the launch is scheduled for Friday, and Priya owns the launch checklist. She'll chase down the remaining items. The launch budget is capped at $5000, with no extra spend without asking you. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "summary_request",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "hybrid",
+        "search_query": "most on-fire thing at work"
+      },
+      "chunks": [
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "schedule_items:si3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s9::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s7::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.5421287318070729,
+        "agentic_routing": 0.3333333333333333,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 8766.6,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q048",
+      "question": "did I set anything up about my teeth?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "Yes — a reminder to call Dr. Okafor to book the dental cleaning, plus the cleaning itself is on the calendar for the 20th at 2pm.",
+      "generated_answer": "I don't have anything about your teeth in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "setting up teeth"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.14999783039093018,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 3643.8,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q049",
+      "question": "what have I got coming that's going to cost money?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "The electricity bill, the movers deposit, the car insurance renewal, and the brake job (~400 dollars).",
+      "generated_answer": "You've got a car maintenance appointment coming up, where you're dropping off your car for brake pad and rotor replacement on Monday morning. This is estimated to cost around $400. [Session s7 · approx. 2026-09-11T01:23:56.470807+00:00]\n\nAlso, there's a product launch planned for this week, with a budget of $5000. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "hybrid",
+        "search_query": "cost money"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s7::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.9,
+        "correctness": 0.3549771847633215,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 3,
+      "pipeline_time_ms": 6691.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q050",
+      "question": "anything I should deal with before the plants die?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "Water them — there's a reminder to do it every 3 days while it's dry.",
+      "generated_answer": "I don't have anything about plants or their care in our past conversations or your notes.\n\nHowever, I do see that you have a trip to Portugal planned, and you've added a few tasks to your list related to that trip. You might want to consider checking on any plants that need attention while you're away.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "anything I should deal with before the plants die"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.2198332335267748,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 5852.3,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q051",
+      "question": "is there a note about who's coming to give me a hand with the move?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "Dana — she's packing the kitchen the weekend before.",
+      "generated_answer": "You're getting some help with the move. Dana is coming over the weekend before to help you pack the kitchen. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "note about who's coming to help with the move"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.6809823215007782,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 5152.7,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q052",
+      "question": "what's wrong with the front of the car and what's the plan?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "The front brake pads and rotors are worn; the plan is to drop it at Miller's Auto on Monday for about 400 dollars.",
+      "generated_answer": "The car is making a grinding noise when you brake, which suggests that the brake pads need to be replaced. This is what the shop said, actually: they quoted about $400 for the front pads and rotors. You're dropping the car off at the shop on Monday morning. [Session s7 · approx. 2026-09-11T01:23:56.470807+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "hybrid",
+        "search_query": "front of the car and plan"
+      },
+      "chunks": [
+        {
+          "chunk_id": "schedule_items:si3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s7::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.5893111954564634,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 6598.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q053",
+      "question": "what do I need for the thing I'm cooking this weekend?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "Fresh basil and pine nuts, for the pesto pasta.",
+      "generated_answer": "You're making pesto pasta from scratch this weekend. You mentioned you already have most of the ingredients, but you need fresh basil and pine nuts. I added those to your shopping list earlier. [Session s8 · approx. 2026-09-11T01:23:56.521146+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "what do I need for cooking this weekend"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s8::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.0,
+        "correctness": 0.8586026695039537,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 5834.4,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q054",
+      "question": "who's got the kitchen covered for moving day?",
+      "category": "paraphrase_recall",
+      "answerable": true,
+      "ground_truth": "Dana.",
+      "generated_answer": "Dana has got the kitchen covered for moving day. She's coming over the weekend before to help you pack it. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "kitchen covered moving day"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 0.9,
+        "correctness": 0.7372807711362839,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 2,
+      "pipeline_time_ms": 4683.9,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q055",
+      "question": "what's the state of the Portugal trip — give me the rundown?",
+      "category": "summary_request",
+      "answerable": true,
+      "ground_truth": "Leaving Saturday morning, flying into Lisbon, Sam's booking a hotel near the old town, rental car at the airport, bringing the tent for a possible coast night, keeping it all under 1200 dollars, and there's a todo to buy sunscreen and a cooler.",
+      "generated_answer": "Let's review the Portugal trip. Here's the rundown:\n\n* We're flying from Lisbon direct, which is a great option to avoid traffic. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]\n* Sam is booking the hotel, which is located near the old town. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]\n* We'll pick up the rental car at the airport. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]\n* I've reminded you to pack the tent for a possible coast night. [reminders record · approx. 2026-02-04T20:30:00Z]\n* We need to keep the total budget under $1200, flights included. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]\n* I've also added two other items to your todo list: buying sunscreen and a cooler for the trip. [todos record · approx. 2026-02-04T20:30:00Z]\n\nLet me know if you'd like to add or change anything!",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "summary_request"
+      },
+      "agentic_output": {
+        "action_type": "summary_request",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "hybrid",
+        "search_query": "Portugal trip"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "reminders:r1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.7724010787512127,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 12434.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q056",
+      "question": "summarize where things stand with the house move.",
+      "category": "summary_request",
+      "answerable": true,
+      "ground_truth": "Movers arrive the 15th at 8am, Dana packs the kitchen the weekend before, I carry the record player myself, there's a high-priority todo to pay the movers deposit, and I still need to book the building moving elevator for the 15th.",
+      "generated_answer": "Here's a summary of where things stand with the house move:\n\n* The movers are confirmed for the 15th at 8am. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]\n* You're mostly packed, but Dana is coming over the weekend before to help you pack the kitchen. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]\n* You'll carry the record player yourself in the car, as it's fragile. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]\n* Dana will take care of packing the kitchen. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]\n* Movers arrive at 8am on the 15th, and Dana will help with the kitchen the weekend before. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "summary_request"
+      },
+      "agentic_output": {
+        "action_type": "summary_request",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "hybrid",
+        "search_query": "house move"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.6325490393421866,
+        "agentic_routing": 1.0,
+        "temporal": 1.0
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 11472.3,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q057",
+      "question": "catch me up on the launch.",
+      "category": "summary_request",
+      "answerable": true,
+      "ground_truth": "It moved to Friday to give marketing time, the budget's capped at 5000 dollars, Priya owns the checklist, Sam's doing the announcement blog post, and Priya's updated checklist is due Wednesday.",
+      "generated_answer": "Let's catch up on the launch.\n\nThe launch was originally scheduled for Wednesday, but we decided to move it to Friday to give marketing two more days. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]\n\nPriya is in charge of the launch checklist and is responsible for chasing down the remaining items. She's supposed to send an updated checklist by Wednesday. [meeting_notes record · approx. 2026-02-02T09:15:00Z]\n\nWe've also capped the launch budget at $5000, with no extra spending without your approval. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]\n\nLastly, Sam is working on the announcement blog post for the launch. [meeting_notes record · approx. 2026-02-02T09:15:00Z]\n\nLet me know if you'd like me to elaborate on any of these points!",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "summary_request"
+      },
+      "agentic_output": {
+        "action_type": "summary_request",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "hybrid",
+        "search_query": "launch"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "todos:t2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": 1.0,
+        "correctness": 0.7457254760795169,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 10226.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q058",
+      "question": "good morning!",
+      "category": "conversation",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "Good morning! I'm glad you're starting the day off right.\n\nI don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "conversation"
+      },
+      "agentic_output": {
+        "action_type": "conversation",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 4,
+      "pipeline_time_ms": 3419.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q059",
+      "question": "thanks, that's everything for now.",
+      "category": "conversation",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "It looks like we've wrapped up our conversation for now.",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "conversation"
+      },
+      "agentic_output": {
+        "action_type": "conversation",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 4,
+      "pipeline_time_ms": 2833.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q060",
+      "question": "how's your day going?",
+      "category": "conversation",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have any information about my day or any previous conversations about it.",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "conversation"
+      },
+      "agentic_output": {
+        "action_type": "conversation",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 4,
+      "pipeline_time_ms": 2894.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q061",
+      "question": "can you help me plan something later today?",
+      "category": "conversation",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have any information about your plans for later today.",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "conversation"
+      },
+      "agentic_output": {
+        "action_type": "conversation",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 3,
+      "pipeline_time_ms": 2604.2,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q062",
+      "question": "remind me to pack the tent the night before we leave.",
+      "category": "action_request",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have any information about packing a tent or our travel plans.",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "reminder"
+      },
+      "agentic_output": {
+        "action_type": "reminder",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3012.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q063",
+      "question": "add buy milk to my todo list.",
+      "category": "action_request",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I've added \"buy milk\" to your todo list.\n\n[Reminder · approx. 2023-02-15]",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "todo"
+      },
+      "agentic_output": {
+        "action_type": "todo",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3184.8,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q064",
+      "question": "put lunch with Dana on Saturday at noon on my calendar.",
+      "category": "action_request",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "schedule"
+      },
+      "agentic_output": {
+        "action_type": "schedule",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 2957.9,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q065",
+      "question": "here are my notes from the design sync: we agreed to ship the new nav next sprint, and Marcus will write the migration guide.",
+      "category": "action_request",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "It looks like you're referring to some design sync notes. I see that you and the team agreed to ship the new navigation menu next sprint. [Session unknown · approx. <timestamp>]\n\nAlso, I remember that Marcus will be writing the migration guide for the new nav. [Session unknown · approx. <timestamp>]",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "meeting_note"
+      },
+      "agentic_output": {
+        "action_type": "meeting_note",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5079.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q066",
+      "question": "give me a summary of my week.",
+      "category": "action_request",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "Let me summarize your week for you.\n\nYou had a 1:1 meeting with your manager, where you discussed moving to the payments team. She was open to the idea, but wants to wait until the current project ships in Q2. [Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]\n\nThe movers are confirmed to arrive on the 15th at 8am, and Dana is coming over the weekend before to help you pack the kitchen. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]\n\nYou also discussed the launch date for your project, and decided to move it to Friday to give marketing more time. Priya will be in charge of the launch checklist, and the budget is capped at $5000. [Session s1 · approx. 2026-09-11T01:23:56.103463+00:00]\n\nLastly, you mentioned that you had a good 1:1 meeting with your manager, and that you're looking forward to revisiting the move to the payments team in Q2. [Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]\n\nThat's a quick summary of your week!",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "summary_request"
+      },
+      "agentic_output": {
+        "action_type": "summary_request",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "hybrid",
+        "search_query": "summary of my week"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s9::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "reminders:r4",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": null,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 12943.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q067",
+      "question": "what's the wifi password at the new place?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have anything about the wifi password at the new place in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "wifi password at the new place"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s4::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s9::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s7::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4266.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q068",
+      "question": "which airline are we flying to Portugal?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "We're flying direct to Lisbon. I remember you mentioned that earlier. [Session s2 · approx. 2026-09-11T01:23:56.166676+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "airline to Portugal"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": false,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4730.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q069",
+      "question": "what's the name of the hotel Sam booked?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have the name of the hotel Sam booked in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "hotel booked by Sam"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s10::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3460.4,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q070",
+      "question": "how much is the Portugal hotel per night?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have any information about the hotel prices in Portugal in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "Portugal hotel per night"
+      },
+      "chunks": [
+        {
+          "chunk_id": "todos:t6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3788.3,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q071",
+      "question": "when is Marcus's birthday?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have any information about Marcus's birthday in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Marcus's birthday"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s10::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s4::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": true,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3505.3,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q072",
+      "question": "what's Dana's phone number?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have Dana's phone number in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Dana's phone number"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3429.1,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q073",
+      "question": "what's the moving company called?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have the moving company's name in our past conversations or your notes.\n\nHowever, I do know that the movers are confirmed for the 15th at 8am. [Session s3 · approx. 2026-09-11T01:23:56.218016+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "moving company name"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5607.9,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q074",
+      "question": "what's my manager's name?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "Your manager's name isn't mentioned in our past conversations. I don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "manager's name"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3764.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q075",
+      "question": "did I decide which camera model to get Sam?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "No, I don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "camera model decision for Sam"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s10::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4323.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q076",
+      "question": "what's the deadline on Sam's blog post action item?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "According to the meeting notes from the launch retro planning, Sam is supposed to prep the announcement blog post. The follow-up action item is for Priya to send the updated checklist by Wednesday, but I don't see a specific deadline for Sam's task. However, it's mentioned that the launch moves to Friday, which might imply that Sam needs to have the blog post ready by then.\n\n[meeting_notes record · approx. 2026-02-02T09:15:00Z]\n\nI don't have a specific deadline for Sam's task, but it's likely related to the launch on Friday.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "Sam's blog post action item deadline"
+      },
+      "chunks": [
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": false,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": false,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 7859.0,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q077",
+      "question": "give me the full pesto recipe with quantities and steps.",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "conversation",
+        "confidence": 0.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.3333333333333333,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3345.8,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q078",
+      "question": "how many pages is Project Hail Mary?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "Unfortunately, I don't have the page count for Project Hail Mary in our past conversations or your notes.\n\nHowever, I do know that you need to be about halfway through the book by Thursday evening. That's all I can tell you from our previous conversation.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Project Hail Mary pages"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s4::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5085.3,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q079",
+      "question": "what did Priya get promoted to?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have anything about Priya's promotion in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Priya's promotion"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3835.7,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q080",
+      "question": "what's my flight number for Portugal?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have any information about your flight number for Portugal in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "flight number for Portugal"
+      },
+      "chunks": [
+        {
+          "chunk_id": "meeting_notes:m1",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t6",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "todos:t5",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3752.9,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q081",
+      "question": "where's the book club meeting after Thursday's?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have any information about the book club meeting in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 0.95,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "book club meeting after Thursday's"
+      },
+      "chunks": [
+        {
+          "chunk_id": "schedule_items:si2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r2",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "meeting_notes:m3",
+          "chunk_type": "structured_record"
+        },
+        {
+          "chunk_id": "reminders:r6",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3832.7,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q082",
+      "question": "what's the capital of Australia?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": false,
+        "route": null,
+        "action_type": "conversation"
+      },
+      "agentic_output": {
+        "action_type": "conversation",
+        "confidence": 1.0,
+        "retrieve_needed": false,
+        "retrieval_route": "semantic",
+        "search_query": null
+      },
+      "chunks": [],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 4,
+      "pipeline_time_ms": 2773.3,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q083",
+      "question": "how much is the electricity bill?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have any information about the amount of the electricity bill in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "structured",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "structured",
+        "search_query": "electricity bill amount"
+      },
+      "chunks": [
+        {
+          "chunk_id": "reminders:r3",
+          "chunk_type": "structured_record"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3258.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q084",
+      "question": "what did Dana say she's bringing for moving day?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "I don't have anything about that in our past conversations or your notes.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Dana moving day"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s3::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 3358.5,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q085",
+      "question": "what's Priya's email address?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "Priya's email address isn't mentioned in our past conversations or your notes. However, I do know that Priya is the one who switched to the payments team last year, and she's also the one who's going to own the launch checklist for the upcoming project. [Session s5 · approx. 2026-09-11T01:23:56.345330+00:00]",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "hybrid",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "Priya's email address"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s5::primary",
+          "chunk_type": "primary"
+        },
+        {
+          "chunk_id": "s1::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 0.6666666666666666,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 5881.9,
+      "langfuse_trace_url": null
+    },
+    {
+      "id": "q086",
+      "question": "how long is the flight to Lisbon?",
+      "category": "unanswerable",
+      "answerable": false,
+      "ground_truth": null,
+      "generated_answer": "The flight to Lisbon is direct from your location. Unfortunately, I don't have any information about the flight duration in our past conversations.",
+      "expected": {
+        "retrieve_needed": true,
+        "route": "semantic",
+        "action_type": "retrieval_query"
+      },
+      "agentic_output": {
+        "action_type": "retrieval_query",
+        "confidence": 1.0,
+        "retrieve_needed": true,
+        "retrieval_route": "semantic",
+        "search_query": "flight to Lisbon duration"
+      },
+      "chunks": [
+        {
+          "chunk_id": "s2::primary",
+          "chunk_type": "primary"
+        }
+      ],
+      "scores": {
+        "refusal": true,
+        "faithfulness": null,
+        "correctness": null,
+        "agentic_routing": 1.0,
+        "temporal": null
+      },
+      "refused": true,
+      "error_type": null,
+      "is_temporal": false,
+      "disambiguation_tier": 1,
+      "pipeline_time_ms": 4266.7,
+      "langfuse_trace_url": null
+    }
+  ]
+}
