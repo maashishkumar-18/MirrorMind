@@ -408,3 +408,54 @@ picks `semantic`. Its own notes say "any reasonable subset scores as correct"
 Calibrated bands (`refusal_rate.baseline`, `temporal_accuracy.min`) are **not**
 re-anchored yet — that waits for a clean post-fix-2 run so the anchor reflects
 the intended pipeline, not a transitional one.
+
+---
+
+## Phase 4 Step 4.3 — landed (2026-09-11, `main`)
+
+Two more full-86 Colab-GPU runs (T4, ~8 min each — see `eval/colab_run_eval.ipynb`)
+after the 2026-09-10 review above, iterating the agent prompt (`src/retrieval/
+retrieval_agent.py`) and, briefly, the generation prompt.
+
+**fix-3** (route-guidance rebalance: general-knowledge / open-ended requests ->
+`conversation` + no retrieval; "a fact stated in conversation stays semantic
+even when it names something list-like" reinforcement) — **agentic_routing
+0.826 -> 0.915**, reproduced on two separate runs (0.915 both times). Category
+wins: `action_request` 0.533->1.0, `summary_request` 0.444->1.0, `conversation`
+->1.0, `conversation_recall` ->0.96-0.98. `faithfulness` held at 0.83-0.94.
+
+**fix-4** (generation-prompt tightening: refuse rather than substitute a
+tangential fact) was tried and **reverted** — it did not reliably improve
+`refusal_rate` (one run: 0.90->0.85, with a *new* miss on q086 plausibly caused
+by the "answer the specific thing" framing nudging the model toward always
+answering). Kept out of the merged prompt; the underlying issue (retrieval
+returns a semantically-adjacent-but-non-answering chunk for a small, consistent
+cluster — q068/q076/q086, all Lisbon-trip-adjacent) is a retrieval/generation
+relevance-gating gap, not a quick prompt fix. Tracked as a v1.1 follow-up.
+
+**Result — both roadmap-fixed gates now clear their floor with margin**, on
+the frozen golden set (`golden_set_sha256` unchanged):
+
+| Metric | Floor/band | Measured (4 post-remediation runs) |
+|---|---|---|
+| faithfulness (roadmap-fixed) | >= 0.60 | 0.835, 0.860, 0.928, 0.940 |
+| agentic_routing (roadmap-fixed) | >= 0.90 | 0.888, 0.895, **0.915, 0.915** |
+| refusal_rate (calibrated) | re-anchored 0.90 +/-10pp | 0.85, 0.90, 0.90, 0.95 |
+| temporal_accuracy (calibrated) | 0.45 (unchanged) | 0.50, 0.571, 0.571, 0.643 |
+
+`refusal_rate`'s tight 5pp band (calibrated 2026-09-04 on two runs that both
+happened to land exactly 0.95) does not survive contact with a second pair of
+real runs — 0.85-0.95 is the local 8B's actual noise floor on this 20-item
+unanswerable set, not a regression. Re-anchored to 0.90 +/-10pp in `gates.json`
+(commit landing this section) with the full reasoning in `_meta.notes`. The
+**roadmap-fixed** floors (`faithfulness.min`, `agentic_routing.min`) are never
+touched by this or any future re-anchor.
+
+Binding artifact: `eval/results/eval_20260910T232635Z.{json,md}` (the merged-
+prompt full-86 run: 0.835 / 0.915 / 0.900 / 0.643 — all four gates green under
+the re-anchored band).
+
+**Phase 4 Step 4.3 is closed.** Remaining routing misses (20/86, agentic_routing
+0.915) are overwhelmingly debatable golden-set route labels (see the prior
+section) or the acknowledged retrieval-relevance gap above — not chased further,
+per the "don't game the gate" principle this review has held throughout.

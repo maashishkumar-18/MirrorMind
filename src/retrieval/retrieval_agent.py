@@ -125,22 +125,27 @@ Guidance:
 - confidence >= 0.85: act on it. 0.70-0.85: you'd want a quick confirm.
   0.50-0.70: you'd ask for clarification. < 0.50: treat it as plain conversation.
 
-- action_type: "retrieval_query" for a question about the past. "reminder" /
-  "todo" / "schedule" / "meeting_note" when the user is TELLING you to record
-  something ("remind me to…", "add … to my todo", "put … on my calendar",
-  "here are my notes from the sync: …"). "summary_request" when they want a
-  roll-up across everything on a topic ("catch me up on the launch", "summarize
-  where the move stands", "give me the rundown / the state of X", "summary of
-  my week"). "conversation" for small talk or general knowledge.
+- action_type: "retrieval_query" for a question whose answer is a specific fact
+  from the user's own history. "reminder" / "todo" / "schedule" /
+  "meeting_note" when the user is TELLING you to record something ("remind me
+  to…", "add … to my todo", "put … on my calendar", "here are my notes from the
+  sync: …"). "summary_request" when they want a roll-up across everything on a
+  topic ("catch me up on the launch", "summarize where the move stands", "give
+  me the rundown / the state of X", "summary of my week"). "conversation" for
+  small talk, an open-ended request to think something through with them ("can
+  you help me plan something later", "help me figure out X"), or a
+  general-knowledge / world-fact question that has nothing to do with their
+  records ("what's the capital of Australia", "how many ounces in a cup").
 
 - retrieve_needed: TRUE whenever answering a question means looking something up
   in the user's history — anything that already happened, anything they told you
   before, a date/time/amount/decision they mentioned, the contents of a reminder
   / todo / meeting note / schedule item, or a topic roll-up. FALSE for a
-  greeting, small talk, a general-knowledge question — and FALSE for a command
-  that RECORDS something ("remind me to…", "add … to my list", "put … on my
-  calendar", "here are my notes: …"): you are writing, not looking up. When in
-  doubt on a *question* about the past, choose true.
+  greeting, small talk, an open-ended "help me think this through" request, or a
+  general-knowledge / world-fact question you'd answer the same way for anyone —
+  and FALSE for a command that RECORDS something ("remind me to…", "add … to my
+  list", "put … on my calendar", "here are my notes: …"): you are writing, not
+  looking up. When in doubt on a *question about their own past*, choose true.
 
 - retrieval_route (only matters when retrieve_needed is true):
   * "structured" — the question targets a KEPT RECORD by its nature:
@@ -153,10 +158,14 @@ Guidance:
       call anyone about my teeth", "did I set anything up about X", "anything I
       need to do before the plants die", "what's on my todo list").
   * "semantic" — the answer lives in something the user SAID in a past
-    conversation: what was decided / agreed / discussed, when a trip or birthday
-    is, what a person said, who owns or what the budget is for something that
-    came up in chat ("when did we move the launch", "who's owning the checklist",
-    "what's the cap on the budget", "what did my manager say").
+    conversation: what was decided / agreed / discussed / picked / quoted, when a
+    trip or birthday is, what a person said, who owns or what the budget is for
+    something that came up in chat ("when did we move the launch", "who's owning
+    the checklist", "what's the cap on the budget", "what did my manager say").
+    A fact that was *stated in a conversation* stays semantic even when it names
+    something you also keep a list for — "what book did book club pick" (a
+    decision that was discussed) is semantic; only "when is book club" (a
+    calendar lookup) is structured.
   * "hybrid" — a topic roll-up, or a vague question whose answer plausibly spans
     both a conversation and a record ("give me the rundown on the trip", "what
     have I got coming that'll cost money", "who's helping me move").
@@ -172,7 +181,11 @@ Examples (message -> the routing fields):
 - "who's owning the launch checklist?" -> retrieval_query, retrieve_needed true, semantic
 - "what's the cap on the launch budget?" -> retrieval_query, retrieve_needed true, semantic
 - "what did my manager say about the payments team?" -> retrieval_query, retrieve_needed true, semantic
+- "what book did book club pick?" -> retrieval_query, retrieve_needed true, semantic
+- "how much did the shop quote for the new brakes?" -> retrieval_query, retrieve_needed true, semantic
+- "what am I carrying myself during the move instead of the movers?" -> retrieval_query, retrieve_needed true, semantic
 - "what did we decide in the launch retro?" -> retrieval_query, retrieve_needed true, structured
+- "does the launch retro say anything about what marketing has to do?" -> retrieval_query, retrieve_needed true, structured
 - "who was at the launch retro?" -> retrieval_query, retrieve_needed true, structured
 - "when do the movers arrive?" -> retrieval_query, retrieve_needed true, structured
 - "am I supposed to call anyone about my teeth?" -> retrieval_query, retrieve_needed true, structured
@@ -183,6 +196,8 @@ Examples (message -> the routing fields):
 - "remind me to pack the tent the night before we leave." -> reminder, retrieve_needed false
 - "add buy milk to my todo list." -> todo, retrieve_needed false
 - "here are my notes from the design sync: we agreed to ship the new nav." -> meeting_note, retrieve_needed false
+- "can you help me plan something later today?" -> conversation, retrieve_needed false
+- "what's the capital of Australia?" -> conversation, retrieve_needed false
 - "hey, how's it going?" -> conversation, retrieve_needed false
 
 Recent conversation:
