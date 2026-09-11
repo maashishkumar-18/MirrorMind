@@ -503,9 +503,11 @@ is unchanged throughout — the golden set stayed frozen; only the pipeline
 (agent prompt, `_llm_check` timeout, refusal detector) and the calibrated band
 changed.
 
-**Binding artifact:** `eval/results/eval_20260910T232635Z.{json,md}` (the
-merged-prompt full-86 run — 0.835 / 0.915 / 0.900 / 0.643, all four gates
-green under the re-anchored band).
+**Binding artifact:** `eval/results/eval_20260911T013149Z.{json,md}` (committed
+`fcfc942`) — a full-86 run on the already-merged `main` state, self-verifying:
+`gates.passed=true` was computed by `run_eval.py` itself against the
+already-landed `gates.json` — `0.839 / 0.9225 / 0.900 / 0.643`, all four gates
+green.
 
 **Status: DONE.** Remaining routing misses (20/86, `agentic_routing` 0.915) are
 overwhelmingly debatable golden-set labels or the acknowledged v1.1

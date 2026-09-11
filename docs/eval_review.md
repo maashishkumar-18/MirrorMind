@@ -451,11 +451,13 @@ unanswerable set, not a regression. Re-anchored to 0.90 +/-10pp in `gates.json`
 **roadmap-fixed** floors (`faithfulness.min`, `agentic_routing.min`) are never
 touched by this or any future re-anchor.
 
-Binding artifact: `eval/results/eval_20260910T232635Z.{json,md}` (the merged-
-prompt full-86 run: 0.835 / 0.915 / 0.900 / 0.643 — all four gates green under
-the re-anchored band).
+Binding artifact: `eval/results/eval_20260911T013149Z.{json,md}` — a full-86
+run on the already-merged `main` state, self-verifying (`gates.passed=true`
+computed by `run_eval.py` itself against the already-landed `gates.json`):
+0.839 / 0.9225 / 0.900 / 0.643 — all four gates green under the re-anchored
+band.
 
-**Phase 4 Step 4.3 is closed.** Remaining routing misses (20/86, agentic_routing
-0.915) are overwhelmingly debatable golden-set route labels (see the prior
+**Phase 4 Step 4.3 is closed.** Remaining routing misses (18/86, agentic_routing
+0.9225) are overwhelmingly debatable golden-set route labels (see the prior
 section) or the acknowledged retrieval-relevance gap above — not chased further,
 per the "don't game the gate" principle this review has held throughout.
